@@ -4454,8 +4454,10 @@ def step34_longevity(cfg: Dict[str, Any],
     allocations = lv.allocation_grid(
         [float(x) for x in block.get("equity_grid", (1.0,))],
         [float(x) for x in block.get("domestic_grid", (0.1,))])
-    plans = lv.plan_grid(cfg["spending"]["rules"],
-                         [float(x) for x in block.get("rate_grid", (0.04,))])
+    plans = lv.plan_grid(
+        cfg["spending"]["rules"],
+        [float(x) for x in block.get("rate_grid", (0.04,))],
+        [float(x) for x in block.get("assumed_return_grid", ())])
     combos = [lv.Combination(equity=e, domestic=d, rule=k, rate=r,
                              params=params, suffix=suffix)
               for e, d in allocations for k, r, params, suffix in plans]
@@ -4521,17 +4523,14 @@ def step34_longevity(cfg: Dict[str, Any],
     _save_table(shift, tables, "longevity_ranking")
     _save_table(ablated, tables, "longevity_ablation")
 
-    # The old ceiling is a recorded constant, not a reading off the grid: it
-    # shades what the shorter sweep could not see. Deriving it from the grid
-    # would make the band vanish the moment the grid is widened again, which
-    # is the one thing the picture is there to record.
+    # The peak each rule wants is worked out once, here, and handed to both
+    # the figure and the prose that reads it, so the bars and the sentence
+    # describing them cannot drift apart.
     preference = lv.rate_preference(swept, pl.CAN_DEPLETE)
     figures = [str(plots.plot_longevity(
         swept, shift, ablated, found, Path(cfg["run"]["figure_dir"]))),
                str(plots.plot_rate_curve(
-                   swept, preference,
-                   float(block.get("previous_rate_ceiling", 0.06)),
-                   Path(cfg["run"]["figure_dir"])))]
+                   swept, preference, Path(cfg["run"]["figure_dir"])))]
     elapsed = time.perf_counter() - started
     rp.write_doc_34(
         Path("docs") / "34_uncertain_horizon.md", cfg,

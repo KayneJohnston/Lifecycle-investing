@@ -229,7 +229,11 @@ class TestUncertainHorizonDocRenders:
     a verdict, so a mistake costs a second instead of the sweep."""
 
     @staticmethod
-    def _frames(separating: bool = False) -> dict:
+    def _frames(separating: bool = False,
+                return_peak: float = 0.05) -> dict:
+        """``return_peak`` moves the assumed-return optimum; putting it above
+        the grid's top end makes that dial a corner, which is the branch the
+        real sweep first landed on."""
         from src import longevity as lv
 
         rows = []
@@ -245,6 +249,8 @@ class TestUncertainHorizonDocRenders:
                     rows.append({
                         "equity": equity, "domestic": 0.3, "rule": rule,
                         "rule_label": rule, "rate": rate, "has_rate": True,
+                        "assumed_return": float("nan"),
+                        "has_assumed_return": False,
                         "label": f"{rule}-{equity}-{rate}",
                         lv.FIXED: cec - 0.05, lv.MORTALITY: cec,
                         "ruin_fixed": 0.2, "ruin_mortality": 0.1,
@@ -252,9 +258,25 @@ class TestUncertainHorizonDocRenders:
             rows.append({
                 "equity": equity, "domestic": 0.3, "rule": "gompertz",
                 "rule_label": "gompertz", "rate": float("nan"),
-                "has_rate": False, "label": f"gompertz-{equity}",
+                "has_rate": False, "assumed_return": float("nan"),
+                "has_assumed_return": False, "label": f"gompertz-{equity}",
                 lv.FIXED: 1.30, lv.MORTALITY: 1.36, "ruin_fixed": 0.0,
                 "ruin_mortality": 0.0, "mean_consumption": 1.0})
+            # The rule levelled by an assumed return rather than a rate.
+            for ret in (0.0, 0.02, 0.04):
+                cec = 1.45 - 6.0 * (ret - return_peak) ** 2 \
+                    - 0.1 * (1.0 - equity)
+                rows.append({
+                    "equity": equity, "domestic": 0.3,
+                    "rule": "amortisation",
+                    "rule_label": f"amortisation ({100 * ret:g}% assumed "
+                                  f"return)",
+                    "rate": float("nan"), "has_rate": False,
+                    "assumed_return": ret, "has_assumed_return": True,
+                    "label": f"amortisation-{equity}-{ret}",
+                    lv.FIXED: cec - 0.05, lv.MORTALITY: cec,
+                    "ruin_fixed": 0.0, "ruin_mortality": 0.0,
+                    "mean_consumption": 1.0})
         swept = pd.DataFrame(rows)
         return {"swept": swept, "optimum": lv.by_objective(swept),
                 "ranking": lv.ranking_shift(swept),
@@ -308,3 +330,24 @@ class TestUncertainHorizonDocRenders:
         assert "every rule that cannot deplete wants strictly more" \
             in rendered
         assert "nearly right and not right" not in rendered
+
+    def test_a_return_corner_is_reported_as_a_truncation(self, tmp_path
+                                                          ) -> None:
+        """The assumed return is a dial like any other. A grid of three
+        hand-picked values that is still climbing at its top end hands back
+        its own edge, and the document has to say so."""
+        frames = self._frames(return_peak=0.09)
+        rendered = rp.write_doc_34(
+            tmp_path / "34.md", _cfg(), frames, [],
+            self._notes(frames)).read_text()
+        assert "assumed-return optimum is a corner" in rendered
+        assert "truncation" in rendered
+
+    def test_an_interior_return_optimum_is_reported_as_a_peak(self, tmp_path
+                                                              ) -> None:
+        frames = self._frames(return_peak=0.02)
+        rendered = rp.write_doc_34(
+            tmp_path / "34.md", _cfg(), frames, [],
+            self._notes(frames)).read_text()
+        assert "assumed return has an interior optimum" in rendered
+        assert "assumed-return optimum is a corner" not in rendered

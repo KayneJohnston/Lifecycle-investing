@@ -111,6 +111,16 @@ class Combination:
         return (f"{self.rule_label}{rate}, "
                 f"{self.equity:.0%} equity / {self.domestic:.0%} domestic")
 
+    @property
+    def assumed_return(self) -> float | None:
+        """The real return this rule amortises at, if it takes one."""
+        from . import spending as spg
+
+        if self.rule not in spg.RETURN_PARAMETERISED:
+            return None
+        value = self.params.get(spg.RETURN_PARAMETER)
+        return None if value is None else float(value)
+
     def build(self) -> Any:
         """The :class:`src.spending.SpendingRule` this combination names."""
         from . import spending as spg
@@ -128,27 +138,61 @@ def allocation_grid(equity: Sequence[float], domestic: Sequence[float],
 
 
 def plan_grid(rule_specs: Sequence[Mapping[str, Any]],
-              rates: Sequence[float]) -> List[Tuple[str, float | None,
-                                                    Mapping[str, Any], str]]:
+              rates: Sequence[float],
+              returns: Sequence[float] = (),
+              ) -> List[Tuple[str, float | None, Mapping[str, Any], str]]:
     """``(rule, rate, params, suffix)`` for every policy worth scoring.
 
-    A rule that derives its level from a planning horizon has no rate to
-    sweep and appears once; the rest are crossed with the rate grid. Keeping
-    both in one list is what lets the sweep ask which *kind* of rule wins
-    without first assuming they are comparable on a rate.
+    Three families, and each is swept on whatever dial actually sets its
+    spending level. A rate-parameterised rule is crossed with ``rates``. A
+    rule dialled by an assumed real return -- the annuity factor is a
+    function of it, so it front-loads exactly as a higher rate does -- is
+    crossed with ``returns``, *overriding* any value the spec pinned: a
+    level chosen by hand in the config is not a swept dimension, and an
+    optimum found among three hand-picked values is not an optimum. Only a
+    rule with no dial at all appears once.
+
+    Passing no ``returns`` leaves the pinned variants exactly as configured,
+    so callers that want the configured menu rather than a sweep keep it.
     """
     from . import spending as spg
 
     out: List[Tuple[str, float | None, Mapping[str, Any], str]] = []
+    seen: set = set()
+
+    def _add(key: str, rate: float | None, params: Mapping[str, Any],
+             suffix: str) -> None:
+        # Expanding a dial collapses several configured variants onto the
+        # same grid, so the same policy can be produced more than once.
+        mark = (key, rate, tuple(sorted(params.items())), suffix)
+        if mark not in seen:
+            seen.add(mark)
+            out.append((key, rate, dict(params), suffix))
+
     for spec in rule_specs:
         key = str(spec["key"])
         params = dict(spec.get("params", {}) or {})
         suffix = str(spec.get("suffix", "") or "")
         if key in spg.RATE_PARAMETERISED:
-            out.extend((key, float(r), params, suffix) for r in rates)
+            for rate in rates:
+                _add(key, float(rate), params, suffix)
+        elif key in spg.RETURN_PARAMETERISED and len(returns):
+            for value in returns:
+                _add(key, None,
+                     {**params, spg.RETURN_PARAMETER: float(value)},
+                     return_suffix(float(value)))
         else:
-            out.append((key, None, params, suffix))
+            _add(key, None, params, suffix)
     return out
+
+
+def return_suffix(value: float) -> str:
+    """`4% assumed return`, matching the hand-written variants it replaces.
+
+    ``:g`` rather than ``:.0%`` so that a half-point step on the grid reads
+    as 2.5% instead of collapsing onto its neighbour.
+    """
+    return f"{100.0 * float(value):g}% assumed return"
 
 
 #: Rules whose divisor comes from a survival model rather than a fixed
@@ -196,6 +240,9 @@ def sweep(simulate: Callable[[Combination], Any],
             "rule": combo.rule, "rule_label": combo.rule_label,
             "rate": np.nan if combo.rate is None else float(combo.rate),
             "has_rate": combo.rate is not None,
+            "assumed_return": (np.nan if combo.assumed_return is None
+                               else float(combo.assumed_return)),
+            "has_assumed_return": combo.assumed_return is not None,
             "label": combo.label(),
             "front_load": float(front_load(combo)),
             "reads_mortality": bool(combo.rule in MORTALITY_AWARE),
@@ -447,10 +494,10 @@ def verdict(frame: pd.DataFrame, shift: pd.DataFrame,
         found["winner_sets_no_rate"] = bool(
             not np.isfinite(found["mortality_rate"]))
     # An optimum on the boundary of its own grid is a truncation, not an
-    # optimum. `src.accumulation.at_grid_edge` exists to say so and this
-    # section did not call it: the rate grid stopped at 6%, the
-    # percentage-of-balance rules were still improving there, and the panel
-    # reported a corner as though it were a peak.
+    # optimum. `src.accumulation.at_grid_edge` says so, and every dial that
+    # sets a spending level has to be put through it -- the withdrawal rate
+    # and the assumed real return alike. A dial left off this check is a
+    # corner waiting to be reported as a peak.
     from .accumulation import at_grid_edge
 
     rates = sorted(frame.loc[frame["has_rate"], "rate"].dropna().unique())
@@ -474,6 +521,28 @@ def verdict(frame: pd.DataFrame, shift: pd.DataFrame,
                 at_grid_edge(rates, float(best_rated["rate"])))
             found["rate_optimum_interior"] = bool(
                 not found["best_rated_at_edge"])
+
+    # The same check on the other dial. An amortisation rule is levelled by
+    # the return it assumes, so a grid of three hand-picked values can hand
+    # back its own top end and call it the winner.
+    if "has_assumed_return" in frame:
+        dialled = frame[frame["has_assumed_return"]]
+        returns = sorted(dialled["assumed_return"].dropna().unique())
+        if len(returns) and len(dialled):
+            best_dialled = dialled.loc[dialled[MORTALITY].idxmax()]
+            found["return_grid_low"] = float(min(returns))
+            found["return_grid_high"] = float(max(returns))
+            found["best_return_rule"] = str(best_dialled["rule_label"])
+            found["best_return"] = float(best_dialled["assumed_return"])
+            found["best_return_at_edge"] = bool(
+                at_grid_edge(returns, float(best_dialled["assumed_return"])))
+            found["return_optimum_interior"] = bool(
+                not found["best_return_at_edge"])
+            # Whether the overall winner is the rule sitting on that edge is
+            # the question the section's headline depends on.
+            found["winner_is_return_dialled"] = bool(
+                str(mortality_best["rule_label"])
+                == str(best_dialled["rule_label"]))
 
     found["anything_changes"] = bool(
         found["rule_changes"] or found["allocation_changes"]

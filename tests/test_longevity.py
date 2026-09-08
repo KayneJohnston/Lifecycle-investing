@@ -85,10 +85,24 @@ def _frame(rows) -> pd.DataFrame:
     return pd.DataFrame([
         {"equity": e, "domestic": d, "rule": r, "rule_label": r,
          "rate": rate, "has_rate": not pd.isna(rate),
+         "assumed_return": np.nan, "has_assumed_return": False,
          "label": f"{r}-{e}-{d}-{rate}",
          lv.FIXED: cf, lv.MORTALITY: cm,
          "ruin_fixed": rf, "ruin_mortality": rm, "mean_consumption": 1.0}
         for e, d, r, rate, cf, cm, rf, rm in rows])
+
+
+def _dialled(rows) -> pd.DataFrame:
+    """Rows for a rule levelled by an assumed return rather than a rate."""
+    return pd.DataFrame([
+        {"equity": e, "domestic": d, "rule": r,
+         "rule_label": f"{r} ({100 * ret:g}% assumed return)",
+         "rate": np.nan, "has_rate": False,
+         "assumed_return": ret, "has_assumed_return": True,
+         "label": f"{r}-{e}-{d}-{ret}",
+         lv.FIXED: cf, lv.MORTALITY: cm,
+         "ruin_fixed": rf, "ruin_mortality": rm, "mean_consumption": 1.0}
+        for e, d, r, ret, cf, cm, rf, rm in rows])
 
 
 class TestSweep:
@@ -408,23 +422,27 @@ class TestGridEdge:
 
 
 class TestRateCurveFigure:
-    """The figure that records the correction. Its shaded band marks what
-    the earlier, shorter grid could not see, so the ceiling it shades has to
-    come from a recorded constant rather than from the live grid -- else the
-    band disappears the moment the grid is widened again."""
+    """Two dials set a spending level -- a withdrawal rate and an assumed
+    real return -- and they are different measures, so the figure gives each
+    its own panel rather than a shared axis."""
 
-    def test_the_previous_ceiling_is_recorded_in_config(self) -> None:
+    def test_the_assumed_return_is_swept_not_pinned(self) -> None:
+        """The dial the earlier version never swept. Three hand-picked
+        values in `spending.rules` is a menu, not a grid."""
         from src import data_loader as dl
 
         block = dl.load_config("config.yaml")["longevity"]
-        assert "previous_rate_ceiling" in block
-        assert float(block["previous_rate_ceiling"]) == pytest.approx(0.06)
+        assert "assumed_return_grid" in block
+        assert len(block["assumed_return_grid"]) >= 6
 
-    def test_the_grid_now_extends_past_that_ceiling(self) -> None:
+    def test_the_return_grid_reaches_past_any_plausible_return(self) -> None:
+        """What is being located is where over-assuming starts to cost, and
+        that cannot be found from inside the range of sensible returns."""
         from src import data_loader as dl
 
         block = dl.load_config("config.yaml")["longevity"]
-        assert max(block["rate_grid"]) > float(block["previous_rate_ceiling"])
+        assert max(block["assumed_return_grid"]) >= 0.10
+        assert min(block["assumed_return_grid"]) <= 0.0
 
     def test_the_curve_rules_span_both_families(self) -> None:
         """A chart drawn only from rules that cannot run out would show the
@@ -476,9 +494,43 @@ class TestRateCurveFigure:
                 for rate in (0.03, 0.045, 0.06, 0.08, 0.12)]
         swept = _frame(rows)
         preference = lv.rate_preference(swept, pl.CAN_DEPLETE)
-        out = plots.plot_rate_curve(swept, preference, 0.06, tmp_path,
+        out = plots.plot_rate_curve(swept, preference, tmp_path,
                                     name="rate_curve")
         assert out.exists() and out.stat().st_size > 1_000
+
+    def test_it_renders_the_assumed_return_panel_too(self, tmp_path) -> None:
+        """The second dial's panel is empty until the sweep carries the
+        column, so the render is checked with it present."""
+        from src import plan as pl
+        from src import plots
+
+        rated = _frame([
+            (1.0, 0.3, "constant_real", rate, 1.0,
+             1.4 - 8.0 * (rate - 0.045) ** 2, 0.1, 0.05)
+            for rate in (0.03, 0.045, 0.06, 0.08)])
+        dialled = _dialled([
+            (1.0, 0.3, "amortisation", ret, 1.0,
+             1.4 - 6.0 * (ret - 0.05) ** 2, 0.0, 0.0)
+            for ret in (0.0, 0.02, 0.05, 0.08, 0.12)])
+        swept = pd.concat([rated, dialled], ignore_index=True)
+        preference = lv.rate_preference(swept, pl.CAN_DEPLETE)
+        out = plots.plot_rate_curve(swept, preference, tmp_path,
+                                    name="rate_curve_dialled")
+        assert out.exists() and out.stat().st_size > 1_000
+
+    def test_the_preference_frame_holds_only_rate_setting_rules(self) -> None:
+        """The bar panel is a withdrawal-rate axis. A rule dialled by an
+        assumed return has no place on it, and would be read as wanting a
+        withdrawal rate it never sets."""
+        from src import plan as pl
+
+        rated = _frame([(1.0, 0.3, "constant_real", 0.04, 1.0, 1.2,
+                         0.1, 0.05)])
+        dialled = _dialled([(1.0, 0.3, "amortisation", 0.04, 1.0, 1.9,
+                             0.0, 0.0)])
+        swept = pd.concat([rated, dialled], ignore_index=True)
+        pref = lv.rate_preference(swept, pl.CAN_DEPLETE)
+        assert list(pref["rule_label"]) == ["constant_real"]
 
 
 class TestRatePreference:
@@ -596,3 +648,105 @@ class TestRatePreferenceTieBreak:
                     (1.0, 0.5, "a", 0.09, 1.0, 1.3, 0.0, 0.0)]),
             {"a": True})
         assert float(pref.iloc[0]["rate"]) == 0.04
+
+
+class TestReturnDialledPlans:
+    """An amortisation rule takes no withdrawal rate; its level comes from
+    the real return it assumes. Sweeping the rate grid and leaving that one
+    pinned to whatever the config listed is how a corner hides."""
+
+    SPECS = [{"key": "constant_real"},
+             {"key": "amortisation", "params": {"assumed_return": 0.0},
+              "suffix": "0% assumed return"},
+             {"key": "amortisation", "params": {"assumed_return": 0.02},
+              "suffix": "2% assumed return"},
+             {"key": "amortisation", "params": {"assumed_return": 0.04},
+              "suffix": "4% assumed return"},
+             {"key": "gompertz"}]
+
+    def test_the_grid_overrides_the_pinned_variants(self) -> None:
+        plans = lv.plan_grid(self.SPECS, [0.04], [0.0, 0.03, 0.06])
+        amort = [(p["assumed_return"], sfx)
+                 for k, _, p, sfx in plans if k == "amortisation"]
+        assert sorted(v for v, _ in amort) == [0.0, 0.03, 0.06]
+
+    def test_configured_variants_collapse_onto_the_grid(self) -> None:
+        """Three specs crossed with a three-point grid is three policies,
+        not nine: they are the same family dialled differently."""
+        plans = lv.plan_grid(self.SPECS, [0.04], [0.0, 0.03, 0.06])
+        assert sum(k == "amortisation" for k, _, _, _ in plans) == 3
+
+    def test_without_a_grid_the_configured_variants_survive(self) -> None:
+        """A caller that wants the configured menu rather than a sweep --
+        section #spending's rule comparison -- keeps it."""
+        plans = lv.plan_grid(self.SPECS, [0.04])
+        amort = sorted(p["assumed_return"]
+                       for k, _, p, _ in plans if k == "amortisation")
+        assert amort == [0.0, 0.02, 0.04]
+
+    def test_the_suffix_names_the_dial(self) -> None:
+        plans = lv.plan_grid(self.SPECS, [0.04], [0.025])
+        sfx = [s for k, _, _, s in plans if k == "amortisation"]
+        assert sfx == ["2.5% assumed return"]
+
+    def test_a_rule_with_no_dial_at_all_still_appears_once(self) -> None:
+        plans = lv.plan_grid(self.SPECS, [0.04], [0.0, 0.03])
+        assert sum(k == "gompertz" for k, _, _, _ in plans) == 1
+
+    def test_the_combination_reports_the_return_it_amortises_at(self) -> None:
+        combo = lv.Combination(equity=1.0, domestic=0.3, rule="amortisation",
+                               params={"assumed_return": 0.05})
+        assert combo.assumed_return == pytest.approx(0.05)
+
+    def test_a_rate_setting_rule_reports_no_assumed_return(self) -> None:
+        combo = lv.Combination(equity=1.0, domestic=0.3,
+                               rule="constant_real", rate=0.04)
+        assert combo.assumed_return is None
+
+
+class TestReturnGridEdge:
+    """The same corner check as the withdrawal rate, on the other dial."""
+
+    @staticmethod
+    def _found(returns, peak):
+        rated = _frame([(1.0, 0.3, "constant_real", r, 1.0,
+                         1.2 - 4.0 * (r - 0.045) ** 2, 0.1, 0.05)
+                        for r in (0.03, 0.045, 0.06)])
+        dialled = _dialled([(1.0, 0.3, "amortisation", r, 1.0,
+                             1.5 - 6.0 * (r - peak) ** 2, 0.0, 0.0)
+                            for r in returns])
+        swept = pd.concat([rated, dialled], ignore_index=True)
+        return lv.verdict(swept, lv.ranking_shift(swept), lv.ablation(swept))
+
+    def test_a_monotone_grid_is_reported_as_a_corner(self) -> None:
+        """The 0/2/4% menu the section used to carry, where the best of the
+        three was the top of the three."""
+        found = self._found([0.0, 0.02, 0.04], peak=0.09)
+        assert found["best_return_at_edge"]
+        assert not found["return_optimum_interior"]
+        assert found["best_return"] == pytest.approx(0.04)
+
+    def test_a_wide_grid_finds_the_peak_inside(self) -> None:
+        found = self._found([0.0, 0.02, 0.05, 0.08, 0.12], peak=0.05)
+        assert not found["best_return_at_edge"]
+        assert found["return_optimum_interior"]
+        assert found["best_return"] == pytest.approx(0.05)
+
+    def test_the_grid_bounds_are_recorded_for_the_prose(self) -> None:
+        found = self._found([0.0, 0.02, 0.05, 0.08, 0.12], peak=0.05)
+        assert found["return_grid_low"] == pytest.approx(0.0)
+        assert found["return_grid_high"] == pytest.approx(0.12)
+
+    def test_it_says_whether_the_winner_is_the_dialled_rule(self) -> None:
+        """Whether the section's headline rests on that dial is the reason
+        the check matters."""
+        found = self._found([0.0, 0.02, 0.04], peak=0.09)
+        assert found["winner_is_return_dialled"]
+
+    def test_a_sweep_without_the_dial_reports_nothing_about_it(self) -> None:
+        swept = _frame([(1.0, 0.3, "constant_real", r, 1.0,
+                         1.2 - 4.0 * (r - 0.045) ** 2, 0.1, 0.05)
+                        for r in (0.03, 0.045, 0.06)])
+        found = lv.verdict(swept, lv.ranking_shift(swept),
+                           lv.ablation(swept))
+        assert "best_return_at_edge" not in found

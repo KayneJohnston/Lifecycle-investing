@@ -10846,14 +10846,39 @@ def write_doc_34(
                 f"{float(found['best_rated_rate']):.1%} inside a grid "
                 f"running {float(found['rate_grid_low']):.1%} to "
                 f"{float(found['rate_grid_high']):.1%}, so the curve turns "
-                f"over rather than stopping. That is worth stating because "
-                f"an earlier version of this section reported a corner: the "
-                f"grid ended at 6% and the percentage-of-balance rules, "
-                f"which cannot run out and so are penalised only by a "
-                f"lumpier path and a smaller estate, were still climbing at "
-                f"the edge.")
+                f"over rather than stopping and the number is a peak rather "
+                f"than the end of the grid.")
     else:
         corner_line = ""
+
+    if "best_return_at_edge" in found:
+        span = (f"({float(found['return_grid_low']):.0%} to "
+                f"{float(found['return_grid_high']):.0%})")
+        if found["best_return_at_edge"]:
+            return_line = (
+                f"**The assumed-return optimum is a corner, not a peak.** "
+                f"{found['best_return_rule']} is the best of the rules "
+                f"dialled by an assumed real return, and it wants the "
+                f"{'top' if float(found['best_return']) >= float(found['return_grid_high']) else 'bottom'} "
+                f"of the grid offered {span}. It was still improving where "
+                f"the grid ran out, so the number is a truncation.")
+            if found.get("winner_is_return_dialled"):
+                return_line += (
+                    " That rule is this section's overall winner, so the "
+                    "headline rests on the truncation and has to be hedged "
+                    "until the grid is widened.")
+        else:
+            return_line = (
+                f"**The assumed return has an interior optimum too.** "
+                f"{found['best_return_rule']} wants "
+                f"{float(found['best_return']):.0%} inside a grid running "
+                f"{span[1:-1]}, so over-assuming does start to cost, and "
+                f"the sweep can see where. This is the dial the earlier "
+                f"version of this section never swept: the amortisation "
+                f"rule appeared three times at rates chosen by hand, and "
+                f"the best of the three was reported as the winner.")
+    else:
+        return_line = ""
 
     # Whether "can run out" actually separates the rates is classified from
     # the sweep, not asserted: the story is nearly right and the exception
@@ -10948,12 +10973,15 @@ comparison inside the sweep rather than an assumption behind it.
 
 {corner_line}
 
+{return_line}
+
 {split_line}
 
-The rate curve and the peak each rule wants are in
-`results/figures/fig63_rate_optimum.png`. Two panels rather than one axis
-carrying two measures: the curves say where the optimum is, and the bars
-say which rules the old ceiling truncated.
+The curves behind both dials are in
+`results/figures/fig63_rate_optimum.png`. Three panels rather than one
+axis carrying several measures: a withdrawal rate and an assumed real
+return are different things, so they get a panel each, and the third ranks
+the rate-setting rules against one another.
 
 ## 3. Which rules a real lifespan promotes
 

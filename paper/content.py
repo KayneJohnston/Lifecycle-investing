@@ -7884,11 +7884,36 @@ def section_longevity(ctx: Any) -> List[Flowable]:
                 f"{float(found['best_rated_rate']):.1%} inside a grid "
                 f"running {float(found['rate_grid_low']):.1%} to "
                 f"{float(found['rate_grid_high']):.1%}, so the curve turns "
-                f"over rather than stopping. An earlier version of this "
-                f"section reported a corner instead — the grid ended at 6% "
-                f"and the percentage-of-balance rules, which cannot run out "
-                f"and so are penalised only by a lumpier path and a smaller "
-                f"estate, were still climbing at the edge."))
+                f"over rather than stopping and the number is a peak rather "
+                f"than the end of the grid."))
+
+    if "best_return_at_edge" in found:
+        span = (f"{float(found['return_grid_low']):.0%} to "
+                f"{float(found['return_grid_high']):.0%}")
+        if found["best_return_at_edge"]:
+            body = (
+                f"<b>The assumed-return optimum is a corner, not a "
+                f"peak.</b> {found['best_return_rule']} is the best of the "
+                f"rules dialled by an assumed real return, and it wants the "
+                f"edge of the grid offered ({span}). It was still improving "
+                f"where the grid ran out, so the number is a truncation.")
+            if found.get("winner_is_return_dialled"):
+                body += (
+                    " That rule is this section's overall winner, so the "
+                    "headline rests on the truncation and is hedged "
+                    "accordingly.")
+            out.append(ctx.p(body))
+        else:
+            out.append(ctx.p(
+                f"<b>The assumed return has an interior optimum too.</b> "
+                f"{found['best_return_rule']} wants "
+                f"{float(found['best_return']):.0%} inside a grid running "
+                f"{span}, so over-assuming does begin to cost and the sweep "
+                f"can see where it starts. This is a dial the rule "
+                f"comparison in Section #spending never swept: the "
+                f"amortisation rule enters that menu at assumed returns "
+                f"chosen by hand, and the best of those is not the same "
+                f"thing as an optimum."))
 
     split = lng.rate_split_verdict(
         lng.rate_preference(swept, pl.CAN_DEPLETE)) if len(swept) \
@@ -7929,12 +7954,15 @@ def section_longevity(ctx: Any) -> List[Flowable]:
 
     out.extend(ctx.figure(
         "fig63_rate_optimum",
-        "Where the withdrawal rate actually peaks. Left, the certainty "
-        "equivalent against the rate for five rules, with the shaded band "
-        "marking everything the grid this section first used could not see; "
-        "rings mark where each curve turns over, and solid lines can run out "
-        "where dashed cannot. Right, the rate each rule wants, against that "
-        "old ceiling."))
+        "Where each dial that sets a spending level actually peaks. Top "
+        "left, the certainty equivalent against the withdrawal rate for the "
+        "five rules that take one; rings mark where each curve turns over, "
+        "and solid lines can run out where dashed cannot. Top right, the "
+        "same against the assumed real return for the rule dialled by one "
+        "instead, with the two rules that set no dial at all drawn as the "
+        "constant levels they are. A withdrawal rate and an assumed return "
+        "are different measures, so they get a panel each rather than a "
+        "shared axis. Below, the withdrawal rate each rule wants."))
 
     if len(ranking):
         moved = ranking[ranking["rank_change"] != 0]

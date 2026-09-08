@@ -472,6 +472,16 @@ RATE_PARAMETERISED: frozenset = frozenset(
     {"constant_real", "constant_percent", "guyton_klinger",
      "vanguard_dynamic", "endowment"})
 
+#: Rules that take no withdrawal rate but are dialled by an assumed real
+#: return instead: the annuity factor is a function of it, so it front-loads
+#: spending exactly as a higher rate does. Sweeping the rate grid and
+#: leaving this one pinned to whatever the config happened to list is how a
+#: corner hides -- the level is being chosen either way.
+RETURN_PARAMETERISED: frozenset = frozenset({"amortisation"})
+
+#: The parameter each of those is dialled by.
+RETURN_PARAMETER: str = "assumed_return"
+
 
 def build(key: str, **params: Any) -> SpendingRule:
     """Instantiate a rule by name."""
