@@ -3137,6 +3137,7 @@ def plot_rate_curve(swept: pd.DataFrame, preference: pd.DataFrame,
         ax.set_ylabel("Certainty-equivalent consumption")
         _title(ax, "Rules dialled by a withdrawal rate")
         _key(ax, loc="lower left", ncol=1)
+        rate_span = ax.get_ylim()
 
         # -- 2. the assumed return, for the rule dialled by one ------------
         ax = axes[1]
@@ -3152,9 +3153,13 @@ def plot_rate_curve(swept: pd.DataFrame, preference: pd.DataFrame,
             peak = int(np.argmax(y))
             ax.scatter([x[peak]], [y[peak]], s=30, facecolor="none",
                        edgecolor=_colour(i), linewidth=1.2, zorder=4)
-            ax.annotate(f"peaks at {x[peak]:.0f}%", (x[peak], y[peak]),
-                        xytext=(0, 10), textcoords="offset points",
-                        ha="center", fontsize=5.2, color=_colour(i))
+            # Direct-labelled at the peak rather than boxed in a legend:
+            # one series needs no key, and the box collided with the
+            # reference line labelled along the bottom of the panel.
+            ax.annotate(f"{_legend(str(rule))}\npeaks at {x[peak]:.0f}%",
+                        (x[peak], y[peak]), xytext=(0, 10),
+                        textcoords="offset points", ha="center",
+                        fontsize=5.2, color=_colour(i))
         # The rules with no dial are the level to beat, so they are drawn as
         # what they are -- a constant, not a curve.
         for j, rule in enumerate(UNDIALLED_REFERENCE):
@@ -3168,17 +3173,23 @@ def plot_rate_curve(swept: pd.DataFrame, preference: pd.DataFrame,
                         xycoords=("axes fraction", "data"), xytext=(0, 2),
                         textcoords="offset points", fontsize=5.0,
                         color=_colour(j + 2), va="bottom", ha="left")
-        if len(dialled):
-            low, high = ax.get_ylim()
-            ax.set_ylim(low, high + 0.10 * (high - low))
+        # One scale across both curve panels. The two x-axes are different
+        # measures and stay separate, but the y-axis is the same quantity in
+        # both, and the question the pair answers -- which dial reaches
+        # higher -- is unreadable if each panel rescales to its own range.
+        # It costs some vertical detail in the flatter panel; that is the
+        # trade being made deliberately.
+        return_span = ax.get_ylim()
+        low = min(rate_span[0], return_span[0])
+        high = max(rate_span[1], return_span[1])
+        # Headroom for the two-line direct label at the peak.
+        high += 0.16 * (high - low)
+        for panel in (axes[0], axes[1]):
+            panel.set_ylim(low, high)
         ax.set_xlabel("Assumed real return (%)")
-        ax.set_ylabel("Certainty-equivalent consumption")
+        # The scale is shared, so naming it twice is clutter that also
+        # invites the reader to think the two panels are on their own axes.
         _title(ax, "The rule dialled by an assumed return")
-        # Only when something was drawn: an empty panel asked for a legend
-        # and matplotlib warned rather than failed, which is the sort of
-        # thing that ships.
-        if len(dialled):
-            _key(ax, loc="lower left", ncol=1)
 
         # -- 3. where each rate-setting rule peaks -------------------------
         ax = axes[2]

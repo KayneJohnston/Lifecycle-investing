@@ -10980,8 +10980,10 @@ comparison inside the sweep rather than an assumption behind it.
 The curves behind both dials are in
 `results/figures/fig63_rate_optimum.png`. Three panels rather than one
 axis carrying several measures: a withdrawal rate and an assumed real
-return are different things, so they get a panel each, and the third ranks
-the rate-setting rules against one another.
+return are different things, so they get an x-axis each. The vertical
+scale is shared between those two, which is what lets their peaks be
+compared by eye instead of by reading numbers off two different ranges.
+The third panel ranks the rate-setting rules against one another.
 
 ## 3. Which rules a real lifespan promotes
 

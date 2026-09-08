@@ -7961,8 +7961,10 @@ def section_longevity(ctx: Any) -> List[Flowable]:
         "same against the assumed real return for the rule dialled by one "
         "instead, with the two rules that set no dial at all drawn as the "
         "constant levels they are. A withdrawal rate and an assumed return "
-        "are different measures, so they get a panel each rather than a "
-        "shared axis. Below, the withdrawal rate each rule wants."))
+        "are different measures, so they get an x-axis each; the vertical "
+        "scale is shared between them, which is what lets the two peaks be "
+        "compared by eye rather than by reading numbers off two ranges. "
+        "Below, the withdrawal rate each rule wants."))
 
     if len(ranking):
         moved = ranking[ranking["rank_change"] != 0]

@@ -518,6 +518,47 @@ class TestRateCurveFigure:
                                     name="rate_curve_dialled")
         assert out.exists() and out.stat().st_size > 1_000
 
+    def test_the_two_curve_panels_share_a_vertical_scale(self, tmp_path,
+                                                         monkeypatch) -> None:
+        """Both panels plot the same quantity. Letting each rescale to its
+        own range makes the higher peak unreadable, which is the one
+        question putting them side by side is meant to answer.
+
+        `_save` closes the figure, so the close is stubbed out to keep the
+        axes alive long enough to read their limits -- the alternative is a
+        test that asserts a file exists and calls that a shared scale.
+        """
+        import matplotlib.pyplot as plt
+
+        from src import plan as pl
+        from src import plots
+
+        rated = _frame([
+            (1.0, 0.3, "constant_real", rate, 1.0,
+             1.0 - 8.0 * (rate - 0.045) ** 2, 0.1, 0.05)
+            for rate in (0.03, 0.045, 0.06, 0.08)])
+        # Deliberately on a different level from the rated rules, so a
+        # per-panel rescale would show up as two different ranges.
+        dialled = _dialled([
+            (1.0, 0.3, "amortisation", ret, 1.0,
+             1.9 - 6.0 * (ret - 0.05) ** 2, 0.0, 0.0)
+            for ret in (0.0, 0.02, 0.05, 0.08, 0.12)])
+        swept = pd.concat([rated, dialled], ignore_index=True)
+        preference = lv.rate_preference(swept, pl.CAN_DEPLETE)
+
+        kept = []
+        monkeypatch.setattr(plt, "close", lambda fig: kept.append(fig))
+        plots.plot_rate_curve(swept, preference, tmp_path,
+                              name="shared_scale")
+        assert kept, "the figure was never handed to plt.close"
+        axes = kept[0].get_axes()
+        assert axes[0].get_ylim() == axes[1].get_ylim()
+        # And the shared range actually contains both curves, so sharing it
+        # has not clipped one of them out of view.
+        low, high = axes[0].get_ylim()
+        assert low <= swept["cec_mortality"].min()
+        assert high >= swept["cec_mortality"].max()
+
     def test_the_preference_frame_holds_only_rate_setting_rules(self) -> None:
         """The bar panel is a withdrawal-rate axis. A rule dialled by an
         assumed return has no place on it, and would be read as wanting a
