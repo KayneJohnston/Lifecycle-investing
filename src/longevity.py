@@ -375,6 +375,35 @@ def verdict(frame: pd.DataFrame, shift: pd.DataFrame,
         # NaN for the prose to print.
         found["winner_sets_no_rate"] = bool(
             not np.isfinite(found["mortality_rate"]))
+    # An optimum on the boundary of its own grid is a truncation, not an
+    # optimum. `src.accumulation.at_grid_edge` exists to say so and this
+    # section did not call it: the rate grid stopped at 6%, the
+    # percentage-of-balance rules were still improving there, and the panel
+    # reported a corner as though it were a peak.
+    from .accumulation import at_grid_edge
+
+    rates = sorted(frame.loc[frame["has_rate"], "rate"].dropna().unique())
+    if rates:
+        found["rate_grid_low"] = float(min(rates))
+        found["rate_grid_high"] = float(max(rates))
+        for label, value in (("fixed", found["fixed_rate"]),
+                             ("mortality", found["mortality_rate"])):
+            if np.isfinite(value):
+                found[f"{label}_rate_at_edge"] = bool(
+                    at_grid_edge(rates, float(value)))
+        # The winner may set no rate at all, in which case the corner that
+        # matters is the best *rate-setting* rule's, since that is what the
+        # rate panel plots.
+        rated = frame[frame["has_rate"]]
+        if len(rated):
+            best_rated = rated.loc[rated[MORTALITY].idxmax()]
+            found["best_rated_rule"] = str(best_rated["rule_label"])
+            found["best_rated_rate"] = float(best_rated["rate"])
+            found["best_rated_at_edge"] = bool(
+                at_grid_edge(rates, float(best_rated["rate"])))
+            found["rate_optimum_interior"] = bool(
+                not found["best_rated_at_edge"])
+
     found["anything_changes"] = bool(
         found["rule_changes"] or found["allocation_changes"]
         or found.get("rate_changes", False))

@@ -351,3 +351,57 @@ class TestCorrelationStrength:
     def test_the_measured_value_is_not_called_strong(self) -> None:
         """+0.44 on the production grid: real, and not the whole story."""
         assert lv.correlation_strength(0.44) == "moderate"
+
+
+class TestGridEdge:
+    """An optimum on the boundary of its own grid is a truncation. The
+    project has `at_grid_edge` for exactly this and Section 34 shipped
+    without calling it: the rate grid stopped at 6%, the
+    percentage-of-balance rules were still improving there, and the figure
+    showed a corner as though it were a peak."""
+
+    @staticmethod
+    def _frame(rates, best_at):
+        rows = []
+        for r in rates:
+            rows.append({
+                "equity": 1.0, "domestic": 0.1, "rule": "constant_percent",
+                "rule_label": "constant_percent", "rate": r, "has_rate": True,
+                "label": f"cp-{r}", lv.FIXED: 1.0,
+                lv.MORTALITY: 1.0 - abs(r - best_at),
+                "ruin_fixed": 0.0, "ruin_mortality": 0.0,
+                "mean_consumption": 1.0, "front_load": r,
+                "reads_mortality": False})
+        return pd.DataFrame(rows)
+
+    def test_a_peak_on_the_top_edge_is_flagged(self) -> None:
+        frame = self._frame([0.03, 0.04, 0.05, 0.06], best_at=0.06)
+        found = lv.verdict(frame, lv.ranking_shift(frame), lv.ablation(frame))
+        assert found["best_rated_at_edge"]
+        assert not found["rate_optimum_interior"]
+
+    def test_a_peak_on_the_bottom_edge_is_flagged(self) -> None:
+        frame = self._frame([0.03, 0.04, 0.05, 0.06], best_at=0.03)
+        found = lv.verdict(frame, lv.ranking_shift(frame), lv.ablation(frame))
+        assert found["best_rated_at_edge"]
+
+    def test_an_interior_peak_is_not_flagged(self) -> None:
+        frame = self._frame([0.03, 0.05, 0.08, 0.10, 0.12], best_at=0.08)
+        found = lv.verdict(frame, lv.ranking_shift(frame), lv.ablation(frame))
+        assert not found["best_rated_at_edge"]
+        assert found["rate_optimum_interior"]
+
+    def test_the_grid_bounds_are_reported(self) -> None:
+        frame = self._frame([0.03, 0.05, 0.08], best_at=0.05)
+        found = lv.verdict(frame, lv.ranking_shift(frame), lv.ablation(frame))
+        assert found["rate_grid_low"] == pytest.approx(0.03)
+        assert found["rate_grid_high"] == pytest.approx(0.08)
+
+    def test_the_production_grid_reaches_past_the_old_edge(self) -> None:
+        """The config must offer rates above 6%, or the fix is only in the
+        prose."""
+        from src import data_loader as dl
+
+        grid = dl.load_config("config.yaml")["longevity"]["rate_grid"]
+        assert max(grid) > 0.06
+        assert max(grid) >= 0.10

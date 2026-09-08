@@ -1131,8 +1131,12 @@ longevity:
   domestic_grid: [0.00, 0.10, 0.20, 0.30, 0.50]
   # Coarser than `spending.rate_grid`: this section asks which *kind* of rule
   # wins under an uncertain horizon, not where a rate optimum sits to the
-  # basis point.
-  rate_grid: [0.030, 0.035, 0.040, 0.045, 0.050, 0.060]
+  # basis point. It must still be wide enough to *contain* the optimum: an
+  # earlier version stopped at 6% and the percentage-of-balance rules, which
+  # cannot run out and so are punished only by a lumpier path and a smaller
+  # estate, were still improving at the edge. Their peak is near 8%.
+  rate_grid: [0.030, 0.035, 0.040, 0.045, 0.050, 0.060, 0.070, 0.080,
+              0.090, 0.100, 0.120]
   # Gompertz survival, matching section #mortality and the actuarial
   # spending rule so that "should the rule know the table?" is a comparison
   # inside the grid rather than a mismatch between two calibrations.

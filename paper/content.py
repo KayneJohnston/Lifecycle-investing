@@ -7867,6 +7867,29 @@ def section_longevity(ctx: Any) -> List[Flowable]:
             f"do not interact here, and that is worth stating as plainly as "
             f"an interaction would have been."))
 
+    if "best_rated_at_edge" in found:
+        if found["best_rated_at_edge"]:
+            out.append(ctx.p(
+                f"<b>The rate optimum is a corner, not a peak.</b> The best "
+                f"rate-setting rule — {found['best_rated_rule']} — wants "
+                f"{float(found['best_rated_rate']):.1%}, at the edge of the "
+                f"grid offered ({float(found['rate_grid_low']):.1%} to "
+                f"{float(found['rate_grid_high']):.1%}). It was still "
+                f"improving where the grid ran out, so the number is a "
+                f"truncation and any claim resting on it needs hedging."))
+        else:
+            out.append(ctx.p(
+                f"The rate optimum is interior: the best rate-setting rule, "
+                f"{found['best_rated_rule']}, wants "
+                f"{float(found['best_rated_rate']):.1%} inside a grid "
+                f"running {float(found['rate_grid_low']):.1%} to "
+                f"{float(found['rate_grid_high']):.1%}, so the curve turns "
+                f"over rather than stopping. An earlier version of this "
+                f"section reported a corner instead — the grid ended at 6% "
+                f"and the percentage-of-balance rules, which cannot run out "
+                f"and so are penalised only by a lumpier path and a smaller "
+                f"estate, were still climbing at the edge."))
+
     if len(ranking):
         moved = ranking[ranking["rank_change"] != 0]
         out.append(ctx.h2("#longevity.1 Which rules a real lifespan "

@@ -10826,6 +10826,35 @@ def write_doc_34(
     else:
         why_line = ""
 
+    if "best_rated_at_edge" in found:
+        if found["best_rated_at_edge"]:
+            corner_line = (
+                f"**The rate optimum is a corner, not a peak.** The best "
+                f"rate-setting rule -- {found['best_rated_rule']} -- wants "
+                f"{float(found['best_rated_rate']):.1%}, which is the "
+                f"{'top' if float(found['best_rated_rate']) >= float(found['rate_grid_high']) else 'bottom'} "
+                f"of the grid this sweep offered "
+                f"({float(found['rate_grid_low']):.1%} to "
+                f"{float(found['rate_grid_high']):.1%}). It was still "
+                f"improving where the grid ran out, so that number is a "
+                f"truncation and every claim resting on it has to be hedged "
+                f"until the grid is widened.")
+        else:
+            corner_line = (
+                f"The rate optimum is interior: the best rate-setting rule, "
+                f"{found['best_rated_rule']}, wants "
+                f"{float(found['best_rated_rate']):.1%} inside a grid "
+                f"running {float(found['rate_grid_low']):.1%} to "
+                f"{float(found['rate_grid_high']):.1%}, so the curve turns "
+                f"over rather than stopping. That is worth stating because "
+                f"an earlier version of this section reported a corner: the "
+                f"grid ended at 6% and the percentage-of-balance rules, "
+                f"which cannot run out and so are penalised only by a "
+                f"lumpier path and a smaller estate, were still climbing at "
+                f"the edge.")
+    else:
+        corner_line = ""
+
     figure_list = "\n".join(f"* `{f}`" for f in figures)
     intro = _header(
         "34 - The Rule When the Horizon Is Not Known",
@@ -10876,6 +10905,8 @@ comparison inside the sweep rather than an assumption behind it.
 {winners_tbl}
 
 {headline}
+
+{corner_line}
 
 ## 3. Which rules a real lifespan promotes
 
