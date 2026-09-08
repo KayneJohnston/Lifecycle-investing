@@ -220,3 +220,91 @@ def _cfg() -> dict:
     from src import data_loader as dl
 
     return dl.load_config("config.yaml")
+
+
+class TestUncertainHorizonDocRenders:
+    """`write_doc_34` is another long f-string over four frames, and only a
+    twenty-minute sweep exercised it. This renders the whole document from
+    synthetic frames, including both sides of every branch that classifies
+    a verdict, so a mistake costs a second instead of the sweep."""
+
+    @staticmethod
+    def _frames(separating: bool = False) -> dict:
+        from src import longevity as lv
+
+        rows = []
+        # Two rate-setting rules and one horizon rule, over a grid wide
+        # enough that the optimum is interior on both.
+        for equity in (0.6, 1.0):
+            for rate in (0.03, 0.045, 0.06, 0.08, 0.12):
+                for rule, peak in (("constant_real", 0.045),
+                                   ("constant_percent", 0.08),
+                                   ("endowment", 0.08 if not separating
+                                    else 0.06)):
+                    cec = 1.4 - 8.0 * (rate - peak) ** 2 - 0.1 * (1.0 - equity)
+                    rows.append({
+                        "equity": equity, "domestic": 0.3, "rule": rule,
+                        "rule_label": rule, "rate": rate, "has_rate": True,
+                        "label": f"{rule}-{equity}-{rate}",
+                        lv.FIXED: cec - 0.05, lv.MORTALITY: cec,
+                        "ruin_fixed": 0.2, "ruin_mortality": 0.1,
+                        "mean_consumption": 1.0})
+            rows.append({
+                "equity": equity, "domestic": 0.3, "rule": "gompertz",
+                "rule_label": "gompertz", "rate": float("nan"),
+                "has_rate": False, "label": f"gompertz-{equity}",
+                lv.FIXED: 1.30, lv.MORTALITY: 1.36, "ruin_fixed": 0.0,
+                "ruin_mortality": 0.0, "mean_consumption": 1.0})
+        swept = pd.DataFrame(rows)
+        return {"swept": swept, "optimum": lv.by_objective(swept),
+                "ranking": lv.ranking_shift(swept),
+                "ablation": lv.ablation(swept)}
+
+    @staticmethod
+    def _notes(frames: dict) -> dict:
+        from src import longevity as lv
+
+        return {"verdict": lv.verdict(frames["swept"], frames["ranking"],
+                                      frames["ablation"]),
+                "gamma": 4.0, "n_paths": 100, "elapsed_seconds": 12.0,
+                "allocations": 2, "policies": 16}
+
+    def test_the_whole_document_renders(self, tmp_path) -> None:
+        frames = self._frames()
+        out = rp.write_doc_34(tmp_path / "34.md", _cfg(), frames,
+                              ["results/figures/fig63.png"],
+                              self._notes(frames))
+        assert out.exists()
+        assert len(out.read_text()) > 2_000
+
+    def test_every_section_is_numbered_once_and_in_order(self, tmp_path
+                                                         ) -> None:
+        frames = self._frames()
+        rendered = rp.write_doc_34(
+            tmp_path / "34.md", _cfg(), frames, [],
+            self._notes(frames)).read_text()
+        numbers = [int(line.split(".")[0][3:])
+                   for line in rendered.splitlines()
+                   if line.startswith("## ") and line[3].isdigit()]
+        assert numbers == list(range(1, len(numbers) + 1))
+
+    def test_a_crossing_rule_is_named_rather_than_the_split_asserted(
+            self, tmp_path) -> None:
+        """A depleting rule that wants as much as a non-depleting one is the
+        interesting case, and the document has to print it rather than tell
+        the tidy story."""
+        frames = self._frames(separating=False)
+        rendered = rp.write_doc_34(
+            tmp_path / "34.md", _cfg(), frames, [],
+            self._notes(frames)).read_text()
+        assert "nearly right and not right" in rendered
+        assert "endowment" in rendered
+
+    def test_a_clean_split_is_stated_as_one(self, tmp_path) -> None:
+        frames = self._frames(separating=True)
+        rendered = rp.write_doc_34(
+            tmp_path / "34.md", _cfg(), frames, [],
+            self._notes(frames)).read_text()
+        assert "every rule that cannot deplete wants strictly more" \
+            in rendered
+        assert "nearly right and not right" not in rendered

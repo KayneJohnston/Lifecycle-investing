@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
+from matplotlib.patches import Patch
 
 LOGGER = logging.getLogger(__name__)
 
@@ -3077,6 +3078,120 @@ def plot_sequence(frame: pd.DataFrame, ranking: pd.DataFrame,
 
         fig.tight_layout()
     return _save(fig, directory, name)
+
+
+#: Five rules spanning both families, in fixed order. Nine would exceed the
+#: categorical palette and be cycled, which is never allowed; these carry the
+#: mechanism between them and the rest are in the tables.
+RATE_CURVE_RULES: Sequence[str] = (
+    "constant_percent", "endowment (light smoothing)",
+    "guyton_klinger (tight band)", "vanguard_dynamic", "constant_real",
+)
+
+
+def plot_rate_curve(swept: pd.DataFrame, preference: pd.DataFrame,
+                    old_ceiling: float, directory: str | Path,
+                    name: str = "fig63_rate_optimum") -> Path:
+    """Where the withdrawal rate actually peaks, and what a short grid hid.
+
+    Two panels rather than one axis carrying two measures: the curves say
+    where the optimum is, and the bars say which rules the old ceiling
+    truncated. Putting certainty equivalent and ruin on one pair of axes
+    would need two scales, which is the one thing a chart may never do.
+
+    ``preference`` is :func:`src.longevity.rate_preference` -- the rate each
+    rule wants and whether it can run out -- rather than something worked
+    out here, so the bars and the prose that reads them cannot drift apart.
+    """
+    with plt.rc_context(STYLE):
+        fig, axes = _grid(2, 3.6, hspace=0.42, wspace=0.62)
+        rated = swept[swept["has_rate"]]
+        deplete_by_rule = dict(zip(preference["rule_label"],
+                                   preference["can_deplete"]))
+
+        # -- 1. the curves, and the edge the old grid stopped at -----------
+        ax = axes[0]
+        rates_all = np.sort(rated["rate"].unique())
+        # The region the previous grid could not see. Shaded rather than
+        # ruled, because what was missing was a *range*, not a boundary.
+        ax.axvspan(100.0 * float(old_ceiling), 100.0 * rates_all.max(),
+                   color="0.92", zorder=0)
+        # Placed in axes coordinates: anchoring it to a data y of zero
+        # put it below the visible range, where it silently vanished. The
+        # headroom it sits in is added after the curves are drawn.
+        ax.annotate("beyond the grid this\nsection first used",
+                    xy=(100.0 * float(rates_all.max()), 0.985),
+                    xycoords=("data", "axes fraction"), xytext=(-4, 0),
+                    textcoords="offset points", fontsize=5.0, color="0.40",
+                    va="top", ha="right")
+        for i, rule in enumerate(RATE_CURVE_RULES):
+            block = rated[rated["rule_label"] == rule]
+            if not len(block):
+                continue
+            curve = block.groupby("rate")["cec_mortality"].max().sort_index()
+            x = 100.0 * curve.index.to_numpy(dtype=float)
+            y = curve.to_numpy(dtype=float)
+            # Linestyle carries the family, hue carries the rule: the split
+            # that explains the chart must survive a greyscale print.
+            deplete = bool(deplete_by_rule.get(rule, True))
+            ax.plot(x, y, marker=_marker(i), color=_colour(i), linewidth=1.5,
+                    markersize=3.0, linestyle="-" if deplete else "--",
+                    label=_legend(rule))
+            # A ring where the curve turns over. No number printed on it:
+            # five of them collide with each other's curves, and the right
+            # panel already reports every rule's peak rate exactly.
+            peak = int(np.argmax(y))
+            ax.scatter([x[peak]], [y[peak]], s=26, facecolor="none",
+                       edgecolor=_colour(i), linewidth=1.1, zorder=4)
+        # Headroom for the band label, which would otherwise print over the
+        # curves it is describing.
+        low, high = ax.get_ylim()
+        ax.set_ylim(low, high + 0.10 * (high - low))
+        ax.set_xlabel("Withdrawal rate (%)")
+        ax.set_ylabel("Certainty-equivalent consumption")
+        _title(ax, "The rate optimum, and what a short grid hid")
+        _key(ax, loc="lower left", ncol=1)
+
+        # -- 2. where each rule peaks, by whether it can run out -----------
+        # Ascending, because a horizontal bar chart builds from the bottom
+        # and ``preference`` arrives sorted the other way.
+        ax = axes[1]
+        frame = preference.iloc[::-1].reset_index(drop=True)
+        pos = np.arange(len(frame))
+        # Two states, so a status-style pair rather than the categorical
+        # ramp: the question this panel answers is binary.
+        colours = [_colour(1) if d else _colour(0)
+                   for d in frame["can_deplete"]]
+        ax.barh(pos, 100.0 * frame["rate"].to_numpy(dtype=float),
+                height=0.6, color=colours)
+        ax.axvline(100.0 * float(old_ceiling), color="0.35", linewidth=0.9,
+                   linestyle=":")
+        # Above the top bar, not below the bottom one: the legend sits in
+        # the lower right and swallowed this label whole.
+        ax.annotate("old grid ceiling",
+                    xy=(100.0 * float(old_ceiling), 0.99),
+                    xycoords=("data", "axes fraction"), xytext=(3, 0),
+                    textcoords="offset points", fontsize=5.0, color="0.40",
+                    va="top", ha="left")
+        for i, value in enumerate(frame["rate"]):
+            ax.annotate(f"{100 * value:.1f}%", (100 * value, i), xytext=(3, 0),
+                        textcoords="offset points", va="center", ha="left",
+                        fontsize=5.2)
+        ax.set_yticks(pos)
+        ax.set_yticklabels([_flat(r, 30) for r in frame["rule_label"]],
+                           fontsize=5.0)
+        ax.set_xlabel("Rate the rule wants (%)")
+        ax.set_xlim(0.0, 100.0 * float(rated["rate"].max()) * 0.85)
+        handles = [Patch(facecolor=_colour(1), label="can run out"),
+                   Patch(facecolor=_colour(0), label="cannot run out")]
+        ax.legend(handles=handles, fontsize=5.0, loc="lower right",
+                  frameon=True, framealpha=0.92, edgecolor="none")
+        # Not "the family that cannot run out wants more": the lightly
+        # smoothed endowment rule can run out and ties the top bar anyway.
+        # What the panel does show is which rules the old ceiling truncated.
+        _title(ax, "The rate each rule wants, against the old ceiling")
+
+        return _save(fig, directory, name)
 
 
 def plot_longevity(swept: pd.DataFrame, shift: pd.DataFrame,

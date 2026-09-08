@@ -7797,7 +7797,7 @@ def section_longevity(ctx: Any) -> List[Flowable]:
     cfg = f.cfg
     gamma = float(cfg["utility"]["baseline_risk_aversion"])
 
-    from src import longevity as lng
+    from src import longevity as lng, plan as pl
 
     found = lng.verdict(swept, ranking, ablated) if len(swept) \
         else {"measured": False}
@@ -7889,6 +7889,52 @@ def section_longevity(ctx: Any) -> List[Flowable]:
                 f"and the percentage-of-balance rules, which cannot run out "
                 f"and so are penalised only by a lumpier path and a smaller "
                 f"estate, were still climbing at the edge."))
+
+    split = lng.rate_split_verdict(
+        lng.rate_preference(swept, pl.CAN_DEPLETE)) if len(swept) \
+        else {"measured": False}
+    if split.get("measured"):
+        body = (
+            f"<b>The rate a rule wants spans "
+            f"{split['spread_pp']:.1f} percentage points.</b> "
+            f"{str(split['top_rule']).replace('_', ' ')} wants "
+            f"{split['top_rate']:.1%} and "
+            f"{str(split['bottom_rule']).replace('_', ' ')} wants "
+            f"{split['bottom_rate']:.1%}, across "
+            f"{int(split['rules'])} rules that set a rate at all. ")
+        if split["separates"]:
+            body += (
+                "The line falls exactly where the ability to run out does: "
+                "every rule that cannot deplete wants strictly more than "
+                "every rule that can, because a percentage of a falling "
+                "balance is never a shortfall, only a smaller cheque.")
+        else:
+            crossing = str(split.get("crossing_rule", "")).replace("_", " ")
+            body += (
+                f"The tempting explanation is that the rules which cannot "
+                f"run out want the high rates, and it is nearly right but "
+                f"not right: {crossing} wants "
+                f"{split.get('crossing_rate', float('nan')):.1%} and "
+                f"<i>can</i> deplete, ")
+            body += ("tying the top of the list. "
+                     if split.get("crossing_ties_top") else
+                     "crossing into the range the non-depleting rules "
+                     "occupy. ")
+            body += (
+                "What sets the rate is how far spending scales with the "
+                "portfolio rather than the ability to run out as such — a "
+                "lightly smoothed endowment rule is most of a percentage "
+                "of balance, and is priced like one.")
+        out.append(ctx.p(body))
+
+    out.extend(ctx.figure(
+        "fig63_rate_optimum",
+        "Where the withdrawal rate actually peaks. Left, the certainty "
+        "equivalent against the rate for five rules, with the shaded band "
+        "marking everything the grid this section first used could not see; "
+        "rings mark where each curve turns over, and solid lines can run out "
+        "where dashed cannot. Right, the rate each rule wants, against that "
+        "old ceiling."))
 
     if len(ranking):
         moved = ranking[ranking["rank_change"] != 0]

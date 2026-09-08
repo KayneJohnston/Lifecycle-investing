@@ -340,6 +340,77 @@ def describe(rule: str, rate: float) -> str:
     return f"{rule} at {float(rate):.1%}"
 
 
+def rate_preference(frame: pd.DataFrame,
+                    can_deplete: Mapping[str, bool]) -> pd.DataFrame:
+    """The rate each rate-setting rule wants, and whether it can run out.
+
+    One row per rule, scored at that rule's best allocation, so no rule is
+    held to a mix chosen to suit another.  Rules with no rate of their own
+    are absent by construction rather than carried as ``NaN``.  Two rates
+    that score identically resolve to the lower one, which is both the
+    conservative reading and what the figure's peak marker picks.
+    """
+    if not len(frame) or "rule_label" not in frame:
+        return pd.DataFrame(
+            columns=["rule_label", "family", "rate", "cec", "can_deplete"])
+    rated = frame[frame["has_rate"]] if "has_rate" in frame else frame
+    rows = []
+    for rule, block in rated.groupby("rule_label"):
+        curve = block.groupby("rate")[MORTALITY].max()
+        if not len(curve):
+            continue
+        # The label carries the variant in brackets; the deplete flag is a
+        # property of the rule family, so the bracket is stripped first.
+        family = str(rule).split(" (")[0]
+        rows.append({"rule_label": str(rule), "family": family,
+                     "rate": float(curve.idxmax()),
+                     "cec": float(curve.max()),
+                     "can_deplete": bool(can_deplete.get(family, True))})
+    out = pd.DataFrame.from_records(rows)
+    return out.sort_values("rate", ascending=False).reset_index(drop=True) \
+        if len(out) else out
+
+
+def rate_split_verdict(preference: pd.DataFrame) -> Dict[str, Any]:
+    """Does "can run out" separate the rates, or only correlate with them?
+
+    The tempting story is that the rules which cannot deplete want a high
+    rate and the rules which can want a low one.  It is worth checking
+    rather than telling, because a rule can sit on the wrong side of it: a
+    lightly smoothed endowment rule is nearly a percentage of balance and
+    behaves like one, while still being able to run the portfolio to zero.
+    ``separates`` is true only when every non-depleting rule wants strictly
+    more than every depleting one.
+    """
+    if not len(preference):
+        return {"measured": False}
+    top = preference.iloc[0]
+    bottom = preference.iloc[-1]
+    safe = preference[~preference["can_deplete"]]
+    risky = preference[preference["can_deplete"]]
+    separates = bool(len(safe) and len(risky)
+                     and safe["rate"].min() > risky["rate"].max())
+    found: Dict[str, Any] = {
+        "measured": True,
+        "rules": int(len(preference)),
+        "top_rule": str(top["rule_label"]), "top_rate": float(top["rate"]),
+        "bottom_rule": str(bottom["rule_label"]),
+        "bottom_rate": float(bottom["rate"]),
+        "spread_pp": 100.0 * (float(top["rate"]) - float(bottom["rate"])),
+        "top_can_deplete": bool(top["can_deplete"]),
+        "separates": separates,
+    }
+    # When the split fails, name the depleting rule that reaches highest --
+    # that rule is the counter-example, and the paper should print it.
+    if not separates and len(risky) and len(safe):
+        highest = risky.iloc[0]
+        found["crossing_rule"] = str(highest["rule_label"])
+        found["crossing_rate"] = float(highest["rate"])
+        found["crossing_ties_top"] = bool(
+            abs(float(highest["rate"]) - float(top["rate"])) < 1e-9)
+    return found
+
+
 def verdict(frame: pd.DataFrame, shift: pd.DataFrame,
             ablated: pd.DataFrame) -> Dict[str, Any]:
     """What an uncertain lifespan changes, classified rather than assumed."""

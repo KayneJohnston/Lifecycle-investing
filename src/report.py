@@ -10855,6 +10855,46 @@ def write_doc_34(
     else:
         corner_line = ""
 
+    # Whether "can run out" actually separates the rates is classified from
+    # the sweep, not asserted: the story is nearly right and the exception
+    # is the interesting part.
+    from . import plan as pl
+
+    split = lng.rate_split_verdict(lng.rate_preference(swept, pl.CAN_DEPLETE)) \
+        if len(swept) else {"measured": False}
+    if split.get("measured"):
+        split_line = (
+            f"**The rate a rule wants spans {split['spread_pp']:.1f} "
+            f"percentage points.** {split['top_rule']} wants "
+            f"{split['top_rate']:.1%} and {split['bottom_rule']} wants "
+            f"{split['bottom_rate']:.1%}, across {int(split['rules'])} rules "
+            f"that set a rate at all. ")
+        if split["separates"]:
+            split_line += (
+                "The line falls exactly where the ability to run out does: "
+                "every rule that cannot deplete wants strictly more than "
+                "every rule that can, because a percentage of a falling "
+                "balance is never a shortfall, only a smaller cheque.")
+        else:
+            split_line += (
+                f"The tempting explanation is that the rules which cannot "
+                f"run out want the high rates. It is nearly right and not "
+                f"right: {split.get('crossing_rule', '')} wants "
+                f"{split.get('crossing_rate', float('nan')):.1%} and *can* "
+                f"deplete, ")
+            split_line += (
+                "tying the top of the list. "
+                if split.get("crossing_ties_top")
+                else "crossing into the range the non-depleting rules "
+                     "occupy. ")
+            split_line += (
+                "What sets the rate is how far spending scales with the "
+                "portfolio rather than the ability to run out as such -- a "
+                "lightly smoothed endowment rule is most of a percentage of "
+                "balance, and is priced like one.")
+    else:
+        split_line = ""
+
     figure_list = "\n".join(f"* `{f}`" for f in figures)
     intro = _header(
         "34 - The Rule When the Horizon Is Not Known",
@@ -10907,6 +10947,13 @@ comparison inside the sweep rather than an assumption behind it.
 {headline}
 
 {corner_line}
+
+{split_line}
+
+The rate curve and the peak each rule wants are in
+`results/figures/fig63_rate_optimum.png`. Two panels rather than one axis
+carrying two measures: the curves say where the optimum is, and the bars
+say which rules the old ceiling truncated.
 
 ## 3. Which rules a real lifespan promotes
 

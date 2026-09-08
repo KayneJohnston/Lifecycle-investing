@@ -4521,8 +4521,17 @@ def step34_longevity(cfg: Dict[str, Any],
     _save_table(shift, tables, "longevity_ranking")
     _save_table(ablated, tables, "longevity_ablation")
 
+    # The old ceiling is a recorded constant, not a reading off the grid: it
+    # shades what the shorter sweep could not see. Deriving it from the grid
+    # would make the band vanish the moment the grid is widened again, which
+    # is the one thing the picture is there to record.
+    preference = lv.rate_preference(swept, pl.CAN_DEPLETE)
     figures = [str(plots.plot_longevity(
-        swept, shift, ablated, found, Path(cfg["run"]["figure_dir"])))]
+        swept, shift, ablated, found, Path(cfg["run"]["figure_dir"]))),
+               str(plots.plot_rate_curve(
+                   swept, preference,
+                   float(block.get("previous_rate_ceiling", 0.06)),
+                   Path(cfg["run"]["figure_dir"])))]
     elapsed = time.perf_counter() - started
     rp.write_doc_34(
         Path("docs") / "34_uncertain_horizon.md", cfg,

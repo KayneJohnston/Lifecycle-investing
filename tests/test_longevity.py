@@ -405,3 +405,194 @@ class TestGridEdge:
         grid = dl.load_config("config.yaml")["longevity"]["rate_grid"]
         assert max(grid) > 0.06
         assert max(grid) >= 0.10
+
+
+class TestRateCurveFigure:
+    """The figure that records the correction. Its shaded band marks what
+    the earlier, shorter grid could not see, so the ceiling it shades has to
+    come from a recorded constant rather than from the live grid -- else the
+    band disappears the moment the grid is widened again."""
+
+    def test_the_previous_ceiling_is_recorded_in_config(self) -> None:
+        from src import data_loader as dl
+
+        block = dl.load_config("config.yaml")["longevity"]
+        assert "previous_rate_ceiling" in block
+        assert float(block["previous_rate_ceiling"]) == pytest.approx(0.06)
+
+    def test_the_grid_now_extends_past_that_ceiling(self) -> None:
+        from src import data_loader as dl
+
+        block = dl.load_config("config.yaml")["longevity"]
+        assert max(block["rate_grid"]) > float(block["previous_rate_ceiling"])
+
+    def test_the_curve_rules_span_both_families(self) -> None:
+        """A chart drawn only from rules that cannot run out would show the
+        high optimum and hide the reason for it."""
+        from src import plan as pl
+        from src import plots
+
+        families = {bool(pl.CAN_DEPLETE.get(r.split(" (")[0], True))
+                    for r in plots.RATE_CURVE_RULES}
+        assert families == {True, False}
+
+    def test_the_curve_shows_no_more_than_the_palette_allows(self) -> None:
+        """Nine rules would cycle the categorical hues, which is never
+        allowed; the rest live in the tables."""
+        from src import plots
+
+        assert len(plots.RATE_CURVE_RULES) <= 6
+
+    def test_every_named_rule_is_in_the_sweep(self, tmp_path) -> None:
+        """A renamed rule would silently drop a line from the figure."""
+        from src import data_loader as dl
+        from src import plots
+        from src import spending as spg
+
+        cfg = dl.load_config("config.yaml")
+        known = set()
+        for spec in cfg["spending"]["rules"]:
+            suffix = str(spec.get("suffix", "") or "")
+            key = str(spec["key"])
+            known.add(f"{key} ({suffix})" if suffix else key)
+        missing = [r for r in plots.RATE_CURVE_RULES if r not in known]
+        assert not missing, f"not produced by the sweep: {missing}"
+        assert all(r.split(" (")[0] in spg.REGISTRY
+                   for r in plots.RATE_CURVE_RULES)
+
+    def test_it_draws_from_the_preference_frame_it_is_handed(self, tmp_path
+                                                             ) -> None:
+        """The bars are `rate_preference`'s answer, not a second one worked
+        out inside the plotting layer, so the chart and the prose that reads
+        it cannot disagree. This renders the real call to catch the
+        signature drifting away from `main`."""
+        from src import plan as pl
+        from src import plots
+
+        rows = [(1.0, 0.3, rule, rate, 1.0, 1.4 - 8.0 * (rate - peak) ** 2,
+                 0.1, 0.05)
+                for rule, peak in (("constant_real", 0.045),
+                                   ("constant_percent", 0.08))
+                for rate in (0.03, 0.045, 0.06, 0.08, 0.12)]
+        swept = _frame(rows)
+        preference = lv.rate_preference(swept, pl.CAN_DEPLETE)
+        out = plots.plot_rate_curve(swept, preference, 0.06, tmp_path,
+                                    name="rate_curve")
+        assert out.exists() and out.stat().st_size > 1_000
+
+
+class TestRatePreference:
+    """The rate each rule wants, and whether "can run out" explains it.
+
+    The tempting story -- rules that cannot deplete want the high rates --
+    is nearly right on the real sweep and not exactly right, so it is
+    classified rather than told.
+    """
+
+    @staticmethod
+    def _pref(rows, deplete):
+        return lv.rate_preference(_frame(rows), deplete)
+
+    def test_each_rule_appears_once_at_its_own_best_rate(self) -> None:
+        pref = self._pref(
+            [(1.0, 0.5, "a", 0.04, 1.0, 1.0, 0.0, 0.0),
+             (1.0, 0.5, "a", 0.08, 1.2, 1.3, 0.0, 0.0),
+             (0.6, 0.5, "a", 0.08, 1.1, 1.1, 0.0, 0.0),
+             (1.0, 0.5, "b", 0.04, 1.0, 1.4, 0.0, 0.0)],
+            {"a": False, "b": True})
+        assert list(pref["rule_label"]) == ["a", "b"]
+        # The best allocation for the rule is taken, not the first seen.
+        assert float(
+            pref.loc[pref["rule_label"] == "a", "rate"].iloc[0]) == 0.08
+
+    def test_rules_without_a_rate_are_absent_not_nan(self) -> None:
+        pref = self._pref(
+            [(1.0, 0.5, "a", 0.05, 1.0, 1.0, 0.0, 0.0),
+             (1.0, 0.5, "gompertz", float("nan"), 1.0, 2.0, 0.0, 0.0)],
+            {"a": True, "gompertz": False})
+        assert list(pref["rule_label"]) == ["a"]
+
+    def test_the_bracketed_variant_inherits_the_family_flag(self) -> None:
+        pref = self._pref(
+            [(1.0, 0.5, "endowment (light smoothing)", 0.08,
+              1.0, 1.0, 0.0, 0.0)],
+            {"endowment": True})
+        assert bool(pref.iloc[0]["can_deplete"])
+        assert pref.iloc[0]["family"] == "endowment"
+
+    def test_rows_are_ordered_by_the_rate_wanted(self) -> None:
+        pref = self._pref(
+            [(1.0, 0.5, "low", 0.03, 1.0, 1.0, 0.0, 0.0),
+             (1.0, 0.5, "high", 0.09, 1.0, 1.0, 0.0, 0.0),
+             (1.0, 0.5, "mid", 0.06, 1.0, 1.0, 0.0, 0.0)],
+            {})
+        assert list(pref["rule_label"]) == ["high", "mid", "low"]
+
+    def test_an_empty_sweep_gives_an_empty_frame(self) -> None:
+        assert not len(lv.rate_preference(_frame([]), {}))
+
+
+class TestRateSplitVerdict:
+    @staticmethod
+    def _split(rows, deplete):
+        return lv.rate_split_verdict(lv.rate_preference(_frame(rows),
+                                                        deplete))
+
+    def test_a_clean_split_is_reported_as_separating(self) -> None:
+        found = self._split(
+            [(1.0, 0.5, "pct", 0.08, 1.0, 1.0, 0.0, 0.0),
+             (1.0, 0.5, "real", 0.04, 1.0, 1.0, 0.0, 0.0)],
+            {"pct": False, "real": True})
+        assert found["separates"]
+        assert "crossing_rule" not in found
+
+    def test_a_depleting_rule_at_the_top_breaks_the_split(self) -> None:
+        found = self._split(
+            [(1.0, 0.5, "pct", 0.08, 1.0, 1.0, 0.0, 0.0),
+             (1.0, 0.5, "endowment", 0.08, 1.0, 1.0, 0.0, 0.0),
+             (1.0, 0.5, "real", 0.04, 1.0, 1.0, 0.0, 0.0)],
+            {"pct": False, "endowment": True, "real": True})
+        assert not found["separates"]
+        assert found["crossing_rule"] == "endowment"
+        assert found["crossing_ties_top"]
+
+    def test_a_crossing_below_the_top_is_flagged_without_a_tie(self) -> None:
+        found = self._split(
+            [(1.0, 0.5, "pct", 0.09, 1.0, 1.0, 0.0, 0.0),
+             (1.0, 0.5, "pct2", 0.05, 1.0, 1.0, 0.0, 0.0),
+             (1.0, 0.5, "endowment", 0.07, 1.0, 1.0, 0.0, 0.0)],
+            {"pct": False, "pct2": False, "endowment": True})
+        assert not found["separates"]
+        assert found["crossing_rule"] == "endowment"
+        assert not found["crossing_ties_top"]
+
+    def test_the_spread_is_the_top_minus_the_bottom_in_points(self) -> None:
+        found = self._split(
+            [(1.0, 0.5, "a", 0.080, 1.0, 1.0, 0.0, 0.0),
+             (1.0, 0.5, "b", 0.045, 1.0, 1.0, 0.0, 0.0)],
+            {})
+        assert found["spread_pp"] == pytest.approx(3.5)
+        assert found["top_rule"] == "a" and found["bottom_rule"] == "b"
+
+    def test_one_sided_evidence_cannot_claim_a_split(self) -> None:
+        # Every rule can deplete, so there is nothing to separate from.
+        found = self._split(
+            [(1.0, 0.5, "a", 0.08, 1.0, 1.0, 0.0, 0.0),
+             (1.0, 0.5, "b", 0.04, 1.0, 1.0, 0.0, 0.0)],
+            {"a": True, "b": True})
+        assert not found["separates"]
+
+    def test_an_empty_sweep_is_not_measured(self) -> None:
+        assert not lv.rate_split_verdict(
+            lv.rate_preference(_frame([]), {})).get("measured", False)
+
+
+class TestRatePreferenceTieBreak:
+    def test_equal_scores_resolve_to_the_lower_rate(self) -> None:
+        """Two rates that score identically are not a coin toss: the lower
+        one is reported, matching the peak the figure rings."""
+        pref = lv.rate_preference(
+            _frame([(1.0, 0.5, "a", 0.04, 1.0, 1.3, 0.0, 0.0),
+                    (1.0, 0.5, "a", 0.09, 1.0, 1.3, 0.0, 0.0)]),
+            {"a": True})
+        assert float(pref.iloc[0]["rate"]) == 0.04
