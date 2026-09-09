@@ -115,6 +115,13 @@ class Context:
 
     # -- text -------------------------------------------------------------
     @staticmethod
+    def resolve(text: str) -> str:
+        """Public name for :meth:`_r`, for callers that build their own
+        flowables. The references list did exactly that and printed a raw
+        ``#section`` token on the page for it."""
+        return Context._r(text)
+
+    @staticmethod
     def _r(text: str) -> str:
         """Resolve ``#section`` tokens against the paper's reading order.
 

@@ -8298,8 +8298,10 @@ def section_discussion(ctx: Any) -> List[Flowable]:
         "<b>How much you save dominates what you hold.</b> The savings-rate "
         "dimension of the tornado analysis moves the outcome by more than most "
         "allocation choices, and conditioning the savings rate is worth more "
-        "than every allocation refinement in Sections #hedging to #leverage "
-        "combined.",
+        "than every refinement of the allocation itself — the sleeve's "
+        "weighting (Section #sleeve), hedging it (Section #hedging), the "
+        "shape of the glide path (Section #glide), every weight at every age "
+        "(Section #allocation) and leverage (Section #leverage) — combined.",
         "<b>How you spend it matters more than expected.</b> The gap between "
         "the best and worst spending rules in Section #spending is comparable to the "
         "gap between the best and worst allocation strategies in Section #baseline.",
@@ -8391,11 +8393,19 @@ def section_discussion(ctx: Any) -> List[Flowable]:
         "least help with.",
     ]))
     out.append(ctx.p(
-        "We state these as implications of the model, not as advice. The model "
-        "has no disutility of labour, no taxes, no fees, no owner-occupied "
-        "housing and no "
-        "behavioural constraints, and each of those would temper the "
-        "conclusions in Section #housing's direction."))
+        "We state these as implications of the model, not as advice. The "
+        "<i>baseline</i> carries none of the frictions a real plan has, and "
+        "where this paper prices one it does so in its own section rather "
+        "than folding it into the headline: fund fees in Section #fees, "
+        "trading costs in Section #turnover, foreign withholding in Section "
+        "#withholding, retirement taxes in Section #tax, owner-occupied "
+        "housing in Sections #housing and #mortgage, and the disutility of "
+        "labour — the assumption that made early retirement look free — in "
+        "Section #leisure. Each moves the level and none reverses the "
+        "ordering, with the single exception recorded in Section #pension. "
+        "What remains genuinely absent is a behavioural model: this "
+        "investor rebalances on schedule, never panics, and never stops "
+        "contributing, and nothing here speaks to a plan whose members do."))
     return out
 
 
@@ -8853,7 +8863,9 @@ def section_references(ctx: Any) -> List[Flowable]:
     out: List[Flowable] = [PageBreak(),
                            Paragraph("References", ctx.s["h1_plain"])]
     for entry in REFERENCES:
-        out.append(Paragraph(entry, ctx.s["reference"]))
+        # Through the resolver like everything else: one entry cites a
+        # section, and rendered raw it printed the token itself.
+        out.append(Paragraph(ctx.resolve(entry), ctx.s["reference"]))
     return out
 
 
@@ -8912,7 +8924,8 @@ def appendix_parameters(ctx: Any) -> List[Flowable]:
         ["Consumption floor", "—", f"{float(ut['consumption_floor']):g}",
          "Numerical guard only"],
         ["Evaluation window", "—", str(ut["consumption_window"]),
-         "Allocation comparisons; whole lifetime in §#retirement–§#accumulation"],
+         "Allocation comparisons; the whole lifetime wherever a policy "
+         "changes working-life consumption (§#retirement, §#leisure)"],
         ["Paths per strategy", "N", f"{int(bs['n_paths']):,}", "All"],
         ["Horizon", "H", f"{int(bs['horizon_years'])}", "All"],
         ["Mean block length", "—", f"{float(bs['mean_block_years']):.0f} years",
@@ -9134,8 +9147,10 @@ def appendix_software(ctx: Any) -> List[Flowable]:
          "age-varying leverage schedule", "§#leverage"],
         ["Hedging", "Covered-interest-parity hedged legs, break-even cost and "
          "optimal hedge ratio", "§#hedging"],
+        # Two features, not a span: written as a range it rendered
+        # "28-27", which is backwards as well as wrong.
         ["Path-dependent engine", "Endogenous retirement dates and "
-         "state-conditioned saving", "§#retirement–§#accumulation"],
+         "state-conditioned saving", "§#accumulation, §#retirement"],
         ["Savings rules", "Rule families, the fixed-mean shape solver and "
          "matched-rate scoring", "§#saving–§#accumulation"],
         ["Valuation", "The look-ahead-free trailing dividend yield, the "

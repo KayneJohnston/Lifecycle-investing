@@ -590,3 +590,66 @@ class TestRoadmapClaims:
         """Printed the other way round it rendered as "Sections 33 and 32"."""
         assert (content.section_number("longevity")
                 < content.section_number("leisure"))
+
+
+class TestClaimsMatchTheSectionsThatExist:
+    """Prose that describes what the paper does, checked against what it
+    does. These are the failures a first-time reader actually trips on:
+    the Discussion denied four things the paper spends twenty-five pages
+    doing, because the sentence predates the sections."""
+
+    @staticmethod
+    def _text(name: str) -> str:
+        import re
+        from pathlib import Path
+
+        src = Path("paper/content.py").read_text()
+        m = re.search(rf"\ndef section_{name}\(", src)
+        start = m.start()
+        nxt = re.search(r"\ndef section_", src[start + 1:])
+        end = start + 1 + (nxt.start() if nxt else len(src) - start - 1)
+        return src[start:end]
+
+    def test_the_discussion_does_not_deny_its_own_sections(self) -> None:
+        body = self._text("discussion")
+        for denial in ("no disutility of labour", "no taxes, no fees",
+                       "no owner-occupied housing"):
+            assert denial not in body, denial
+
+    def test_the_priced_frictions_are_named_where_they_are_priced(self) -> None:
+        body = self._text("discussion")
+        for key in ("fees", "turnover", "withholding", "tax", "housing",
+                    "mortgage", "leisure"):
+            assert f"#{key}" in body, key
+
+    def test_no_cross_reference_range_runs_backwards(self) -> None:
+        """`§#retirement–§#accumulation` rendered as "§28–§27"."""
+        import re
+        from pathlib import Path
+
+        src = Path("paper/content.py").read_text()
+        bad = []
+        for a, b in re.findall(r"#([a-z_]+)\s*[–-]\s*(?:§)?#([a-z_]+)", src):
+            known = set(content.SECTION_ORDER)
+            if a in known and b in known:
+                if content.section_number(b) <= content.section_number(a):
+                    bad.append((a, b))
+        assert not bad, f"backward ranges: {bad}"
+
+
+class TestReferencesResolve:
+    def test_the_reference_list_carries_no_raw_tokens(self) -> None:
+        """One entry cites a section. Rendered without the resolver it
+        printed `#accumulation.4` on the page."""
+        import re
+
+        from paper.build_paper import Context
+
+        for entry in content.REFERENCES:
+            resolved = Context.resolve(entry)
+            assert not re.search(r"#[a-z_]+", resolved), entry[:60]
+
+    def test_the_resolver_is_reachable_without_touching_a_private(self) -> None:
+        from paper.build_paper import Context
+
+        assert Context.resolve("Section #tax") == "Section 34"
