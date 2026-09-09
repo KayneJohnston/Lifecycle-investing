@@ -441,3 +441,152 @@ class TestGlideAnchorDescribesItsOwnTable:
 
     def test_the_heading_names_the_finding(self) -> None:
         assert "withdrawal rule" in self._source().split("\n")[0].lower()
+
+
+class TestMovements:
+    """The four movements a reader is told the paper runs in.
+
+    This lived only as a comment above `SECTION_ORDER`, which is to say it
+    existed for whoever edits the file and not for whoever reads the paper.
+    Now Section 1.3 renders it, so it has to stay true.
+    """
+
+    def test_the_movements_partition_the_paper_exactly(self) -> None:
+        """A section with no home would vanish from the reader's map while
+        still appearing in the paper -- which is how the old hand-written
+        roadmap came to describe 21 of 37 sections."""
+        flat = [k for _, _, members in content.MOVEMENTS for k in members]
+        assert flat == list(content.SECTION_ORDER)
+
+    def test_every_section_appears_once(self) -> None:
+        flat = [k for _, _, members in content.MOVEMENTS for k in members]
+        assert len(flat) == len(set(flat))
+
+    def test_each_movement_is_a_contiguous_run(self) -> None:
+        """The spans are printed as ranges, so a movement whose members are
+        scattered would print a range covering sections it does not hold."""
+        for name, _, members in content.MOVEMENTS:
+            numbers = sorted(content.section_number(k) for k in members)
+            assert numbers == list(range(numbers[0], numbers[-1] + 1)), name
+
+    def test_the_span_is_derived_not_typed(self) -> None:
+        _, _, members = content.MOVEMENTS[0]
+        span = content.movement_span(members)
+        first = content.section_number(members[0])
+        last = content.section_number(members[-1])
+        assert str(first) in span and str(last) in span
+
+    def test_a_one_section_movement_reads_singular(self) -> None:
+        assert content.movement_span(("introduction",)) == "Section 1"
+
+
+class TestReadingOrderDependencies:
+    """A section may point forward to say "we return to this", but it must
+    not depend on a result the reader has not been given yet."""
+
+    #: Sections whose job is to preview or summarise the whole paper.
+    SIGNPOSTS = frozenset({"introduction", "background", "data", "methods",
+                           "discussion", "limitations", "conclusion"})
+
+    @staticmethod
+    def _bodies() -> dict:
+        import re
+        from pathlib import Path
+
+        src = Path("paper/content.py").read_text()
+        out = {}
+        for key in content.SECTION_ORDER:
+            m = re.search(rf"\ndef section_{re.escape(key)}\(", src)
+            if not m:
+                continue
+            start = m.start()
+            nxt = re.search(r"\ndef section_", src[start + 1:])
+            end = start + 1 + (nxt.start() if nxt else len(src) - start - 1)
+            out[key] = src[start:end]
+        return out
+
+    def test_the_spending_sections_do_not_lean_on_later_ones(self) -> None:
+        """`longevity` reads `spending` and `plan`; `leisure` reads
+        `longevity`. Ordered the other way -- as they were -- `leisure`
+        cited a finding the reader had not reached."""
+        import re
+
+        bodies = self._bodies()
+        for key in ("plan", "longevity", "leisure", "tax"):
+            here = content.section_number(key)
+            cited = {r for r in re.findall(r"#([a-z_]+)(?:\.\d+)?",
+                                           bodies[key])
+                     if r in set(content.SECTION_ORDER) and r != key}
+            forward = {r for r in cited
+                       if content.section_number(r) > here
+                       and r not in self.SIGNPOSTS}
+            # `plan` may point on to the institutional pair as signposting;
+            # nothing here may reach past it.
+            allowed = {"leisure", "tax"} if key == "plan" else set()
+            assert not (forward - allowed), f"{key} depends on {forward}"
+
+    def test_longevity_sits_with_the_spending_sections(self) -> None:
+        assert (content.section_number("longevity")
+                == content.section_number("plan") + 1)
+
+
+class TestStoryEmissionOrder:
+    """`story()` must call the sections in the order `SECTION_ORDER` numbers
+    them.
+
+    `content._check_section_order` already enforces this, but only once the
+    whole paper has been assembled -- minutes into a build, after every
+    table and figure has been read. Reordering `SECTION_ORDER` without
+    reordering the calls is a one-line mistake that deserves a one-second
+    failure, so the call order is read straight out of the source.
+    """
+
+    @staticmethod
+    def _emitted() -> list:
+        import re
+        from pathlib import Path
+
+        src = Path("paper/content.py").read_text()
+        m = re.search(r"\ndef story\(.*?\n(?=\ndef |\Z)", src, re.S)
+        assert m, "story() not found"
+        called = re.findall(r"parts \+= section_([a-z_]+)\(ctx\)",
+                            m.group(0))
+        # `references` is emitted as a section but carries no number, so it
+        # is not part of the ordering contract.
+        known = set(content.SECTION_ORDER)
+        return [k for k in called if k in known]
+
+    def test_every_section_is_emitted_exactly_once(self) -> None:
+        emitted = self._emitted()
+        assert len(emitted) == len(set(emitted))
+        assert set(emitted) == set(content.SECTION_ORDER)
+
+    def test_the_call_order_matches_the_numbering(self) -> None:
+        assert self._emitted() == list(content.SECTION_ORDER)
+
+
+class TestRoadmapClaims:
+    """Section 1.3 makes claims about where things sit. They have to stay
+    true when sections move, and the old roadmap is the reason to check:
+    it went stale describing 21 of 37 sections and put `#fees` inside a
+    range that ended six sections before it."""
+
+    def test_the_reversing_result_is_where_the_roadmap_says(self) -> None:
+        """The roadmap tells a reader the one result that does not survive
+        sits at the end of the second movement."""
+        name, _, members = content.MOVEMENTS[1]
+        assert "pension" in members
+        assert content.section_number("pension") == max(
+            content.section_number(k) for k in members)
+
+    def test_the_sections_that_explain_it_come_after_it(self) -> None:
+        """The roadmap sends the reader on to `longevity` and `leisure` for
+        the mechanism, so both must follow the result they explain."""
+        anchor = content.section_number("pension")
+        assert content.section_number("longevity") > anchor
+        assert content.section_number("leisure") > anchor
+
+    def test_the_roadmap_names_them_in_reading_order(self) -> None:
+        """Printed the other way round it rendered as "Sections 33 and 32"."""
+        assert (content.section_number("longevity")
+                < content.section_number("leisure"))

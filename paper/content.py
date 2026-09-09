@@ -570,8 +570,9 @@ def contents(ctx: Any) -> List[Flowable]:
 #:    most external. First the model's own parameters, then its sampler, then
 #:    which countries and eras it was given, then how the foreign sleeve was
 #:    built and whether to hedge it, then when the investor happened to start,
-#:    then what implementation costs, and last the two assumptions that were
-#:    quietly flattering the result.
+#:    then what implementation costs, and last the three assumptions that
+#:    were quietly flattering the result: whose human capital, how long they
+#:    live, and whose pension pays them.
 #: 3. **What else the investor decides** -- the portfolio first (glide,
 #:    simplex, leverage), immediately followed by the check on whether any of
 #:    those solved schedules survives data it was not fitted to; then the
@@ -617,9 +618,13 @@ SECTION_ORDER: Tuple[str, ...] = (
     "sequence",
     "spending",
     "plan",
+    # The rule again, once the horizon stops being a constant. It reads the
+    # spending sections and nothing after them, so it sits with them rather
+    # than after the institutional pair -- which also keeps `leisure`'s
+    # reference to it a backward one.
+    "longevity",
     "leisure",
     "tax",
-    "longevity",
     # Closing.
     "discussion",
     "limitations",
@@ -658,8 +663,54 @@ EXTENSION_GROUPS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     # is not a charge on the *portfolio* but on the retirement system, and
     # it exists only to check the comparison `leisure` makes.
     ("plan", ("saving", "accumulation", "retirement", "sequence",
-              "spending", "plan", "leisure", "tax", "longevity")),
+              "spending", "plan", "longevity", "leisure", "tax")),
 )
+
+
+#: The four movements, as a reader meets them. This existed only as the
+#: comment above :data:`SECTION_ORDER` -- which is to say it existed for
+#: whoever edits the file and not for whoever reads the paper. Section
+#: #introduction.3 renders it, and ``tests/test_paper_sections.py`` requires
+#: it to partition :data:`SECTION_ORDER` exactly, so a section added without
+#: a home fails the build rather than quietly falling out of the map.
+MOVEMENTS: Tuple[Tuple[str, str, Tuple[str, ...]], ...] = (
+    ("The claim",
+     "what was replicated, on what data, by what method, and what came out",
+     ("introduction", "background", "data", "methods", "baseline")),
+    ("Is the claim real?",
+     "the same result attacked from the inside out — first the model's own "
+     "parameters, then its sampler, then which countries and eras it was "
+     "given, then how the foreign sleeve was built, then when the investor "
+     "happened to start, then what the implementation costs, and last the "
+     "three assumptions that were quietly flattering it",
+     ("sensitivity", "cohorts", "panel", "sleeve", "hedging", "valuation",
+      "inflation", "fees", "withholding", "franking", "human_capital",
+      "mortality", "pension")),
+    ("What else the investor decides",
+     "the portfolio first and the audit of whether solving for one survives "
+     "data it was never shown, then the wider asset menu, then the cash-flow "
+     "decisions in the order a life presents them — save, retire, spend — "
+     "and last the system the investor retires into",
+     ("glide", "allocation", "leverage", "turnover", "out_of_sample",
+      "housing", "mortgage", "saving", "accumulation", "retirement",
+      "sequence", "spending", "plan", "longevity", "leisure", "tax")),
+    ("What it means",
+     "what survives, what does not, and what a reader should not take from "
+     "any of it",
+     ("discussion", "limitations", "conclusion")),
+)
+
+
+def movement_span(members: Sequence[str]) -> str:
+    """`Sections 6-18`, from the movement's own membership.
+
+    Written from :data:`SECTION_ORDER` rather than typed, so the roadmap
+    cannot drift from the paper it describes.
+    """
+    numbers = sorted(section_number(k) for k in members)
+    if len(numbers) == 1:
+        return f"Section {numbers[0]}"
+    return f"Sections {numbers[0]}\u2013{numbers[-1]}"
 
 
 def group_count_word(name: str) -> str:
@@ -959,43 +1010,29 @@ def section_introduction(ctx: Any) -> List[Flowable]:
 
     out.append(ctx.h2("#introduction.3 Roadmap"))
     out.append(ctx.p(
-        "The paper is organised so that each block earns the right to the "
-        "next. Sections #background–#methods set up: the literature, the "
-        "panel and its construction, and the bootstrap, lifecycle model, "
-        "preference specification and comparison discipline that everything "
-        "afterwards runs through."))
+        f"The paper is long — {len(SECTION_ORDER)} sections — and it is "
+        f"organised so that each block earns the right to the next. It runs "
+        f"in four movements."))
+    for name, gloss, members in MOVEMENTS:
+        out.append(ctx.p(
+            f"<b>{name}</b> ({movement_span(members).lower()}): {gloss}."))
     out.append(ctx.p(
-        "Sections #baseline–#hedging are the result and five ways it could "
-        "be wrong. Section #baseline presents the baseline replication. "
-        "Section #sensitivity asks whether it survives the preference and "
-        "lifecycle parameters; Section #panel whether it survives the loss of "
-        "any one country, and what standard error sixteen countries actually "
-        "support; Section #sleeve whether it survives the way the "
-        "international sleeve is weighted — the construction our one "
-        "divergence from the replicated study most obviously depends on; "
-        "Section #fees whether it survives the cost of the funds that "
-        "implement it; and Section #hedging whether that sleeve should be "
-        "currency-hedged at all."))
+        "A reader who wants the argument and not the audit can read the "
+        "first movement, then Section #discussion and Section #limitations, "
+        "and treat the middle two as the evidence they rest on. A reader who "
+        "doubts a particular number will find it in the movement that "
+        "attacks it: the second takes the headline apart, and the third "
+        "asks what else the same investor decides. The one result in this "
+        "paper that does not survive sits at the end of the second — "
+        "Section #pension swaps the American pension for the Australian "
+        "pair and the allocation ranking reverses, for reasons Sections "
+        "#longevity and #leisure between them pin down."))
     out.append(ctx.p(
-        "Sections #glide–#leverage ask whether a better portfolio exists "
-        "inside the same asset menu, by progressively relaxing what is held "
-        "fixed: the shape of the glide path (Section #glide), then every "
-        "weight at every age (Section #allocation), then the long-only "
-        "constraint itself (Section #leverage). Sections #housing–#mortgage "
-        "widen the menu instead, adding the asset most households actually "
-        "hold — housing owned outright (Section #housing), then mortgaged "
-        "(Section #mortgage)."))
-    out.append(ctx.p(
-        "Sections #valuation–#spending leave the portfolio alone and search "
-        "the rest of the plan, in the order a life meets it: the valuation "
-        "you start at (Section #valuation), how much you save "
-        "(Section #saving) and what that saving should respond to "
-        "(Section #accumulation), when you stop (Section #retirement), and "
-        "how you draw down (Section #spending). Section #discussion draws the "
-        "results together, Section #limitations states the limitations "
-        "candidly, and Section #conclusion concludes. Four appendices give "
-        "the full parameter set, the country panel, supplementary tables and "
-        "the reproduction instructions."))
+        "Four appendices give the full parameter set, the country panel, "
+        "supplementary tables and the reproduction instructions. Every "
+        "figure and table in the paper is regenerated from the pipeline "
+        "described in Appendix D; none is drawn by hand."))
+
     return out
 
 
@@ -10896,9 +10933,9 @@ def story(ctx: Any) -> List[Flowable]:
     parts += section_sequence(ctx)
     parts += section_spending(ctx)
     parts += section_plan(ctx)
+    parts += section_longevity(ctx)
     parts += section_leisure(ctx)
     parts += section_tax(ctx)
-    parts += section_longevity(ctx)
     parts += section_discussion(ctx)
     parts += section_limitations(ctx)
     parts += section_conclusion(ctx)
