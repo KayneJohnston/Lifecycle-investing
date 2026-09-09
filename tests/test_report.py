@@ -181,6 +181,47 @@ class TestCostOfWorkingDocRenders:
         assert out.exists()
         assert len(out.read_text()) > 2_000
 
+    @staticmethod
+    def _returns() -> pd.DataFrame:
+        """A sweep where the contender overtakes the baseline part-way."""
+        rows = []
+        for system, peak, height in (("us", 0.04, 1.25),
+                                     ("au_as_legislated", 0.07, 1.40)):
+            for r in (0.0, 0.02, 0.04, 0.06, 0.08, 0.10):
+                rows.append({"system": system, "assumed_return": r,
+                             "cec": height - 12.0 * (r - peak) ** 2,
+                             "prob_ruin": 0.0,
+                             "mean_consumption": 2.0,
+                             "p5_consumption": 0.8})
+        return pd.DataFrame.from_records(rows)
+
+    def test_the_return_sweep_section_renders(self, tmp_path) -> None:
+        """The section reached production untested and failed on its own
+        table: the pivot's columns are system names, so they cannot be
+        spelled out as a fixed list."""
+        from src import leisure as le
+
+        frames = {**self._frames(), "returns": self._returns()}
+        notes = {**self._notes(frames),
+                 "return_verdict": le.return_verdict(
+                     self._returns(),
+                     {"us": 1.04, "au_as_legislated": 0.72})}
+        rendered = rp.write_doc_32(tmp_path / "32.md", _cfg(), frames, [],
+                                   notes).read_text()
+        assert "rule decides which system wins" in rendered
+        assert "Assumed real return" in rendered
+        # The systems are named, not printed as config keys.
+        assert "au_as_legislated" not in rendered.split("## ")[-1]
+
+    def test_it_renders_without_a_return_sweep(self, tmp_path) -> None:
+        """The sweep is optional: a config that switches it off must still
+        produce a document."""
+        frames = self._frames()
+        notes = {**self._notes(frames), "return_verdict": {"measured": False}}
+        out = rp.write_doc_32(tmp_path / "32.md", _cfg(), frames, [], notes)
+        assert out.exists()
+        assert "rule decides which system wins" not in out.read_text()
+
     def test_every_section_is_numbered_once_and_in_order(self, tmp_path
                                                          ) -> None:
         """A section inserted mid-document has to renumber the ones below it,

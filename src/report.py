@@ -10096,10 +10096,17 @@ def write_doc_32(
     retfound = notes.get("return_verdict", {"measured": False})
     returns_frame = frames.get("returns", pd.DataFrame())
     if retfound.get("measured"):
-        return_tbl = md_table(_compact(
-            returns_frame.pivot(index="assumed_return", columns="system",
-                                values="cec").reset_index(),
-            None, {"assumed_return": "Assumed real return"}),
+        # The pivot's columns are the system names, which are data rather
+        # than a fixed list, so they are read off the frame instead of being
+        # spelled out -- `_compact` takes a sequence and cannot be handed
+        # `None` for "keep everything".
+        wide = returns_frame.pivot(index="assumed_return", columns="system",
+                                   values="cec").reset_index()
+        return_tbl = md_table(
+            _compact(wide, list(wide.columns),
+                     {"assumed_return": "Assumed real return",
+                      **{k: SYSTEM_NAME.get(k, k)
+                         for k in wide.columns if k != "assumed_return"}}),
             floatfmt="{:.4f}")
         return_line = (
             f"**The rule decides which system wins.** Every row above spends "
