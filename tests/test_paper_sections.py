@@ -610,10 +610,35 @@ class TestClaimsMatchTheSectionsThatExist:
         end = start + 1 + (nxt.start() if nxt else len(src) - start - 1)
         return src[start:end]
 
+    #: A blanket denial, and the section that makes it false. Checked across
+    #: the whole paper rather than one section: the Discussion carried three
+    #: of these and the Limitations carried two more, and a test scoped to
+    #: the Discussion found only the first three.
+    #: The exact unqualified phrasings, not substrings: "No disutility of
+    #: labour in the baseline" is a true statement and must keep passing,
+    #: while "<b>No disutility of labour.</b>" is the claim that was false.
+    DENIALS = (
+        ("has no disutility of labour, no taxes", "leisure"),
+        ("contains no disutility of labour:", "leisure"),
+        ("<b>no disutility of labour.</b>", "leisure"),
+        ("no owner-occupied housing and no", "housing"),
+        ("nothing here prices an annuity, or a spending rule that adapts",
+         "longevity"),
+        ("a fixed horizon everywhere but one section", "longevity"),
+    )
+
+    def test_no_section_denies_a_capability_the_paper_has(self) -> None:
+        from pathlib import Path
+
+        src = Path("paper/content.py").read_text().lower()
+        for denial, provider in self.DENIALS:
+            assert denial not in src, (
+                f"{denial!r} is contradicted by section "
+                f"{content.section_number(provider)} ({provider})")
+
     def test_the_discussion_does_not_deny_its_own_sections(self) -> None:
-        body = self._text("discussion")
-        for denial in ("no disutility of labour", "no taxes, no fees",
-                       "no owner-occupied housing"):
+        body = self._text("discussion").lower()
+        for denial, _ in self.DENIALS:
             assert denial not in body, denial
 
     def test_the_priced_frictions_are_named_where_they_are_priced(self) -> None:
