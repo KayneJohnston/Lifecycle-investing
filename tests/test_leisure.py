@@ -870,3 +870,110 @@ class TestTestPosition:
         row = le.test_position(self._arms()).iloc[0]
         assert row["p5_consumption"] < row["mean_consumption"]
         assert row["p1_consumption"] <= row["p5_consumption"]
+
+
+class TestReturnSweepVerdict:
+    """Whether the withdrawal rule, not the pension, decides the comparison.
+
+    The section reports Australia behind the United States under a fixed
+    real rule. If that ordering reverses under the rule `docs/34` prefers,
+    the reported result is a statement about the rule as much as about the
+    pension -- so the sign is classified rather than described.
+    """
+
+    @staticmethod
+    def _sweep(us_peak: float, au_peak: float,
+               grid=(0.0, 0.02, 0.04, 0.06, 0.08, 0.10)) -> pd.DataFrame:
+        rows = []
+        for system, peak, height in (("us", us_peak, 1.25),
+                                     ("au_as_legislated", au_peak, 1.40)):
+            for r in grid:
+                rows.append({"system": system, "assumed_return": float(r),
+                             "cec": height - 12.0 * (r - peak) ** 2})
+        return pd.DataFrame.from_records(rows)
+
+    def test_a_reversal_is_reported_as_one(self) -> None:
+        found = le.return_verdict(self._sweep(0.04, 0.06),
+                                  {"us": 1.04, "au_as_legislated": 0.72})
+        assert found["sign_flips"]
+        assert found["anchor_gap_pct"] < 0 < found["best_gap_pct"]
+
+    def test_no_reversal_when_the_anchor_already_favours_the_contender(self):
+        found = le.return_verdict(self._sweep(0.04, 0.06),
+                                  {"us": 1.04, "au_as_legislated": 1.20})
+        assert not found["sign_flips"]
+
+    def test_each_system_keeps_its_own_best_assumption(self) -> None:
+        found = le.return_verdict(self._sweep(0.04, 0.06),
+                                  {"us": 1.04, "au_as_legislated": 0.72})
+        assert found["best_baseline_return"] == pytest.approx(0.04)
+        assert found["best_contender_return"] == pytest.approx(0.06)
+        assert not found["wants_same_return"]
+
+    def test_the_crossing_is_the_first_assumption_the_contender_leads(self):
+        found = le.return_verdict(self._sweep(0.04, 0.06),
+                                  {"us": 1.04, "au_as_legislated": 0.72})
+        sweep = self._sweep(0.04, 0.06)
+        wide = sweep.pivot(index="assumed_return", columns="system",
+                           values="cec")
+        crossing = float(found["crossing_return"])
+        assert wide.loc[crossing, "au_as_legislated"] > wide.loc[crossing, "us"]
+        below = [r for r in wide.index if r < crossing]
+        assert all(wide.loc[r, "au_as_legislated"] <= wide.loc[r, "us"]
+                   for r in below)
+
+    def test_an_optimum_on_the_boundary_is_flagged(self) -> None:
+        """The same corner check every other grid in this project gets: a
+        dial still improving where the sweep stops is a truncation."""
+        found = le.return_verdict(self._sweep(0.04, 0.20),
+                                  {"us": 1.04, "au_as_legislated": 0.72})
+        assert found["contender_at_edge"]
+        assert not found["baseline_at_edge"]
+
+    def test_a_shared_optimum_is_reported_as_shared(self) -> None:
+        found = le.return_verdict(self._sweep(0.06, 0.06),
+                                  {"us": 1.04, "au_as_legislated": 0.72})
+        assert found["wants_same_return"]
+
+    def test_an_empty_sweep_is_not_measured(self) -> None:
+        assert not le.return_verdict(pd.DataFrame(), {}).get("measured", False)
+
+    def test_a_missing_system_is_not_measured(self) -> None:
+        sweep = self._sweep(0.04, 0.06)
+        only_us = sweep[sweep["system"] == "us"]
+        assert not le.return_verdict(
+            only_us, {"us": 1.04}).get("measured", False)
+
+    def test_the_config_grid_spans_both_systems_optima(self) -> None:
+        """A grid that stops before either system turns over would report
+        two corners and call them preferences."""
+        from src import data_loader as dl
+
+        grid = dl.load_config("config.yaml")["leisure"]["assumed_return_grid"]
+        assert min(grid) <= 0.0 and max(grid) >= 0.10
+        assert len(grid) >= 8
+
+
+class TestReturnSweepFrame:
+    def test_it_scores_every_system_at_every_assumption(self) -> None:
+        seen = []
+
+        def simulate(system, rule):
+            seen.append((system, rule))
+            return (system, rule)
+
+        frame = le.return_sweep(
+            simulate, ("us", "au_as_legislated"), (0.0, 0.05, 0.10),
+            lambda pair: {"cec": 1.0}, lambda r: r)
+        assert len(frame) == 6
+        assert set(frame["assumed_return"]) == {0.0, 0.05, 0.10}
+        assert len(seen) == 6
+
+    def test_the_dial_reaches_the_rule_builder(self) -> None:
+        built = []
+        frame = le.return_sweep(
+            lambda s, r: r, ("us",), (0.03, 0.07),
+            lambda r: {"cec": float(r)},
+            lambda r: built.append(r) or r)
+        assert built == [0.03, 0.07]
+        assert list(frame["cec"]) == [0.03, 0.07]

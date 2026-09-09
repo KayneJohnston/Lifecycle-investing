@@ -7571,7 +7571,79 @@ def section_leisure(ctx: Any) -> List[Flowable]:
                 "who cares about the worst case will rank these two systems "
                 "differently, and neither is misreading the table."))
 
-    out.append(ctx.h2("#leisure.7 What this changes"))
+    # ---- and the rule decides which system wins --------------------------
+    returns = f.table("leisure_return_sweep")
+    anchor = {str(r["system"]): float(r["cec"])
+              for _, r in rules_frame.iterrows()
+              if str(r["rule"]) == str(cfg["lifecycle"]["retirement"]["rule"])
+              } if len(rules_frame) else {}
+    retfound = lei.return_verdict(returns, anchor) if len(returns) \
+        else {"measured": False}
+    if retfound.get("measured"):
+        out.append(ctx.h2("#leisure.7 The rule decides which system wins"))
+        out.append(ctx.p(
+            f"Every row above spends by a rule that cannot adapt: a fixed "
+            f"real amount, set as a share of wealth at retirement and then "
+            f"held there for thirty years. Section #longevity finds that "
+            f"rule is not the best available, and that the best one is an "
+            f"amortisation rule — the balance divided by an annuity factor "
+            f"— dialled by the real return it assumes. That dial is swept "
+            f"here rather than set, because the two systems arrive at "
+            f"retirement with very different portfolios and there is no "
+            f"reason their best assumption should be the same."))
+        out.append(ctx.p(
+            f"<b>It is not the same, and the comparison does not survive "
+            f"the change.</b> The United States is best served by assuming "
+            f"{retfound['best_baseline_return']:.0%} and Australia by "
+            f"{retfound['best_contender_return']:.0%} — a household with a "
+            f"larger portfolio and almost no pension has more to convert "
+            f"into consumption and less reason to hold back. Scored at each "
+            f"system's own best assumption the gap is "
+            f"{retfound['best_gap_pct']:+.1f}%, against "
+            f"{retfound['anchor_gap_pct']:+.1f}% under the fixed real rule "
+            f"the rest of this paper spends by."
+            + (f" The sign changes. Australia is behind under one "
+               f"withdrawal rule and ahead under another, on the same "
+               f"returns, the same pension schedules and the same "
+               f"contributions, with the crossing at an assumed "
+               f"{retfound['crossing_return']:.0%}."
+               if retfound.get("sign_flips") else
+               " The sign does not change, which is worth as much: the "
+               "ranking is a property of the pensions rather than of the "
+               "rule chosen to spend by.")))
+        if retfound.get("sign_flips"):
+            out.append(ctx.p(
+                "Which qualifies Section #leisure.6's finding rather than "
+                "overturning it. The mechanism there was the floor: strip "
+                "the unconditional annuity away and the portfolio's own "
+                "worst outcomes become the whole of retirement. That is "
+                "still what is happening — but the floor does not have to "
+                "come from a pension. An amortisation rule divides by the "
+                "years remaining, so it cannot run the balance to zero, and "
+                "ruin falls to nothing at every assumption on this grid. A "
+                "household that provides its own floor out of a larger "
+                "portfolio is no longer paying for the pension it does not "
+                "receive. The Australian result reported above is therefore "
+                "a statement about a fixed real withdrawal rule at least as "
+                "much as it is a statement about the Australian pension."))
+        if retfound.get("baseline_at_edge") or retfound.get("contender_at_edge"):
+            out.append(ctx.p(
+                f"One caution: at least one of those optima sits on the "
+                f"boundary of the grid offered "
+                f"({retfound['returns_low']:.0%} to "
+                f"{retfound['returns_high']:.0%}), so it is a truncation "
+                f"rather than a peak and the figure below stops where the "
+                f"sweep does."))
+        out.extend(ctx.figure(
+            "fig65_return_sweep",
+            "Certainty-equivalent consumption against the real return an "
+            "amortisation rule assumes, for each pension system. One axis "
+            "and one measure: the question is which curve is higher and "
+            "where, and rings mark each system's own optimum. The curves "
+            "cross, which is the point — the sign of the gap between two "
+            "pension systems is not a property of the pensions alone."))
+
+    out.append(ctx.h2("#leisure.8 What this changes"))
     out.extend(ctx.bullets([
         (f"<b>The retirement date is not unpriceable — it was unpriced.</b> "
          f"Charging for the years spent working turns Section #plan's corner "

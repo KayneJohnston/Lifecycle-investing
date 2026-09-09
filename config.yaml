@@ -1003,6 +1003,14 @@ leisure:
   # nearly scale-invariant and hides what extra saving buys; these hold the
   # standard of living fixed instead and let the portfolio and the pension
   # fund it between them.
+  # The other half of the comparison. Section #longevity finds the best
+  # withdrawal rule is an amortisation one, dialled by the real return it
+  # assumes -- and this section scores every system under the fixed-real
+  # rule the rest of the paper spends by. Whether the pension comparison
+  # survives the better rule is a question, not an assumption, so the dial
+  # is swept rather than set. Wide enough to contain both systems' peaks.
+  assumed_return_grid: [0.00, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08,
+                        0.10, 0.12]
   replacement_targets: [0.50, 0.75, 1.00]
   # Pension systems compared. The two differ in more than their generosity:
   # US social security can be claimed from the day work stops (adjusted for

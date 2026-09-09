@@ -10092,6 +10092,57 @@ def write_doc_32(
     else:
         gap_line = ""
 
+    # ---- and the rule decides which system wins -------------------------
+    retfound = notes.get("return_verdict", {"measured": False})
+    returns_frame = frames.get("returns", pd.DataFrame())
+    if retfound.get("measured"):
+        return_tbl = md_table(_compact(
+            returns_frame.pivot(index="assumed_return", columns="system",
+                                values="cec").reset_index(),
+            None, {"assumed_return": "Assumed real return"}),
+            floatfmt="{:.4f}")
+        return_line = (
+            f"**The rule decides which system wins.** Every row above spends "
+            f"a fixed real amount set at retirement and held there. `docs/34` "
+            f"finds that rule is not the best available and that the best one "
+            f"amortises the balance over the years remaining, dialled by the "
+            f"real return it assumes -- so that dial is swept here rather "
+            f"than set. The United States is best served by assuming "
+            f"{retfound['best_baseline_return']:.0%} and Australia by "
+            f"{retfound['best_contender_return']:.0%}. Scored at each "
+            f"system's own best assumption the gap is "
+            f"{retfound['best_gap_pct']:+.1f}%, against "
+            f"{retfound['anchor_gap_pct']:+.1f}% under the fixed real rule.")
+        if retfound.get("sign_flips"):
+            return_line += (
+                f" The sign changes: Australia is behind under one "
+                f"withdrawal rule and ahead under another, on the same "
+                f"returns and the same schedules, crossing at an assumed "
+                f"{retfound['crossing_return']:.0%}.\n\nThat qualifies the "
+                f"section above rather than overturning it. The mechanism "
+                f"was the floor, and it still is -- but a floor does not "
+                f"have to come from a pension. An amortisation rule divides "
+                f"by the years remaining, so it cannot run the balance to "
+                f"zero, and a household that provides its own floor out of a "
+                f"larger portfolio stops paying for the pension it does not "
+                f"receive.")
+        else:
+            return_line += (
+                " The sign does not change, which is worth as much: the "
+                "ranking is a property of the pensions rather than of the "
+                "rule chosen to spend by.")
+        if retfound.get("baseline_at_edge") or retfound.get("contender_at_edge"):
+            return_line += (
+                f" One caution: at least one optimum sits on the boundary of "
+                f"the grid ({retfound['returns_low']:.0%} to "
+                f"{retfound['returns_high']:.0%}), so it is a truncation "
+                f"rather than a peak.")
+        return_line += ("\n\n" + return_tbl
+                        + "\n\nThe curves are in "
+                          "`results/figures/fig65_return_sweep.png`.")
+    else:
+        return_line = ""
+
     # ---- and under a rule that fixes the standard of living -------------
     rulefound = notes.get("rule_verdict", {"measured": False})
     rules_frame = frames.get("rules", pd.DataFrame())
@@ -10316,6 +10367,8 @@ from the portfolio. Both rules are run against all three systems below.
 {rule_tbl}
 
 {rule_line}
+
+{return_line}
 
 **A caveat this arm needs and the others do not.** A retiree who exhausts the
 portfolio before the pension age receives, in this model, a means-tested

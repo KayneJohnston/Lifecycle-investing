@@ -403,6 +403,85 @@ def rule_comparison(simulate: Callable[[str, Any], Any],
     return pd.DataFrame.from_records(rows)
 
 
+def return_sweep(simulate: Callable[[str, Any], Any],
+                 systems: Sequence[str], returns: Sequence[float],
+                 score_row: Callable[[Any], Dict[str, Any]],
+                 build_rule: Callable[[float], Any]) -> pd.DataFrame:
+    """Every pension system against the assumed return the retiree amortises at.
+
+    The rule comparison above asks whether the *kind* of rule changes the
+    answer. This asks the sharper question, because an amortisation rule has
+    a dial and the dial is not a detail: it decides how much of the portfolio
+    becomes consumption, and the two systems arrive at retirement with very
+    different portfolios. A single assumed return would be picking one point
+    on a curve that need not have its peak in the same place for both.
+    """
+    rows: List[Dict[str, Any]] = []
+    for system in systems:
+        for value in returns:
+            row: Dict[str, Any] = {"system": system,
+                                   "assumed_return": float(value)}
+            row.update(score_row(simulate(system, build_rule(float(value)))))
+            rows.append(row)
+    return pd.DataFrame.from_records(rows)
+
+
+def return_verdict(sweep: pd.DataFrame, anchor_cec: Mapping[str, float],
+                   baseline: str = "us",
+                   contender: str = "au_as_legislated") -> Dict[str, Any]:
+    """Whether the withdrawal rule, not the pension, decides the comparison.
+
+    ``anchor_cec`` is each system's certainty equivalent under the rule the
+    rest of the paper spends by, so the sweep can be read against something
+    rather than only against itself.
+
+    The question worth classifying is whether the sign of the gap between two
+    pension systems depends on which withdrawal rule the retiree uses. If it
+    does, then a result reported under one rule is a statement about that
+    rule as much as about the pension, and saying so is the finding.
+    """
+    if not len(sweep) or baseline not in sweep["system"].values:
+        return {"measured": False}
+    wide = sweep.pivot(index="assumed_return", columns="system", values="cec")
+    if baseline not in wide or contender not in wide:
+        return {"measured": False}
+    gaps = wide[contender] / wide[baseline] - 1.0
+    base_anchor = float(anchor_cec.get(baseline, float("nan")))
+    con_anchor = float(anchor_cec.get(contender, float("nan")))
+    anchor_gap = (con_anchor / base_anchor - 1.0) if base_anchor else float("nan")
+    found: Dict[str, Any] = {
+        "measured": True,
+        "anchor_gap_pct": 100.0 * anchor_gap,
+        "best_baseline_return": float(wide[baseline].idxmax()),
+        "best_contender_return": float(wide[contender].idxmax()),
+        "best_baseline_cec": float(wide[baseline].max()),
+        "best_contender_cec": float(wide[contender].max()),
+        "returns_low": float(wide.index.min()),
+        "returns_high": float(wide.index.max()),
+    }
+    found["best_gap_pct"] = 100.0 * (found["best_contender_cec"]
+                                     / found["best_baseline_cec"] - 1.0)
+    # The finding: does the sign of the comparison depend on the rule?
+    found["sign_flips"] = bool(
+        np.isfinite(anchor_gap) and (anchor_gap < 0) != (found["best_gap_pct"] < 0))
+    positive = gaps[gaps > 0]
+    found["crossing_return"] = float(positive.index.min()) if len(positive) \
+        else float("nan")
+    # A dial whose optimum sits on the edge is not an optimum, the same rule
+    # this project applies to every other grid.
+    from .accumulation import at_grid_edge
+
+    grid = sorted(float(x) for x in wide.index)
+    found["baseline_at_edge"] = bool(
+        at_grid_edge(grid, found["best_baseline_return"]))
+    found["contender_at_edge"] = bool(
+        at_grid_edge(grid, found["best_contender_return"]))
+    found["wants_same_return"] = bool(
+        np.isclose(found["best_baseline_return"],
+                   found["best_contender_return"]))
+    return found
+
+
 def rule_verdict(frame: pd.DataFrame, portfolio_rule: str = "constant_real",
                  baseline: str = "us", contender: str = "au_as_legislated",
                  ) -> Dict[str, Any]:

@@ -4109,14 +4109,27 @@ def step32_leisure(cfg: Dict[str, Any],
         return lc.simulate(paths, strategy, aged, income, spending=rule)
 
     def _score_rule(outcome: Any) -> Dict[str, Any]:
+        # The bequest is carried here, unlike in the rest of this step's
+        # scoring, because the rules being compared differ in what they
+        # leave behind: an amortisation rule spends the portfolio to zero by
+        # construction while a fixed-real rule leaves a large estate.
+        # Scoring one against the other with the estate excluded would hand
+        # the amortisation family a free win on a margin the config says is
+        # worth `bequest_weight`. The retirement window is kept, because the
+        # retirement date is held fixed across every row here and
+        # working-life consumption is identical across the arms.
         aged = dataclasses.replace(pl.spec_for(spec, reference))
         window = outcome.consumption[:, aged.n_working:]
+        util = cfg["utility"]
         return {
             "cec": float(ut.crra_certainty_equivalent(
-                ut.bundle_from_outcome(outcome, cfg, aged), gamma, beta)),
+                ut.bundle_from_outcome(outcome, cfg, aged), gamma, beta,
+                float(util["bequest_weight"]),
+                bool(util["bequest_enabled"]))),
             "prob_ruin": float(np.mean(outcome.ruin)),
             "mean_consumption": float(window.mean()),
             "p5_consumption": float(np.percentile(window, 5)),
+            "median_bequest": float(np.median(outcome.bequest)),
             "median_wealth": float(np.median(outcome.wealth_at_retirement)),
         }
 
@@ -4124,6 +4137,34 @@ def step32_leisure(cfg: Dict[str, Any],
                                      _score_rule)
     rule_found = le.rule_verdict(rules_frame,
                                  portfolio_rule=str(spec.retirement_rule))
+
+    # Section #longevity's winning rule is an amortisation one, dialled by
+    # the return it assumes. Every system row above is scored under the
+    # fixed-real rule instead, so whether the pension comparison survives
+    # the better rule is unanswered until the dial is swept.
+    returns = [float(x) for x in lei_cfg.get("assumed_return_grid", ())]
+    if returns:
+        return_swept = le.return_sweep(
+            _simulate_rule, systems, returns, _score_rule,
+            lambda r: spg.build("amortisation", assumed_return=r))
+        anchor = {row["system"]: float(row["cec"])
+                  for _, row in rules_frame[
+                      rules_frame["rule"] == str(spec.retirement_rule)
+                  ].iterrows()}
+        return_found = le.return_verdict(return_swept, anchor)
+        LOGGER.info("amortisation: %s wants %.0f%% and %s wants %.0f%%; the "
+                    "gap moves from %+.1f%% under %s to %+.1f%% at each "
+                    "system's own best assumption (sign flips: %s)",
+                    "us", 100 * return_found.get("best_baseline_return", 0.0),
+                    "au_as_legislated",
+                    100 * return_found.get("best_contender_return", 0.0),
+                    return_found.get("anchor_gap_pct", float("nan")),
+                    spec.retirement_rule,
+                    return_found.get("best_gap_pct", float("nan")),
+                    return_found.get("sign_flips"))
+    else:
+        return_swept = pd.DataFrame()
+        return_found = {"measured": False}
     LOGGER.info("withdrawal rule: portfolio-anchored ruin spread %.4f across "
                 "systems; under a replacement target the widest gap is "
                 "%.1fpp at %s",
@@ -4168,6 +4209,7 @@ def step32_leisure(cfg: Dict[str, Any],
                 tables, "leisure_systems_break_even")
     _save_table(comparison, tables, "leisure_systems_comparison")
     _save_table(position, tables, "leisure_test_position")
+    _save_table(return_swept, tables, "leisure_return_sweep")
     _save_table(features_swept, tables, "leisure_features_sweep")
     _save_table(feature_table, tables, "leisure_features_optimal")
     _save_table(decomposition, tables, "leisure_features_decomposition")
@@ -4184,6 +4226,9 @@ def step32_leisure(cfg: Dict[str, Any],
                str(plots.plot_means_test(
                    position, le.WEALTH_QUANTILES,
                    Path(cfg["run"]["figure_dir"])))]
+    if len(return_swept):
+        figures.append(str(plots.plot_return_sweep(
+            return_swept, return_found, Path(cfg["run"]["figure_dir"]))))
 
     elapsed = time.perf_counter() - started
     rp.write_doc_32(
@@ -4195,7 +4240,8 @@ def step32_leisure(cfg: Dict[str, Any],
          "system_break_even": pd.concat(system_crossings.values(),
                                         ignore_index=True),
          "features": feature_table, "decomposition": decomposition,
-         "rules": rules_frame, "position": position},
+         "rules": rules_frame, "position": position,
+         "returns": return_swept},
         figures,
         {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
          "strategy": key, "reference_age": reference, "arms": arms,
@@ -4207,7 +4253,8 @@ def step32_leisure(cfg: Dict[str, Any],
          "feature_verdict": feature_found, "means_test_bite": bite,
          "means_test_bite_legislated": bite_legislated,
          "bite_comparison": bite_gap,
-         "rule_verdict": rule_found, "replacement_targets": targets})
+         "rule_verdict": rule_found, "replacement_targets": targets,
+         "return_verdict": return_found})
     LOGGER.info("docs/32 written (%.0fs)", elapsed)
     state["leisure_break_even"] = crossings[headline]
     return state

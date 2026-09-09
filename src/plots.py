@@ -3316,6 +3316,65 @@ def plot_means_test(position: pd.DataFrame, quantiles: Sequence[int],
         return _save(fig, directory, name)
 
 
+#: Display names for the pension arms, so a figure never prints a config key.
+SYSTEM_LABEL: Mapping[str, str] = {
+    "us": "United States",
+    "au_pension_only": "Age Pension, no guarantee",
+    "au_as_legislated": "Australia as legislated",
+}
+
+
+def plot_return_sweep(swept: pd.DataFrame, found: Mapping[str, Any],
+                      directory: str | Path,
+                      name: str = "fig65_return_sweep") -> Path:
+    """What the withdrawal rule does to the comparison between pension systems.
+
+    One panel and one measure: certainty-equivalent consumption against the
+    real return an amortisation rule assumes, for each pension system. The
+    systems share the axis because they are the same quantity -- the whole
+    question is which curve is higher, and at which settings -- and putting
+    them on separate panels would hide exactly that.
+
+    The finding the picture has to carry is the crossing: the sign of the
+    gap between two systems is not a property of the pensions alone, it
+    depends on the rule the retiree spends by.
+    """
+    with plt.rc_context(STYLE):
+        fig, axes = _grid(1, 3.6, max_cols=1)
+        ax = axes[0]
+        order = [s for s in SYSTEM_LABEL if s in set(swept["system"])]
+        order += [s for s in sorted(set(swept["system"])) if s not in order]
+        for i, system in enumerate(order):
+            block = swept[swept["system"] == system]
+            curve = block.groupby("assumed_return")["cec"].max().sort_index()
+            x = 100.0 * curve.index.to_numpy(dtype=float)
+            y = curve.to_numpy(dtype=float)
+            ax.plot(x, y, marker=_marker(i), color=_colour(i), linewidth=1.6,
+                    markersize=3.2,
+                    label=_legend(SYSTEM_LABEL.get(system, system)))
+            peak = int(np.argmax(y))
+            ax.scatter([x[peak]], [y[peak]], s=30, facecolor="none",
+                       edgecolor=_colour(i), linewidth=1.2, zorder=4)
+        # Where the contender first overtakes the baseline. Ruled rather
+        # than shaded: it is a point on the dial, not a range.
+        crossing = float(found.get("crossing_return", float("nan")))
+        if np.isfinite(crossing):
+            ax.axvline(100.0 * crossing, color="0.45", linewidth=0.9,
+                       linestyle=":")
+            # At the top of the rule, not the bottom: the low-left corner
+            # is where the key sits and the label printed underneath it.
+            ax.annotate("Australia overtakes\nthe United States here",
+                        xy=(100.0 * crossing, 0.99),
+                        xycoords=("data", "axes fraction"), xytext=(4, 0),
+                        textcoords="offset points", fontsize=5.2,
+                        color="0.35", va="top", ha="left")
+        ax.set_xlabel("Real return the amortisation rule assumes (%)")
+        ax.set_ylabel("Certainty-equivalent consumption")
+        _title(ax, "The withdrawal rule decides which pension system wins")
+        _key(ax, loc="lower right", ncol=1)
+        return _save(fig, directory, name)
+
+
 def plot_longevity(swept: pd.DataFrame, shift: pd.DataFrame,
                    ablated: pd.DataFrame, found: Mapping[str, Any],
                    directory: str | Path,
