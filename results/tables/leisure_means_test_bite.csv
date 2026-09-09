@@ -1,2 +1,3 @@
-economy_average_income,full_rate,full_rate_replacement,free_area_multiple,cutoff_multiple,median_wealth,median_wealth_multiple,median_over_cutoff,share_above_cutoff,mean_benefit,benefit_replacement,share_receiving_nothing,us_benefit_replacement,reference_age
-1.5347,0.44927,0.2927,3.0143,6.7737,21.162,13.789,2.0357,0.8264,0.0601,0.0391,0.5854,0.4296,63.0
+economy_average_income,full_rate,full_rate_replacement,free_area_multiple,cutoff_multiple,median_wealth,median_wealth_multiple,median_over_cutoff,share_above_cutoff,mean_benefit,benefit_replacement,share_receiving_nothing,us_benefit_replacement,reference_age,household
+1.534736232243666,0.4492869049050311,0.29209599984828055,3.014330021789434,6.767475613460695,21.16206811643291,13.788732989965057,2.0375002109411207,0.83012,0.05996434275913203,0.0389847655523724,0.59277,0.4294241258750191,63.0,pension schedule only
+1.534736232243666,0.4492869049050311,0.29209599984828055,3.014330021789434,6.767475613460695,49.32771241554566,32.140840477475635,4.749310128808831,0.97775,0.028773257647903075,0.018706428720269428,0.79357,0.4294241258750191,63.0,as legislated
