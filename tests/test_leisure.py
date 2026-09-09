@@ -752,3 +752,121 @@ class TestRuleComparison:
         assert len(seen) == 4
         assert len(frame) == 4
         assert set(frame["rule"]) == {"a", "b"}
+
+
+class TestBiteComparison:
+    """`means_test_bite` answers "where does this household sit against the
+    assets test?" -- and the answer depends on which household is asked.
+
+    The 2x2 feature decomposition deliberately holds contributions fixed, so
+    its household carries no Superannuation Guarantee. That is right for
+    separating the pension's timing from its formula and wrong for any
+    sentence about an Australian retiree, who has one by law. Both are
+    measured; these pin the difference so the prose cannot quietly describe
+    one household with the other's numbers.
+    """
+
+    SCHEDULE = {"median_over_cutoff": 2.02, "share_above_cutoff": 0.823,
+                "benefit_replacement": 0.040}
+    LEGISLATED = {"median_over_cutoff": 4.71, "share_above_cutoff": 0.977,
+                  "benefit_replacement": 0.019}
+
+    def test_the_guarantee_pushes_the_household_further_past_the_test(self):
+        found = le.bite_comparison(self.SCHEDULE, self.LEGISLATED)
+        assert found["guarantee_pushes_clear"]
+        assert found["ratio"] == pytest.approx(4.71 / 2.02)
+
+    def test_a_test_reached_by_neither_household_is_flagged(self):
+        """A taper that is never reached cannot be the mechanism behind
+        anything, and that is the finding rather than a footnote."""
+        assert le.bite_comparison(self.SCHEDULE, self.LEGISLATED)[
+            "test_binds_on_neither"]
+
+    def test_a_household_inside_the_band_is_not_flagged(self):
+        inside = {**self.SCHEDULE, "median_over_cutoff": 0.6}
+        found = le.bite_comparison(inside, self.LEGISLATED)
+        assert not found["test_binds_on_neither"]
+
+    def test_both_households_are_carried_not_just_one(self):
+        found = le.bite_comparison(self.SCHEDULE, self.LEGISLATED)
+        assert found["schedule_over_cutoff"] == pytest.approx(2.02)
+        assert found["legislated_over_cutoff"] == pytest.approx(4.71)
+
+    def test_a_missing_household_reports_nothing(self):
+        assert not le.bite_comparison({}, self.LEGISLATED).get("measured",
+                                                              False)
+
+    def test_the_feature_spec_really_carries_no_guarantee(self) -> None:
+        """The bug this class exists for. `feature_overrides` sets the
+        pension schedule and nothing else, so a bite measured on it describes
+        a household without compulsory super -- which is correct for the 2x2
+        and must not be relabelled as the Australian household."""
+        from src import data_loader as dl
+
+        cfg = dl.load_config("config.yaml")
+        feature, _ = le.feature_overrides("both", cfg)
+        system, _ = le.system_overrides("au_as_legislated", cfg)
+        assert "super_guarantee_rate" not in feature
+        assert float(system["super_guarantee_rate"]) > 0.0
+
+
+class TestTestPosition:
+    """The frame behind the assets-test figure."""
+
+    @staticmethod
+    def _arms():
+        import types
+
+        from src import lifecycle as lc
+
+        spec = lc.LifecycleSpec(social_security_formula="means_tested",
+                                pension_full_rate=0.45,
+                                pension_free_area=3.0, pension_taper=0.078)
+        n, h = 400, spec.horizon
+        rng = np.random.default_rng(0)
+        econ = float(spec.deterministic_income().mean())
+        out = types.SimpleNamespace(
+            wealth_at_retirement=rng.lognormal(3.0, 0.6, n) * econ,
+            consumption=np.abs(rng.lognormal(0.0, 0.5, (n, h))) * econ,
+            social_security=np.full(n, 0.02 * econ),
+            career_average_income=np.full(n, econ))
+        return {"tested": (spec, out)}
+
+    def test_it_records_the_thresholds_and_the_share_past_them(self) -> None:
+        frame = le.test_position(self._arms())
+        row = frame.iloc[0]
+        assert bool(row["means_tested"])
+        assert row["cutoff"] > row["free_area"] > 0
+        assert 0.0 <= row["share_above_cutoff"] <= 1.0
+
+    def test_every_configured_quantile_is_carried(self) -> None:
+        frame = le.test_position(self._arms())
+        for q in le.WEALTH_QUANTILES:
+            assert f"wealth_p{q}" in frame
+
+    def test_the_quantiles_are_ordered(self) -> None:
+        row = le.test_position(self._arms()).iloc[0]
+        values = [float(row[f"wealth_p{q}"]) for q in le.WEALTH_QUANTILES]
+        assert values == sorted(values)
+
+    def test_the_grid_is_dense_enough_to_draw_as_a_curve(self) -> None:
+        """Nine points read as a dot-to-dot; the panel's job is showing
+        where the distribution crosses the cut-off."""
+        assert len(le.WEALTH_QUANTILES) >= 15
+
+    def test_an_untested_arm_carries_no_thresholds(self) -> None:
+        from src import lifecycle as lc
+
+        spec, out = self._arms()["tested"]
+        plain = dataclasses.replace(spec, pension_taper=0.0,
+                                    social_security_formula="progressive")
+        row = le.test_position({"us": (plain, out)}).iloc[0]
+        assert not bool(row["means_tested"])
+        assert np.isnan(float(row["cutoff"]))
+
+    def test_the_mean_and_the_tail_are_both_carried(self) -> None:
+        """Reporting either alone misleads: for the Australian household
+        they run in opposite directions."""
+        row = le.test_position(self._arms()).iloc[0]
+        assert row["p5_consumption"] < row["mean_consumption"]
+        assert row["p1_consumption"] <= row["p5_consumption"]

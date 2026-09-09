@@ -171,6 +171,98 @@ FEATURE_LABEL: Mapping[str, str] = {
 }
 
 
+#: Quantiles of wealth at retirement carried for the assets-test figure.
+WEALTH_QUANTILES: Tuple[int, ...] = (
+    1, 2, 5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 85, 90, 95, 98, 99)
+
+
+def test_position(arms: Mapping[str, Tuple[Any, Any]]) -> pd.DataFrame:
+    """Where each household lands against the assets test, and what it spends.
+
+    One row per arm. The wealth quantiles are what a figure needs to show
+    whether the taper is ever reached; the consumption quantiles are what it
+    needs to show why the arms differ when it is not. Both are carried
+    because the honest answer to "does the means test explain the gap?" is
+    that the gap is in the left tail and the test is never binding, and a
+    reader should be able to see both halves of that at once.
+
+    Everything is expressed in multiples of economy-average earnings so the
+    numbers mean the same thing across arms.
+    """
+    rows: List[Dict[str, Any]] = []
+    for label, (spec, outcome) in arms.items():
+        economy = float(spec.deterministic_income().mean())
+        wealth = np.asarray(outcome.wealth_at_retirement, dtype=float) / economy
+        window = outcome.consumption[:, spec.n_working:] / economy
+        taper = float(getattr(spec, "pension_taper", 0.0) or 0.0)
+        free = float(getattr(spec, "pension_free_area", 0.0) or 0.0)
+        full = float(getattr(spec, "pension_full_rate", 0.0) or 0.0)
+        row: Dict[str, Any] = {
+            "arm": str(label),
+            "means_tested": bool(taper > 0.0),
+            "free_area": free if taper else float("nan"),
+            "cutoff": (free + full / taper) if taper else float("nan"),
+            "median_wealth": float(np.median(wealth)),
+            "mean_consumption": float(window.mean()),
+            "p50_consumption": float(np.percentile(window, 50)),
+            "p5_consumption": float(np.percentile(window, 5)),
+            "p1_consumption": float(np.percentile(window, 1)),
+            "benefit_replacement": float(
+                np.mean(outcome.social_security)
+                / np.mean(outcome.career_average_income)),
+        }
+        # Dense enough to draw as a curve rather than a dot-to-dot: the
+        # panel's whole job is where the distribution crosses the cut-off.
+        for q in WEALTH_QUANTILES:
+            row[f"wealth_p{q}"] = float(np.percentile(wealth, q))
+        if taper:
+            row["share_above_cutoff"] = float(
+                np.mean(wealth > row["cutoff"]))
+        rows.append(row)
+    return pd.DataFrame.from_records(rows)
+
+
+def bite_comparison(schedule: Mapping[str, float],
+                    legislated: Mapping[str, float]) -> Dict[str, Any]:
+    """What the compulsory guarantee does to the household's means-test position.
+
+    :func:`means_test_bite` answers "where does this household sit against
+    the assets test?", and the answer depends entirely on which household is
+    asked. The 2x2 feature decomposition deliberately holds contributions
+    fixed, so its household saves only what the paper's own saver does and
+    carries no Superannuation Guarantee -- that is right for isolating the
+    pension's *timing* from its *formula*, and wrong for any sentence about
+    an Australian retiree, who has one by law.
+
+    Both are therefore measured and the gap between them classified, because
+    the direction is not obvious in advance: a bigger portfolio pushes the
+    household further past the cut-off, but only if the guarantee's
+    contribution outruns nothing else in the model.
+    """
+    if not schedule or not legislated:
+        return {"measured": False}
+    a = float(schedule["median_over_cutoff"])
+    b = float(legislated["median_over_cutoff"])
+    found: Dict[str, Any] = {
+        "measured": True,
+        "schedule_over_cutoff": a, "legislated_over_cutoff": b,
+        "schedule_above_share": float(schedule["share_above_cutoff"]),
+        "legislated_above_share": float(legislated["share_above_cutoff"]),
+        "schedule_replacement": float(schedule["benefit_replacement"]),
+        "legislated_replacement": float(legislated["benefit_replacement"]),
+        "ratio": b / a if a else float("nan"),
+        # The guarantee moves the household away from the test, not toward
+        # it, whenever the extra wealth outweighs nothing else -- which is
+        # the whole point of checking rather than assuming.
+        "guarantee_pushes_clear": bool(b > a),
+    }
+    # Whether the test binds at all for this household under either reading.
+    # "Never binds" is the finding when it holds: a taper that is never
+    # reached cannot be the mechanism behind anything.
+    found["test_binds_on_neither"] = bool(a > 1.0 and b > 1.0)
+    return found
+
+
 def guarantee_overrides(cfg: Mapping[str, Any]) -> Dict[str, Any]:
     """The Superannuation Guarantee, on the same base as everything else.
 

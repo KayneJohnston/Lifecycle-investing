@@ -7354,7 +7354,26 @@ def section_leisure(ctx: Any) -> List[Flowable]:
     feat = lei.feature_verdict(decomposition) if len(decomposition) \
         else {"measured": False}
     bite_frame = f.table("leisure_means_test_bite")
-    bite = bite_frame.iloc[0].to_dict() if len(bite_frame) else {}
+
+    def _household(name: str) -> dict:
+        """One row of the bite table by household.
+
+        Two are recorded: the 2x2's household, which holds contributions
+        fixed, and the one Australian law produces. Selecting by name rather
+        than by position means adding a third cannot silently repoint the
+        prose at a different household.
+        """
+        if not len(bite_frame):
+            return {}
+        if "household" not in bite_frame:
+            return bite_frame.iloc[0].to_dict()
+        rows = bite_frame[bite_frame["household"] == name]
+        return rows.iloc[0].to_dict() if len(rows) else {}
+
+    bite = _household("pension schedule only")
+    legislated = _household("as legislated")
+    gap = lei.bite_comparison(bite, legislated) if (bite and legislated) \
+        else {"measured": False}
     if feat.get("measured"):
         out.append(ctx.h2("#leisure.5 Which of the two differences does "
                           "the work"))
@@ -7416,12 +7435,13 @@ def section_leisure(ctx: Any) -> List[Flowable]:
                 f"withdrawing the pension at "
                 f"{float(bite['free_area_multiple']):.1f}× average earnings "
                 f"and reaches zero at "
-                f"{float(bite['cutoff_multiple']):.1f}×. The median retiree "
-                f"here holds {float(bite['median_wealth_multiple']):.1f}× — "
-                f"{float(bite['median_over_cutoff']):.1f} times the cut-off — "
-                f"so {float(bite['share_above_cutoff']):.0%} of them sit "
-                f"where the Age Pension has been tapered away entirely. "
-                f"Against a full rate worth "
+                f"{float(bite['cutoff_multiple']):.1f}×. The household in "
+                f"the 2×2 above — which holds contributions fixed, and so "
+                f"saves only what this paper's own saver does — has a median "
+                f"of {float(bite['median_wealth_multiple']):.1f}×, "
+                f"{float(bite['median_over_cutoff']):.1f} times the cut-off, "
+                f"with {float(bite['share_above_cutoff']):.0%} of them past "
+                f"it. Against a full rate worth "
                 f"{float(bite['full_rate_replacement']):.0%} of career-"
                 f"average income, what is actually paid averages "
                 f"{float(bite['benefit_replacement']):.1%}; the American "
@@ -7431,6 +7451,55 @@ def section_leisure(ctx: Any) -> List[Flowable]:
                 f"<i>designs</i>. It is substantially a comparison between a "
                 f"household that receives a pension and the same household "
                 f"receiving almost none."))
+        if gap.get("measured"):
+            out.append(ctx.p(
+                f"<b>That household is not, however, an Australian one.</b> "
+                f"Holding contributions fixed is what separates the "
+                f"pension's timing from its formula, and it is the wrong "
+                f"household for any sentence about Australia, which makes "
+                f"its contributions compulsory. Carrying the Superannuation "
+                f"Guarantee moves the median from "
+                f"{float(gap['schedule_over_cutoff']):.1f} to "
+                f"{float(gap['legislated_over_cutoff']):.1f} times the "
+                f"cut-off, the share past it from "
+                f"{float(gap['schedule_above_share']):.0%} to "
+                f"{float(gap['legislated_above_share']):.0%}, and what the "
+                f"pension actually replaces from "
+                f"{float(gap['schedule_replacement']):.1%} down to "
+                f"{float(gap['legislated_replacement']):.1%} of career "
+                f"income. The guarantee does not carry this household "
+                f"<i>through</i> the means test; it carries them "
+                f"{float(gap['ratio']):.1f} times further past it."))
+            if gap.get("test_binds_on_neither"):
+                out.append(ctx.p(
+                    "This settles what the taper can and cannot be blamed "
+                    "for. It is steep enough to act as a wealth tax — every "
+                    "dollar inside the band costs more pension a year than "
+                    "domestic equity earns in this panel — but a rate that "
+                    "is never reached cannot be the mechanism behind "
+                    "anything. Under either reading the household is past "
+                    "the cut-off before the test is applied, and the taper "
+                    "touches them only in the left tail, once a portfolio "
+                    "has already fallen far enough to qualify. What "
+                    "separates the two systems here is therefore not the "
+                    "withdrawal rate on the pension. It is that one system "
+                    "pays this household an unconditional annuity and the "
+                    "other pays them almost nothing, and the annuity is "
+                    "worth most exactly where the portfolio is worth "
+                    "least."))
+        out.extend(ctx.figure(
+            "fig64_means_test",
+            "What the assets test does, and does not, explain. Left, the "
+            "distribution of wealth at retirement for each household "
+            "against the band the taper operates in — on a log scale, "
+            "because the distance involved is multiplicative. Both "
+            "Australian households sit almost entirely to the right of the "
+            "band, so the taper is answered before it is applied. Right, "
+            "the mean and the fifth percentile of retirement consumption "
+            "for each. The two run in opposite directions: the household "
+            "with compulsory saving has the highest mean of the three and "
+            "nearly the lowest tail, which is the gap the certainty "
+            "equivalent is pricing."))
 
     # ---- the withdrawal rule is half the comparison ----------------------
     rules_frame = f.table("leisure_rule_comparison")
@@ -8556,13 +8625,16 @@ def section_conclusion(ctx: Any) -> List[Flowable]:
          f"{pen_au_gap:.2f}% and the best strategy becomes "
          f"<i>{_pretty_strategy(pen_au_winner)}</i> — the de-risking glide "
          f"path this paper spends most of its length arguing against. The "
-         f"mechanism is the taper, not the returns: inside the "
-         f"assets-tested band every extra dollar of assets costs more "
-         f"pension a year than any asset in this panel reliably earns, so a "
-         f"portfolio that stays smaller keeps an entitlement that a "
-         f"portfolio that grows loses. A glide path does exactly that, and "
-         f"under a means test it is being rewarded for it. Nothing about "
-         f"the return panel has changed; the objective function has."
+         f"mechanism is not the taper, which this household is past "
+         f"before the test is applied, but the floor: the American "
+         f"schedule pays an unconditional annuity and the Australian one "
+         f"pays this household almost nothing, so the portfolio's own left "
+         f"tail becomes the whole of retirement rather than the part of it "
+         f"a guaranteed income does not already cover. A retiree standing "
+         f"on a floor can afford the equity tail; one standing on their "
+         f"portfolio alone cannot, and a de-risking glide path is what "
+         f"that preference looks like. Nothing about the return panel has "
+         f"changed; the objective function has."
          if pen_au_reorders else
          "The allocation ranking survives that substitution — but the "
          "reason is worth more than the result. It survives because the "
@@ -9469,14 +9541,30 @@ def section_pension(ctx: Any) -> List[Flowable]:
          f"guarantee makes this saver rich enough that the test never "
          f"reaches them.")))
     out.append(ctx.p(
-        f"The mechanism is the taper. Inside the assets-tested band every "
-        f"extra dollar of assets costs {params['pension_taper']:.1%} of "
-        f"pension a year, which is more than any asset in this panel earns "
-        f"reliably in real terms. A portfolio that stays small keeps an "
-        f"entitlement that a portfolio that grows loses, so the means test "
-        f"pays a retiree to hold less risk — and it pays them at a rate the "
-        f"risk premium cannot match. Nothing about the returns has changed "
-        f"between these rows. The objective has."))
+        f"<b>The mechanism is the floor, not the taper.</b> The taper is "
+        f"certainly steep — {params['pension_taper']:.1%} of assessable "
+        f"assets a year, more than domestic equity earns on average in this "
+        f"panel — and it is tempting to read the reordering off it "
+        f"directly. That reading does not survive checking where this "
+        f"household stands. Section #leisure.5 measures it: under either "
+        f"reading of the contribution rate the household is past the "
+        f"cut-off before the test is applied, so the taper never operates "
+        f"on them in the central case. It reaches them only in the left "
+        f"tail, once a portfolio has already fallen far enough to qualify."))
+    out.append(ctx.p(
+        f"What the means test removes is the American schedule's "
+        f"unconditional annuity, and with it the floor under bad outcomes. "
+        f"A retiree standing on a floor can afford the equity tail; a "
+        f"retiree standing on their portfolio alone cannot, and a "
+        f"risk-averse objective prices that difference heavily. It shows in "
+        f"the numbers running in opposite directions at once: against the "
+        f"American baseline this household's mean retirement consumption is "
+        f"{au_mean:+.1f}% while its fifth percentile is {au_p5:+.1f}%. The "
+        f"control is the untested row above — pay the same flat Age Pension "
+        f"to everyone, means-testing nothing, and the ranking is unchanged "
+        f"even though the level falls. Nothing about the returns has "
+        f"changed between any of these rows. What changed is whether "
+        f"anything is guaranteed."))
     if poor_reorders and au_reorders:
         out.append(ctx.p(
             f"<b>How far it goes depends on the balance, not the country.</b> "

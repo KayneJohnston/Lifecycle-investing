@@ -4055,6 +4055,37 @@ def step32_leisure(cfg: Dict[str, Any],
         np.mean(us_out.social_security)
         / np.mean(us_out.career_average_income))
     bite["reference_age"] = float(reference)
+
+    # The same household, but carrying the Superannuation Guarantee it has
+    # by law. The 2x2 above deliberately holds contributions fixed, which is
+    # right for separating the pension's timing from its formula and wrong
+    # for any sentence about an Australian retiree: the guarantee moves
+    # wealth at retirement, and wealth at retirement is what the assets test
+    # reads. Both are measured so the prose can say which household it means.
+    leg_over, _ = le.system_overrides("au_as_legislated", cfg)
+    leg_spec = dataclasses.replace(pl.spec_for(spec, reference), **leg_over)
+    leg_out = _at_reference(leg_over)
+    bite_legislated = le.means_test_bite(leg_spec, leg_out)
+    bite_legislated["reference_age"] = float(reference)
+    bite_legislated["us_benefit_replacement"] = bite["us_benefit_replacement"]
+    bite_gap = le.bite_comparison(bite, bite_legislated)
+    LOGGER.info("assets test: schedule-only household sits at %.2fx the "
+                "cut-off (%.0f%% above), as legislated %.2fx (%.0f%%); "
+                "the test binds on neither: %s",
+                bite_gap.get("schedule_over_cutoff", float("nan")),
+                100 * bite_gap.get("schedule_above_share", float("nan")),
+                bite_gap.get("legislated_over_cutoff", float("nan")),
+                100 * bite_gap.get("legislated_above_share", float("nan")),
+                bite_gap.get("test_binds_on_neither"))
+
+    # What the figure needs: where each household's wealth falls against the
+    # test, and the tail of what they actually get to spend. The gap between
+    # the arms is a left-tail gap, not a taper gap, and a mean alone hides
+    # that in exactly the wrong direction.
+    position = le.test_position(
+        {"pension schedule only": (au_spec, _at_reference(au_over)),
+         "as legislated": (leg_spec, leg_out),
+         "united states": (pl.spec_for(spec, reference), us_out)})
     # ---- and under a rule that holds the standard of living fixed --------
     # Every comparison above spends a share of the portfolio, which makes
     # ruin nearly scale-invariant: the guarantee's extra wealth withdraws
@@ -4136,15 +4167,23 @@ def step32_leisure(cfg: Dict[str, Any],
     _save_table(pd.concat(system_crossings.values(), ignore_index=True),
                 tables, "leisure_systems_break_even")
     _save_table(comparison, tables, "leisure_systems_comparison")
+    _save_table(position, tables, "leisure_test_position")
     _save_table(features_swept, tables, "leisure_features_sweep")
     _save_table(feature_table, tables, "leisure_features_optimal")
     _save_table(decomposition, tables, "leisure_features_decomposition")
     _save_table(rules_frame, tables, "leisure_rule_comparison")
-    _save_table(pd.DataFrame([bite]), tables, "leisure_means_test_bite")
+    # Both households: the one the 2x2 decomposition holds contributions
+    # fixed for, and the one Australian law actually produces.
+    _save_table(pd.DataFrame([{**bite, "household": "pension schedule only"},
+                              {**bite_legislated, "household": "as legislated"}]),
+                tables, "leisure_means_test_bite")
 
     figures = [str(plots.plot_leisure(
         swept, optima[headline], crossings[headline], claim_tbl, anchors,
-        headline, spec, cfg["run"]["figure_dir"]))]
+        headline, spec, cfg["run"]["figure_dir"])),
+               str(plots.plot_means_test(
+                   position, le.WEALTH_QUANTILES,
+                   Path(cfg["run"]["figure_dir"])))]
 
     elapsed = time.perf_counter() - started
     rp.write_doc_32(
@@ -4156,7 +4195,7 @@ def step32_leisure(cfg: Dict[str, Any],
          "system_break_even": pd.concat(system_crossings.values(),
                                         ignore_index=True),
          "features": feature_table, "decomposition": decomposition,
-         "rules": rules_frame},
+         "rules": rules_frame, "position": position},
         figures,
         {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
          "strategy": key, "reference_age": reference, "arms": arms,
@@ -4166,6 +4205,8 @@ def step32_leisure(cfg: Dict[str, Any],
          "safety_net": float(lei_cfg.get("pre_pension_safety_net", 0.0)),
          "system_verdict": le.system_verdict(comparison),
          "feature_verdict": feature_found, "means_test_bite": bite,
+         "means_test_bite_legislated": bite_legislated,
+         "bite_comparison": bite_gap,
          "rule_verdict": rule_found, "replacement_targets": targets})
     LOGGER.info("docs/32 written (%.0fs)", elapsed)
     state["leisure_break_even"] = crossings[headline]

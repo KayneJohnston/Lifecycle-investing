@@ -54,11 +54,16 @@ average earnings, paid for life regardless of what the retiree owns. That is
 a risk-free real annuity, and a large part of what looks like portfolio
 performance is standing on it. Swap it for Australia's means-tested Age
 Pension plus its compulsory 12% Superannuation Guarantee and the ordering
-above reverses: the de-risking glide path wins, because inside the
-assets-test taper a dollar of extra wealth costs more pension a year than any
-asset in this panel reliably earns. It is the only place in the project where
-the headline ranking fails, and it fails on a change to the pension rather
-than to the returns. See
+above reverses: the de-risking glide path wins. Not because of the taper --
+this household is past the assets test's cut-off before the test is applied,
+so the taper reaches them only in the left tail -- but because the means test
+removes the floor. An unconditional annuity is what lets a retiree carry the
+equity tail; without one the portfolio's own worst outcomes become the whole
+of retirement, and a smaller tail is worth more than a bigger mean. That
+household's mean retirement consumption is *higher* than the American one and
+its fifth percentile is lower. It is the only place in the project where the
+headline ranking fails, and it fails on a change to the pension rather than to
+the returns. See
 [`docs/25_pension_system.md`](docs/25_pension_system.md).
 
 See [`docs/04_replicated_results_and_tables.md`](docs/04_replicated_results_and_tables.md)

@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
+from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 LOGGER = logging.getLogger(__name__)
@@ -3234,6 +3235,85 @@ def _can_deplete(preference: pd.DataFrame, rule: str) -> bool:
         return True
     row = preference[preference["rule_label"] == rule]
     return True if not len(row) else bool(row.iloc[0]["can_deplete"])
+
+
+def plot_means_test(position: pd.DataFrame, quantiles: Sequence[int],
+                    directory: str | Path,
+                    name: str = "fig64_means_test") -> Path:
+    """Whether the assets test ever binds, and what separates the arms when it
+    does not.
+
+    Two panels because two questions. The left asks where each household's
+    wealth at retirement falls against the taper -- drawn as a distribution
+    rather than a median, because "the median is above the cut-off" and "the
+    whole distribution is above the cut-off" are different claims and only
+    the second licenses the sentence the paper wants. The right asks what
+    actually separates the arms once the test is answered, and the answer is
+    in the left tail: the mean runs the other way from the fifth percentile,
+    so plotting either alone would mislead.
+    """
+    with plt.rc_context(STYLE):
+        fig, axes = _grid(2, 3.5, hspace=0.42, wspace=0.34)
+        qs = np.asarray(list(quantiles), dtype=float)
+
+        # -- 1. the distribution of wealth, against the test's thresholds ---
+        ax = axes[0]
+        for i, (_, row) in enumerate(position.iterrows()):
+            x = np.array([float(row[f"wealth_p{int(q)}"]) for q in qs])
+            ax.plot(x, qs, marker=_marker(i), color=_colour(i), linewidth=1.5,
+                    markersize=3.0, label=_legend(str(row["arm"])))
+        tested = position[position["means_tested"]]
+        if len(tested):
+            free = float(tested["free_area"].iloc[0])
+            cut = float(tested["cutoff"].iloc[0])
+            # The band the taper actually operates in. Everything to its
+            # right receives nothing, which is the finding.
+            ax.axvspan(free, cut, color="0.90", zorder=0)
+            # Labelled at the top of the band, clear of both the curves and
+            # the key: at the bottom it printed underneath the legend box.
+            ax.annotate("the taper\noperates here", xy=(cut, 0.99),
+                        xycoords=("data", "axes fraction"), xytext=(4, 0),
+                        textcoords="offset points", fontsize=5.0,
+                        color="0.35", va="top", ha="left")
+        ax.set_xscale("log")
+        ax.set_xlabel("Wealth at retirement (× average earnings)")
+        ax.set_ylabel("Percentile of households")
+        _title(ax, "Where the household lands on the assets test")
+        _key(ax, loc="lower right", ncol=1)
+
+        # -- 2. the mean runs the other way from the tail ------------------
+        ax = axes[1]
+        pos = np.arange(len(position))
+        for i, (_, row) in enumerate(position.iterrows()):
+            lo, hi = float(row["p5_consumption"]), float(row["mean_consumption"])
+            # A connector, not a bar: the pair is the point, and a bar from
+            # zero would invite reading the length as the quantity.
+            ax.plot([lo, hi], [i, i], color="0.72", linewidth=1.4, zorder=1)
+            ax.scatter([lo], [i], s=34, color=_colour(i), marker=_marker(i),
+                       zorder=3, edgecolor="white", linewidth=0.6)
+            ax.scatter([hi], [i], s=34, facecolor="none", edgecolor=_colour(i),
+                       marker=_marker(i), linewidth=1.2, zorder=3)
+            ax.annotate(f"{lo:.2f}", (lo, i), xytext=(0, -9),
+                        textcoords="offset points", ha="center", fontsize=5.0)
+            ax.annotate(f"{hi:.2f}", (hi, i), xytext=(0, 7),
+                        textcoords="offset points", ha="center", fontsize=5.0)
+        ax.set_yticks(pos)
+        ax.set_yticklabels([_flat(str(a), 26) for a in position["arm"]],
+                           fontsize=5.2)
+        ax.set_ylim(-0.7, len(position) - 0.3)
+        ax.set_xlabel("Retirement consumption (× average earnings)")
+        handles = [
+            Line2D([], [], marker="o", color="0.35", linestyle="none",
+                   markersize=4, label="fifth percentile"),
+            Line2D([], [], marker="o", markerfacecolor="none",
+                   markeredgecolor="0.35", color="0.35", linestyle="none",
+                   markersize=4, label="mean"),
+        ]
+        ax.legend(handles=handles, fontsize=5.0, loc="lower right",
+                  frameon=True, framealpha=0.92, edgecolor="none")
+        _title(ax, "The mean and the tail disagree")
+
+        return _save(fig, directory, name)
 
 
 def plot_longevity(swept: pd.DataFrame, shift: pd.DataFrame,

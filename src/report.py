@@ -10055,6 +10055,43 @@ def write_doc_32(
     else:
         bite_line = ""
 
+    # The 2x2 holds contributions fixed, which is right for separating the
+    # pension's timing from its formula and wrong for describing Australia.
+    gap = notes.get("bite_comparison", {"measured": False})
+    if gap.get("measured"):
+        gap_line = (
+            f"**But that household is not an Australian one.** Holding "
+            f"contributions fixed is what isolates the pension's timing from "
+            f"its formula; Australia makes contributions compulsory. "
+            f"Carrying the Superannuation Guarantee moves the median from "
+            f"{float(gap['schedule_over_cutoff']):.1f} to "
+            f"{float(gap['legislated_over_cutoff']):.1f} times the cut-off, "
+            f"the share past it from "
+            f"{float(gap['schedule_above_share']):.0%} to "
+            f"{float(gap['legislated_above_share']):.0%}, and what the "
+            f"pension replaces from "
+            f"{float(gap['schedule_replacement']):.1%} to "
+            f"{float(gap['legislated_replacement']):.1%} of career income. "
+            f"The guarantee does not carry this household *through* the "
+            f"means test. It carries them {float(gap['ratio']):.1f} times "
+            f"further past it.")
+        if gap.get("test_binds_on_neither"):
+            gap_line += (
+                "\n\nWhich settles what the taper can be blamed for. It is "
+                "steep enough to act as a wealth tax -- a dollar inside the "
+                "band costs more pension a year than domestic equity earns "
+                "in this panel -- but a rate that is never reached cannot be "
+                "the mechanism behind anything. Under either reading this "
+                "household is past the cut-off before the test is applied, "
+                "and the taper reaches them only in the left tail, once the "
+                "portfolio has already fallen far enough to qualify. What "
+                "separates the two systems is not the withdrawal rate on the "
+                "pension; it is that one pays an unconditional annuity and "
+                "the other pays almost nothing, and the annuity is worth "
+                "most exactly where the portfolio is worth least.")
+    else:
+        gap_line = ""
+
     # ---- and under a rule that fixes the standard of living -------------
     rulefound = notes.get("rule_verdict", {"measured": False})
     rules_frame = frames.get("rules", pd.DataFrame())
@@ -10252,6 +10289,17 @@ then both, against the same baseline.
 {feature_line}
 
 {bite_line}
+
+{gap_line}
+
+Where each household lands against the test, and what actually separates
+them once it is answered, are both in
+`results/figures/fig64_means_test.png`. The left panel is a distribution
+rather than a median because "the median is past the cut-off" and "the
+distribution is past the cut-off" are different claims and only the second
+licenses the sentence above. The right panel puts the mean beside the fifth
+percentile, because for the Australian household they run in opposite
+directions.
 
 ## 8. The withdrawal rule is half the comparison
 
