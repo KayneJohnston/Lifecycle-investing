@@ -2024,7 +2024,7 @@ def section_baseline(ctx: Any) -> List[Flowable]:
         font_size=7.2))
 
     out.append(ctx.p(
-        f"The ordering is unambiguous at every risk aversion tested. At "
+        f"<b>The ordering is unambiguous at every risk aversion tested.</b> At "
         f"γ = {gamma:g} the 50/50 all-equity portfolio delivers a certainty "
         f"equivalent of {f2(float(eq[f'cec_crra_gamma{gamma:g}']), 3)} against "
         f"{f2(float(tdf[f'cec_crra_gamma{gamma:g}']), 3)} for the target-date "
@@ -2034,8 +2034,8 @@ def section_baseline(ctx: Any) -> List[Flowable]:
         f"{f.advantage('balanced_all_equity', 'sixty_forty'):.1f}%, and "
         f"against bills {f.advantage('balanced_all_equity', 'bills_only'):.1f}%."))
     out.append(ctx.p(
-        f"What makes the result more than a restatement of the equity premium "
-        f"is the tail behaviour. The all-equity portfolio has a "
+        f"<b>What makes the result more than a restatement of the equity premium "
+        f"is the tail behaviour.</b> The all-equity portfolio has a "
         f"<i>lower</i> ruin probability ({pc(float(eq['prob_ruin']), 1)}) than "
         f"the target-date fund ({pc(float(tdf['prob_ruin']), 1)}), a higher "
         f"fifth-percentile retirement consumption "
@@ -2055,7 +2055,7 @@ def section_baseline(ctx: Any) -> List[Flowable]:
 
     out.append(ctx.h2("#baseline.2 The mechanism is international, not equity"))
     out.append(ctx.p(
-        f"Domestic equity alone is <i>not</i> the winning strategy. Its "
+        f"<b>Domestic equity alone is <i>not</i> the winning strategy.</b> Its "
         f"certainty equivalent at γ = {gamma:g} is "
         f"{f2(float(dom[f'cec_crra_gamma{gamma:g}']), 3)}, below the 50/50 "
         f"portfolio's {f2(float(eq[f'cec_crra_gamma{gamma:g}']), 3)}, and its "
@@ -2068,8 +2068,8 @@ def section_baseline(ctx: Any) -> List[Flowable]:
         f"real investor has "
         f"that opportunity set without also holding their own market."))
     out.append(ctx.p(
-        f"This is the one place the replication does not reproduce ACO's "
-        f"headline. Their recommended portfolio is an even 50/50 split, held "
+        f"<b>This is the one place the replication does not reproduce ACO's "
+        f"headline.</b> Their recommended portfolio is an even 50/50 split, held "
         f"for life; on this panel that split is beaten by the international "
         f"leg alone. We read the difference as a property of a "
         f"{f.panel['n_tier_a']}-country panel rather than a correction to "
@@ -2288,11 +2288,11 @@ def section_sensitivity(ctx: Any) -> List[Flowable]:
         "and maximum advantage observed across the settings in that dimension; "
         "no bar crosses zero."))
     out.append(ctx.p(
-        f"Risk aversion is the widest dimension, as it should be: the "
+        f"<b>Risk aversion is the widest dimension, as it should be: the "
         f"advantage over a 60/40 portfolio ranges from "
         f"{f2(float(tornado['min_advantage_pct'].iloc[0]), 1)}% to "
         f"{f2(float(tornado['max_advantage_pct'].iloc[0]), 1)}% across "
-        f"γ over [1, 20]. It narrows as γ rises but does not close. Fitting "
+        f"γ over [1, 20].</b> It narrows as γ rises but does not close. Fitting "
         f"the "
         f"crossover point directly, the certainty-equivalent lines do not "
         f"intersect within the tested range for either the target-date fund or "
@@ -2337,7 +2337,7 @@ def section_sensitivity(ctx: Any) -> List[Flowable]:
              "international construction, which gives the international leg a "
              "diversification advantage no individual investor can replicate."))
     out.append(ctx.p(
-        f"The equity optimum sits at 100% at every risk aversion tested. The "
+        f"<b>The equity optimum sits at 100% at every risk aversion tested.</b> The "
         f"domestic-share optimum is more interesting: it is "
         f"{pc(float(dom_opt['optimal_domestic_share'].iloc[0]), 0)} at "
         f"γ = 2 and rises to "
@@ -2495,8 +2495,8 @@ def section_sequence(ctx: Any) -> List[Flowable]:
          f"{found['share_accumulation']:.1%} for the working years — a factor "
          f"of {found['retirement_over_accumulation']:.1f}.")))
     out.append(ctx.p(
-        f"The whole-lifetime figure exceeds the two phases added together, "
-        f"and that is not an inconsistency. Shuffling the whole lifetime lets "
+        f"<b>The whole-lifetime figure exceeds the two phases added together, "
+        f"and that is not an inconsistency.</b> Shuffling the whole lifetime lets "
         f"a year lived at eighty land at twenty-six, so it captures the "
         f"interaction between the phases as well as the ordering inside each "
         f"— which the phase-restricted shuffles hold fixed by construction."))
@@ -2600,12 +2600,12 @@ def section_sequence(ctx: Any) -> List[Flowable]:
              f"order the returns happened to arrive in.")))
         if narrows:
             out.append(ctx.p(
-                f"The lead does narrow, and by enough to be worth stating: "
+                f"<b>The lead does narrow, and by enough to be worth stating: "
                 f"{leads['none']:+.2f}% on the drawn order against "
                 f"{leads['both']:+.2f}% on a random one, so shuffling "
                 f"absorbs "
                 f"{(1 - leads['both'] / leads['none']):.0%} of the gap "
-                f"between the two portfolios. Ordering does not reverse the "
+                f"between the two portfolios.</b> Ordering does not reverse the "
                 f"comparison, but it is not neutral to it either: a saver "
                 f"unlucky in the order banks less of the advantage the "
                 f"allocation offers."))
@@ -2810,8 +2810,8 @@ def section_glide(ctx: Any) -> List[Flowable]:
              "glide. The benchmarks are the same six strategies used "
              "throughout."))
     out.append(ctx.p(
-        f"The free-form solution beats every benchmark, but by a margin that "
-        f"matters less than its <i>shape</i>. Across the three restarts the "
+        f"<b>The free-form solution beats every benchmark, but by a margin that "
+        f"matters less than its <i>shape</i>.</b> Across the three restarts the "
         f"solved schedule holds a mean equity share of "
         f"{pc(float(restarts['mean_equity_share'].max()), 1)} and sits at a "
         f"full equity allocation in "
@@ -2849,8 +2849,8 @@ def section_glide(ctx: Any) -> List[Flowable]:
 
     out.append(ctx.h2("#glide.2 The dip belongs to the withdrawal rule"))
     out.append(ctx.p(
-        "The solved schedule is not quite flat: under the baseline 4% rule it "
-        "dips at the retirement date and recovers afterwards. That is worth "
+        "<b>The solved schedule is not quite flat: under the baseline 4% rule it "
+        "dips at the retirement date and recovers afterwards.</b> That is worth "
         "explaining rather than smoothing away, because the obvious reading "
         "-- that the model has rediscovered the glide path after all -- is "
         "the wrong one."))
@@ -2928,8 +2928,8 @@ def section_glide(ctx: Any) -> List[Flowable]:
         "from wealth on that one date; the rules that read the portfolio as "
         "it stands solve flat."))
     out.append(ctx.p(
-        "The conclusion of this section is stronger than the one the "
-        "benchmark comparison supports. It is not merely that the target-date "
+        "<b>The conclusion of this section is stronger than the one the "
+        "benchmark comparison supports.</b> It is not merely that the target-date "
         "glide path is worse than an all-equity portfolio on this panel; it is "
         "that when the schedule is allowed to be anything, the optimiser does "
         "not choose a glide path at all — and the one age-related feature it "
@@ -4452,7 +4452,7 @@ def section_retirement(ctx: Any) -> List[Flowable]:
              f"{pc(floor, 0)} of average earnings.",
         font_size=7.2))
     out.append(ctx.p(
-        "Read naively this table says wealth triggers beat fixed dates. That "
+        "<b>Read naively this table says wealth triggers beat fixed dates.</b> That "
         "reading is wrong, and the reason is instructive enough to spend a "
         "paragraph on. The model as run in this section puts no value on "
         "leisure — Section #leisure adds one and re-solves the date around "
@@ -4523,8 +4523,8 @@ def section_retirement(ctx: Any) -> List[Flowable]:
         f"{pc(float(bull['mean_runup_early_retirees']), 1)} against "
         f"{pc(float(bull['mean_runup_late_retirees']), 1)} for late ones."))
     out.append(ctx.p(
-        f"The second question is the interesting one, and the answer is "
-        f"reassuring for the trigger. The correlation between the run-up and "
+        f"<b>The second question is the interesting one, and the answer is "
+        f"reassuring for the trigger.</b> The correlation between the run-up and "
         f"the <i>subsequent</i> return is "
         f"{f2(float(bull['corr_runup_vs_subsequent_return']), 3)} — "
         f"essentially zero. On this panel, retiring after a good decade does "
@@ -4585,7 +4585,7 @@ def section_saving(ctx: Any) -> List[Flowable]:
 
     out.append(ctx.h2("#saving.1 A caveat that has to come first"))
     out.append(ctx.p(
-        f"The model cannot identify the savings <i>level</i>. Swept "
+        f"<b>The model cannot identify the savings <i>level</i>.</b> Swept "
         f"continuously, the certainty equivalent peaks at a constant rate of "
         f"{pc(float(peak['savings_rate']), 0)} and falls above it. That number "
         f"should not be believed and it is worth being explicit about why."))
@@ -4639,7 +4639,7 @@ def section_saving(ctx: Any) -> List[Flowable]:
         "reader is; what it can say is that both beat a flat rate and that "
         "getting the shape right matters more the more risk-averse you are."))
     out.append(ctx.p(
-        f"Unlike the glide path of Section #glide, this structure is real. The "
+        f"<b>Unlike the glide path of Section #glide, this structure is real.</b> The "
         f"deviation profile shows {len(material)} of {len(deviation)} working "
         f"years moving the objective by more than a basis point when reset to "
         f"the career average."))
@@ -4669,8 +4669,8 @@ def section_saving(ctx: Any) -> List[Flowable]:
              "frontier at each rule's own realised mean strips that out.",
         font_size=7.2))
     out.append(ctx.p(
-        "Saving more when behind an age-appropriate wealth target is worth "
-        "several times what the age profile alone is worth. Saving more after "
+        "<b>Saving more when behind an age-appropriate wealth target is worth "
+        "several times what the age profile alone is worth.</b> Saving more after "
         "a bad market year is worth almost nothing. The sign check behaves as "
         "it must: reversing the on-track rule — saving <i>less</i> when behind "
         "— is strongly negative, which is the reassurance that the machinery "
@@ -4869,8 +4869,8 @@ def section_accumulation(ctx: Any) -> List[Flowable]:
              "a path a quarter short of target at mid-career.",
         font_size=7.2))
     out.append(ctx.p(
-        f"Ranked at their own optima the two scale-free forms are "
-        f"indistinguishable and both beat the level gap. But that comparison "
+        f"<b>Ranked at their own optima the two scale-free forms are "
+        f"indistinguishable and both beat the level gap.</b> But that comparison "
         f"is not quite fair, because the three grids do not reach equally far. "
         f"Interpolating every curve at the strongest response <i>all</i> of "
         f"them can produce separates \"this form is better\" from \"this "
@@ -4924,11 +4924,11 @@ def section_accumulation(ctx: Any) -> List[Flowable]:
              "well above target and ease-off alone cuts it well below, so only "
              "the matched-rate comparison makes them comparable."))
     out.append(ctx.p(
-        f"Net of the age profile, catching up alone is worth "
+        f"<b>Net of the age profile, catching up alone is worth "
         f"{sgn(net(best_behind))}% and easing off alone "
         f"{sgn(net(best_ahead))}% — a ratio of "
         f"{f2(max(net(best_behind), net(best_ahead)) / max(min(net(best_behind), net(best_ahead)), 1e-9), 2)}, "
-        f"which on any reasonable reading is a tie. That is itself the "
+        f"which on any reasonable reading is a tie.</b> That is itself the "
         f"finding, because the two halves are not symmetric in anything except "
         f"their value: catch-up alone raises the career savings rate to "
         f"{pc(float(best_behind['mean_savings_rate']), 1)} and ease-off alone "
@@ -5030,9 +5030,9 @@ def section_accumulation(ctx: Any) -> List[Flowable]:
              "flat multiple holds the same multiple at every age and serves "
              "as a deliberate straw man."))
     out.append(ctx.p(
-        f"The published ladder captures "
+        f"<b>The published ladder captures "
         f"{f2(100 * target_net('published ladder') / max(target_net('model median path'), 1e-9), 0)}% "
-        f"of the model-implied target's value — useful, but not a substitute. "
+        f"of the model-implied target's value — useful, but not a substitute.</b> "
         f"The flat multiple is worth "
         f"{sgn(target_net([t for t in unscaled['target'] if t.startswith('flat')][0]))}%: "
         f"<b>worse than not conditioning at all</b>. Telling a 28-year-old "
@@ -5224,7 +5224,7 @@ def section_accumulation(ctx: Any) -> List[Flowable]:
              "three non-overlapping windows tile the career and are the ones "
              "the discussion relies on."))
     out.append(ctx.p(
-        "The value rises monotonically with age across the three tiles. The "
+        "<b>The value rises monotonically with age across the three tiles.</b> The "
         "balance is close to uninformative when there is barely any of it and "
         "decades left to recover; it becomes informative once a shortfall is "
         "large in absolute terms and there is little time left to fix it. The "
@@ -6828,8 +6828,8 @@ def section_sleeve(ctx: Any) -> List[Flowable]:
     d_corr = float(g["correlation_with_domestic"]) \
         - float(e["correlation_with_domestic"])
     out.append(ctx.p(
-        f"The correlation column carries a result that reads as a surprise "
-        f"and is not one. Concentrating the sleeve by economy size moves its "
+        f"<b>The correlation column carries a result that reads as a surprise "
+        f"and is not one.</b> Concentrating the sleeve by economy size moves its "
         f"correlation with the home market {'down' if d_corr < 0 else 'up'} "
         f"by {abs(d_corr):.3f}. Because the sleeve is leave-one-out, loading "
         f"it onto the largest economies makes the typical investor's foreign "
@@ -10467,8 +10467,9 @@ def section_franking(ctx: Any) -> List[Flowable]:
     if len(granked):
         break_even = frk.break_even_franked_share(acc_company, fund_tax)
         out.append(ctx.p(
-            f"Partial franking scales it, and no market's franking level is "
-            f"observable in this project's data, so it is swept rather than "
+            f"<b>Partial franking scales the credit down, and can take it "
+            f"below zero.</b> No market's franking level is observable in "
+            f"this project's data, so the share is swept rather than "
             f"assumed. Inside a fund taxed at {fund_tax:.0%} the credit has "
             f"that tax to make back before it is worth anything at all, and "
             f"solving for where it does gives {break_even:.1%} of dividends "
