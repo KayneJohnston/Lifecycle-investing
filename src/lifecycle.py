@@ -87,6 +87,15 @@ class LifecycleSpec:
     # retirement only -- but it is an assumption, and `docs/25` says so.
     super_guarantee_rate: float = 0.0
     super_contributions_tax: float = 0.15
+    #: Who actually pays for the guarantee. Its *statutory* incidence is on
+    #: the employer, which is what zero models: take-home pay is untouched
+    #: and the contribution is free to the worker. Most of the empirical
+    #: literature finds the *economic* incidence falls on wages, which is
+    #: one: the worker funds every dollar out of forgone pay. Anything in
+    #: between splits it. This is not a detail -- at zero the Australian arm
+    #: receives thirteen per cent of income that the American arm does not,
+    #: and any comparison between the two is generous to it by that much.
+    super_incidence: float = 0.0
 
     #: Working years averaged to set "pre-retirement income" for a
     #: replacement-rate spending rule. Five damps the transitory shock without
@@ -160,6 +169,17 @@ class LifecycleSpec:
     pension_free_area: float = 3.01
     pension_taper: float = 0.078
 
+    #: The balance the household actually arrives at retirement with, as a
+    #: multiple of the one this model's contribution assumptions produce.
+    #: One is the model's own household. Below one is the same worker --
+    #: same career, same take-home pay, same forty years of saving -- who
+    #: reaches the pension age holding less, which is the only way to put a
+    #: household anywhere near an assets test whose cut-off is under seven
+    #: times average earnings. It is applied at the retirement boundary and
+    #: nowhere else, so working-life consumption is untouched and the two
+    #: arms differ in the state variable alone. See `docs/35`.
+    retirement_balance_scale: float = 1.0
+
     retirement_rule: str = "fixed_real_rule"
     rule_rate: float = 0.04
     allow_ruin: bool = True
@@ -194,6 +214,10 @@ class LifecycleSpec:
             raise ValueError("super_guarantee_rate must lie in [0, 1)")
         if not 0.0 <= self.super_contributions_tax < 1.0:
             raise ValueError("super_contributions_tax must lie in [0, 1)")
+        if not 0.0 <= self.super_incidence <= 1.0:
+            raise ValueError("super_incidence must lie in [0, 1]")
+        if self.retirement_balance_scale <= 0.0:
+            raise ValueError("retirement_balance_scale must be positive")
         if not 0.0 <= self.income_tax_rate < 1.0:
             raise ValueError("income_tax_rate must lie in [0, 1)")
         if not -1.0 < self.fund_tax_drag < 1.0:
@@ -755,10 +779,21 @@ def simulate(
     for h in range(spec.n_working):
         voluntary = spec.savings_rate * income[:, h]
         employer = employer_rate * income[:, h]
-        consumption[:, h] = income[:, h] - voluntary
+        # The guarantee is charged to the worker in proportion to its
+        # economic incidence. At zero it is free money and working-life
+        # consumption is untouched; at one the worker pays for all of it in
+        # forgone wages and consumes that much less for forty years.
+        consumption[:, h] = (income[:, h] - voluntary
+                             - spec.super_incidence * employer)
         wealth[:, h + 1] = ((wealth[:, h] + voluntary + employer)
                             * (1.0 + working_return[:, h]))
 
+    # The counterfactual balance, applied once and at the boundary. Scaling
+    # contributions instead would move working-life consumption too, and
+    # then a difference in the retiree's allocation could not be read as a
+    # response to the balance rather than to what was given up for it.
+    if spec.retirement_balance_scale != 1.0:
+        wealth[:, spec.n_working] *= float(spec.retirement_balance_scale)
     wealth_at_retirement = wealth[:, spec.n_working].copy()
 
     # --- social security --------------------------------------------------

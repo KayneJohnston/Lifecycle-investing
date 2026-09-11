@@ -32,6 +32,7 @@ from src import franking as fk
 from src import glidepath as gp
 from src import hedging as hg
 from src import housing as hsg
+from src import incidence as inc
 from src import inflation as inf
 from src import leisure as le
 from src import leverage as lev
@@ -4633,6 +4634,202 @@ def step34_longevity(cfg: Dict[str, Any],
     return state
 
 
+def step35_incidence(cfg: Dict[str, Any],
+                     state: Dict[str, Any]) -> Dict[str, Any]:
+    """Charge the guarantee; then move the balance until the test bites."""
+    block = cfg.get("incidence", {})
+    if not block.get("enabled", False):
+        LOGGER.info("incidence study disabled; skipping step 35")
+        return state
+    LOGGER.info("=== STEP 35: who pays for the guarantee ===")
+    started = time.perf_counter()
+
+    panel = state.get("panel") or dl.build_panel(cfg)
+    spec = state.get("spec") or lc.spec_from_config(cfg)
+    gamma = float(cfg["utility"]["baseline_risk_aversion"])
+    beta = float(cfg["utility"]["discount_factor"])
+    util = cfg["utility"]
+    n_paths = int(block.get("n_paths", cfg["bootstrap"]["n_paths"]))
+    for chunk in bs.from_config(panel, cfg).chunks(n_paths, n_paths):
+        paths = chunk
+
+    over, _ = le.system_overrides("au_as_legislated", cfg)
+    bond_share = float(cfg.get("glide", {}).get("bond_share", 0.7))
+    domestic = float(block.get("domestic_share", 0.1))
+    equities = [float(x) for x in block.get("equity_grid", (1.0,))]
+    base = dataclasses.replace(spec, **over)
+
+    def _spec_for(alpha: float) -> Any:
+        return dataclasses.replace(base, super_incidence=float(alpha))
+
+    def _spec_at(scale: float) -> Any:
+        return dataclasses.replace(base, retirement_balance_scale=float(scale))
+
+    # The accumulation allocation for the balance dial. Held at the
+    # project's headline portfolio rather than swept, for two reasons that
+    # are really one. The prediction being tested is about the *retiree's*
+    # allocation, and an equity share applied from age 25 would also decide
+    # the balance it is then being evaluated at -- so the household's
+    # position against the assets test would be endogenous to the very
+    # choice the sweep is trying to explain, and two adjacent points on the
+    # balance grid could differ more in wealth than the grid step implies.
+    accumulation_equity = float(block.get("accumulation_equity", 1.0))
+
+    def _run(aged: Any, equity: float, *, retiree_only: bool = False) -> Any:
+        income = lc.simulate_income(
+            aged, n_paths, np.random.default_rng(int(cfg["run"]["seed"])),
+            dom_eq=paths.dom_eq, intl_eq=paths.intl_eq)
+        shares = np.full(aged.horizon, equity)
+        if retiree_only:
+            shares[:aged.n_working] = accumulation_equity
+        weights = gp.weights_from_shares(shares,
+                                         np.full(aged.horizon, domestic),
+                                         bond_share)
+        strategy = lc.Strategy(key="grid",
+                               label=f"equity {equity:.0%}", weights=weights)
+        return lc.simulate(paths, strategy, aged, income)
+
+    # Two objectives, because the two dials ask different questions and
+    # only one of them is visible to the project's usual one. The standard
+    # certainty equivalent scores the *retirement* window, so it cannot see
+    # the incidence of the guarantee at all: charging a worker for forty
+    # years changes nothing about the retiree's problem, and reporting a
+    # flat line off that measure would be an artefact of the window rather
+    # than a finding. The lifetime measure scores every year of the
+    # simulation, which is where a working-life transfer actually lands.
+    lifetime_cfg = dict(cfg)
+    lifetime_cfg["utility"] = dict(util, consumption_window="full")
+
+    def _score_with(aged: Any) -> Any:
+        def _score(outcome: Any) -> Dict[str, Any]:
+            window = outcome.consumption[:, aged.n_working:]
+            return {
+                "cec": float(ut.crra_certainty_equivalent(
+                    ut.bundle_from_outcome(outcome, cfg, aged), gamma, beta,
+                    float(util["bequest_weight"]),
+                    bool(util["bequest_enabled"]))),
+                "cec_lifetime": float(ut.crra_certainty_equivalent(
+                    ut.bundle_from_outcome(outcome, lifetime_cfg, aged),
+                    gamma, beta, float(util["bequest_weight"]),
+                    bool(util["bequest_enabled"]))),
+                "prob_ruin": float(np.mean(outcome.ruin)),
+                "mean_consumption": float(window.mean()),
+                "p5_consumption": float(np.percentile(window, 5)),
+                "mean_working_consumption": float(
+                    outcome.consumption[:, :aged.n_working].mean()),
+            }
+        return _score
+
+    # -- dial one: who pays for the guarantee -----------------------------
+    LOGGER.info("charging the guarantee across %d shares x %d allocations",
+                len(block.get("incidence_grid", (0.0, 1.0))), len(equities))
+    swept = inc.sweep(
+        lambda alpha, equity: _run(_spec_for(alpha), equity), _spec_for,
+        [float(x) for x in block.get("incidence_grid", (0.0, 1.0))],
+        equities, _score_with(base))
+    # Selected on the lifetime measure: it is the only one this dial moves.
+    optima = inc.optimum_by_incidence(swept, "cec_lifetime")
+    found = inc.verdict(optima)
+    LOGGER.info("incidence %.0f%% -> %.0f%%: wealth at 67 %.1fx -> %.1fx "
+                "against a cut-off of %.1fx; CEC %+.2f%%; best equity "
+                "%.0f%% -> %.0f%%; reaches the test: %s",
+                100 * found.get("free_incidence", float("nan")),
+                100 * found.get("paid_incidence", float("nan")),
+                found.get("free_wealth", float("nan")),
+                found.get("paid_wealth", float("nan")),
+                found.get("cutoff", float("nan")),
+                found.get("cec_lifetime_fall_pct", float("nan")),
+                100 * found.get("free_equity", float("nan")),
+                100 * found.get("paid_equity", float("nan")),
+                found.get("reaches_the_test"))
+
+    # -- dial two: the balance the household actually arrives with --------
+    # Run at two retirement dates. This project retires its household at
+    # 63 and the Age Pension starts at 67, so four of its retirement years
+    # stand on a partial benefit rather than the full one -- and at this
+    # risk aversion those four years dominate the certainty equivalent of a
+    # small balance. Reporting only that arm would credit the taper with
+    # what a hole in the floor is doing, so the taper prediction is tested
+    # on a household whose pension starts the day work does, and the early
+    # retirement date is kept as the comparison.
+    scales = [float(x) for x in block.get("balance_grid", (1.0,))]
+    pension_age = int(base.benefit_start_age or base.age_retire)
+    aligned = dataclasses.replace(base, age_retire=pension_age)
+    arms = {inc.ARMS[0]: aligned,
+            inc.ARMS[1]: base,
+            inc.ARMS[2]: dataclasses.replace(
+                aligned, retirement_rule="fixed_percentage")}
+    balance_frames: List[pd.DataFrame] = []
+    profiles: Dict[str, pd.DataFrame] = {}
+    shapes: Dict[str, Dict[str, Any]] = {}
+    for arm, arm_base in arms.items():
+        LOGGER.info("balance dial, %s: %d scales x %d allocations",
+                    arm, len(scales), len(equities))
+
+        def _spec_arm(scale: float, _base: Any = arm_base) -> Any:
+            return dataclasses.replace(
+                _base, retirement_balance_scale=float(scale))
+
+        frame = inc.balance_sweep(
+            lambda scale, equity, _s=_spec_arm: _run(
+                _s(scale), equity, retiree_only=True),
+            _spec_arm, scales, equities, _score_with(arm_base), arm=arm)
+        balance_frames.append(frame)
+        profiles[arm] = inc.band_profile(frame)
+        shapes[arm] = inc.shape_verdict(profiles[arm], equities)
+        LOGGER.info("  reaches %s; best equity by band %s; prediction "
+                    "holds: %s",
+                    ", ".join(shapes[arm].get("bands_reached", []))
+                    or "no band",
+                    {b: round(shapes[arm].get(
+                        "equity_" + b.replace(" ", "_").replace("-", "_"),
+                        float("nan")), 2)
+                     for b in shapes[arm].get("bands_reached", [])},
+                    shapes[arm].get("prediction_holds"))
+    balances = pd.concat(balance_frames, ignore_index=True)
+    profile = pd.concat([profiles[a] for a in inc.ARMS if a in profiles],
+                        ignore_index=True)
+    shape = shapes[inc.ARMS[0]]
+    bridge = inc.bridge_verdict(profiles, shapes)
+    rule = inc.rule_verdict(profiles, shapes)
+    for name, found_c in (("the four-year bridge", bridge),
+                          ("the withdrawal rule", rule)):
+        LOGGER.info("%s moves wanted equity by %.0f points on average "
+                    "(worst %.0f at %.1fx, %s); it changes the verdict: %s",
+                    name, 100 * found_c.get("mean_equity_gap", float("nan")),
+                    100 * found_c.get("max_equity_gap", float("nan")),
+                    found_c.get("worst_wealth", float("nan")),
+                    found_c.get("worst_position", "?"),
+                    found_c.get("changes_the_verdict"))
+
+    tables = Path(cfg["run"]["table_dir"])
+    _save_table(swept, tables, "incidence_sweep")
+    _save_table(optima, tables, "incidence_optimum")
+    _save_table(balances, tables, "incidence_balance_sweep")
+    _save_table(profile, tables, "incidence_band_profile")
+    figures = [str(plots.plot_incidence(
+        swept, balances, profile, found, shape, bridge,
+        Path(cfg["run"]["figure_dir"])))]
+    elapsed = time.perf_counter() - started
+    rp.write_doc_35(
+        Path("docs") / "35_incidence.md", cfg,
+        {"swept": swept, "optimum": optima, "balances": balances,
+         "profile": profile},
+        figures,
+        {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
+         "employer_rate": float(base.super_net_rate),
+         "verdict": found, "shape": shape, "shapes": shapes,
+         "bridge": bridge, "rule": rule, "pension_age": pension_age,
+         "base_rule": str(base.retirement_rule),
+         "rule_rate": float(base.rule_rate),
+         "retire_age": int(base.age_retire),
+         "bridge_share": float(base.pre_eligibility_benefit_share)})
+    LOGGER.info("docs/35 written (%.0fs)", elapsed)
+    state["incidence_sweep"] = swept
+    state["incidence_balances"] = balances
+    return state
+
+
 STEPS = {1: step1_dataset, 2: step2_bootstrap, 3: step3_lifecycle,
          4: step4_report, 5: step5_sensitivity, 6: step6_spending,
          7: step7_glide_path, 8: step8_hedging, 9: step9_retirement_timing,
@@ -4648,11 +4845,12 @@ STEPS = {1: step1_dataset, 2: step2_bootstrap, 3: step3_lifecycle,
          28: step28_withholding, 29: step29_sequence,
          30: step30_franking, 31: step31_plan,
          32: step32_leisure, 33: step33_tax,
-         34: step34_longevity}
+         34: step34_longevity,
+         35: step35_incidence}
 
 
 def run(config_path: str = "config.yaml",
-        steps: Sequence[int] = tuple(range(1, 35)),
+        steps: Sequence[int] = tuple(range(1, 36)),
         quick: bool = False) -> Dict[str, Any]:
     """Execute the pipeline and return the accumulated state."""
     cfg = dl.load_config(config_path)
@@ -4682,8 +4880,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--steps", nargs="+", type=int,
-                        default=list(range(1, 35)),
-                        choices=list(range(1, 35)))
+                        default=list(range(1, 36)),
+                        choices=list(range(1, 36)))
     parser.add_argument("--quick", action="store_true",
                         help="small N for smoke tests")
     parser.add_argument("--verbose", action="store_true")

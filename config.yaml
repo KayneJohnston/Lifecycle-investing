@@ -1129,6 +1129,44 @@ tax:
 # to 93. Section #mortality re-weights the aggregation but only varies the
 # allocation, and says in terms that the treatment is approximate for the
 # horizon-based rules. This solves all three decisions together instead.
+# ---------------------------------------------------------------------------
+# Step 35 - who pays for the guarantee, and where that leaves them
+# ---------------------------------------------------------------------------
+# The two objections a referee raises together: the Superannuation Guarantee
+# has been free to the worker, and the household it buys is far past the
+# assets test. They are the same objection -- the household is clear of the
+# test because the guarantee was free -- so charging it is what puts the
+# means-test mechanism to the question instead of assuming it.
+incidence:
+  enabled: true
+  n_paths: 25000
+  # Share of the guarantee charged against wages. Zero is the statutory
+  # incidence (the employer pays, take-home pay is untouched), one is the
+  # economic incidence most of the literature finds (the worker funds every
+  # dollar in forgone pay). The whole range is swept because the truth is
+  # contested and the answer should be readable at any point on it.
+  incidence_grid: [0.00, 0.25, 0.50, 0.75, 1.00]
+  # Equity share of the portfolio, held for life. Five-point steps: the
+  # shape test compares the optimum in one band against another, so the
+  # grid has to resolve a difference smaller than the one being claimed.
+  equity_grid: [0.00, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40,
+                0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85,
+                0.90, 0.95, 1.00]
+  # The balance the household actually arrives with, as a multiple of the
+  # one this model's own contribution assumptions produce. The model's
+  # household lands around twenty-four times average earnings against a
+  # cut-off under seven, so nothing near the assets test is reachable
+  # without this dial. The grid is dense where the band is: it puts
+  # roughly three medians below the free area, four inside the band and
+  # three past the cut-off.
+  balance_grid: [0.015, 0.03, 0.05, 0.07, 0.09, 0.11, 0.13, 0.15,
+                 0.17, 0.20, 0.25, 0.35, 0.60, 1.00]
+  # Equity share during the working years for the balance dial, held fixed
+  # while the retirement share is swept. The project's headline portfolio.
+  accumulation_equity: 1.0
+  domestic_share: 0.10
+  strategy: balanced_all_equity
+
 longevity:
   enabled: true
   n_paths: 25000

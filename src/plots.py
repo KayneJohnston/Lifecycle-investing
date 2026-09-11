@@ -3375,6 +3375,199 @@ def plot_return_sweep(swept: pd.DataFrame, found: Mapping[str, Any],
         return _save(fig, directory, name)
 
 
+def plot_incidence(swept: pd.DataFrame, balances: pd.DataFrame,
+                   profile: pd.DataFrame, found: Mapping[str, Any],
+                   shape: Mapping[str, Any], bridge: Mapping[str, Any],
+                   directory: str | Path,
+                   name: str = "fig66_incidence") -> Path:
+    """Two dials, and the one prediction only the second can test.
+
+    The left column is who pays for the guarantee: what it costs the
+    household, and what it does to the allocation. The right column is the
+    balance the household arrives with: where that puts it against the
+    assets test, and what equity share it wants there.
+
+    The two are on one figure because the argument needs them side by side.
+    Charging the guarantee is the objection everyone raises, and it moves
+    consumption without moving the balance a cent -- so it *cannot* be what
+    brings a household to the test, and the second dial is not an optional
+    extra but the only way to ask the question at all.
+    """
+    with plt.rc_context(STYLE):
+        from .incidence import ARMS, BANDS
+
+        # Both columns carry a y-label and the left column's x-label runs
+        # nearly the full panel width, so the default column gap leaves
+        # the two colliding down the middle of the page.
+        fig, axes = _grid(4, 3.5, hspace=0.62, wspace=0.42)
+        cut = float(found.get("cutoff", float("nan")))
+        free = float(found.get("free_area", float("nan")))
+        optima = (swept.loc[swept.groupby("incidence")["cec"].idxmax()]
+                  .sort_values("incidence")) if len(swept) else swept
+
+        # -- 1. what charging the guarantee costs -------------------------
+        # Two quantities on one panel would need two scales, so both are
+        # shown as a percentage change from the statutory arm -- which is
+        # also the only honest way to read them, since the levels of a
+        # certainty equivalent and a balance are not comparable.
+        ax = axes[0]
+        if len(optima):
+            x = 100.0 * optima["incidence"].to_numpy(dtype=float)
+            for i, (column, label) in enumerate(
+                    (("cec_lifetime", "Certainty equivalent, whole life"),
+                     ("mean_working_consumption",
+                      "Mean consumption while working"),
+                     ("median_wealth", "Median balance at 67"))):
+                if column not in optima:
+                    continue
+                y = optima[column].to_numpy(dtype=float)
+                ax.plot(x, 100.0 * (y / y[0] - 1.0), marker=_marker(i),
+                        color=_colour(i), linewidth=1.6, markersize=3.4,
+                        label=_legend(label))
+            ax.axhline(0.0, color="0.55", linewidth=0.8)
+        ax.set_xlabel("Guarantee charged to the worker (%)")
+        ax.set_ylabel("Change from the statutory arm (%)")
+        _title(ax, "Charging the guarantee costs consumption, not balance")
+        _key(ax, loc="lower left", ncol=1)
+
+        # -- 2. and what it does to the allocation ------------------------
+        ax = axes[1]
+        for i, (alpha, blk) in enumerate(swept.groupby("incidence")):
+            curve = blk.groupby("equity")["cec_lifetime"].max().sort_index()
+            y = curve.to_numpy(dtype=float)
+            if not len(y) or not np.isfinite(y).any():
+                continue
+            ax.plot(100.0 * curve.index.to_numpy(dtype=float),
+                    100.0 * (y / np.nanmax(y) - 1.0), marker=_marker(i),
+                    color=_colour(i), linewidth=1.4, markersize=2.6,
+                    label=_legend(f"{alpha:.0%} charged"))
+        ax.set_xlabel("Equity share (%)")
+        ax.set_ylabel("Lifetime CE, % below own best")
+        _title(ax, "Each incidence prices equity against its own best")
+        _key(ax, loc="lower center", ncol=3)
+
+        # -- 3. where the arriving balance leaves the household -----------
+        # Stacked, because the three shares are parts of one whole and the
+        # question is how the whole divides, not how each part moves.
+        ax = axes[2]
+        one_arm = (balances[balances["arm"] == ARMS[0]]
+                   if "arm" in balances else balances)
+        best = (one_arm.loc[one_arm.groupby("scale")["cec"].idxmax()]
+                .sort_values("scale")) if len(one_arm) else one_arm
+        if len(best):
+            x = np.arange(len(best), dtype=float)
+            floor = np.zeros(len(best))
+            for i, band in enumerate(BANDS):
+                column = f"share_{band.replace(' ', '_')}"
+                if column not in best:
+                    continue
+                height = 100.0 * best[column].to_numpy(dtype=float)
+                ax.bar(x, height, bottom=floor, width=0.72, color=_colour(i),
+                       edgecolor="white", linewidth=0.8,
+                       label=_legend(band.capitalize()))
+                floor = floor + height
+            ax.set_xticks(x)
+            # Fourteen labels do not fit side by side at this width, and
+            # matplotlib will happily run them together rather than say so.
+            ax.set_xticklabels([f"{v:.1f}" for v in best["median_wealth"]],
+                               fontsize=4.6, rotation=45, ha="right")
+            ax.set_ylim(0.0, 100.0)
+        ax.set_xlabel("Median balance at 67 (× average earnings)")
+        ax.set_ylabel("Paths (%)")
+        _title(ax, "Only a much smaller balance reaches the test")
+        _key(ax, loc="lower left", ncol=1)
+
+        # -- 4. the prediction the kinked budget line makes ---------------
+        # Optimal equity against position, on a log axis because the grid
+        # spans a factor of fifty and the band is a narrow slice of it.
+        ax = axes[3]
+        if len(profile) and np.isfinite(cut) and cut > 0:
+            arms = ([a for a in ARMS if a in set(profile["arm"])]
+                    if "arm" in profile else [None])
+            for i, arm in enumerate(arms):
+                block = (profile[profile["arm"] == arm] if arm is not None
+                         else profile).sort_values("median_wealth")
+                ax.plot(block["median_wealth"].to_numpy(dtype=float),
+                        100.0 * block["equity"].to_numpy(dtype=float),
+                        marker=_marker(i), color=_colour(i), linewidth=1.6,
+                        markersize=3.6, zorder=3 - i,
+                        label=_legend(str(arm).capitalize())
+                        if arm is not None else None)
+            # The band shaded rather than ruled: it is a range, and the
+            # claim is about what happens inside it versus outside.
+            if np.isfinite(free):
+                ax.axvspan(free, cut, color=_colour(1), alpha=0.13,
+                           linewidth=0.0, zorder=0)
+                # Mid-height: the arms sit at the top (all equity) and
+                # the bottom (none), so the middle of the panel is the
+                # only place a label is not printed over a line.
+                ax.annotate("taper band", xy=(np.sqrt(free * cut), 0.52),
+                            xycoords=("data", "axes fraction"),
+                            fontsize=5.2, color="0.35", ha="center",
+                            va="bottom")
+            for level in (free, cut):
+                if np.isfinite(level):
+                    ax.axvline(level, color="0.45", linewidth=0.9,
+                               linestyle=":", zorder=1)
+            ax.set_xscale("log")
+            ax.set_ylim(-4.0, 104.0)
+            # The arms occupy the top (all equity) and the bottom (none),
+            # so the only clear band is the middle of the left edge.
+            if len(arms) > 1:
+                _key(ax, loc="center left", ncol=1)
+        ax.set_xlabel("Median balance at retirement (× AWE, log)")
+        ax.set_ylabel("Equity share wanted (%)")
+        _title(ax, _shape_title(shape, bridge))
+        # Three lines is the ceiling for a panel this size, and the arms
+        # are already in reading order in ARMS.
+        return _save(fig, directory, name)
+
+
+def _shape_title(shape: Mapping[str, Any],
+                 bridge: Mapping[str, Any] | None = None) -> str:
+    """Name what panel four shows, from what it shows.
+
+    The panel is the paper's one falsifiable prediction, so its title is
+    classified from the sweep and not written in advance. Getting this
+    wrong in either direction -- claiming the shape when the sweep is flat,
+    or hedging when it is there -- is the failure mode that matters.
+    """
+    if not shape.get("measured"):
+        return "Where the optimum sits against the test"
+    if shape.get("all_at_ceiling"):
+        base = "The optimum is all equity at every balance"
+    elif shape.get("prediction_holds"):
+        base = "Equity is wanted most inside the band, least past the cut-off"
+    elif shape.get("above_beats_band"):
+        base = "The taper lowers wanted equity, against the prediction"
+    elif shape.get("minimum_above_the_cutoff"):
+        base = "Wanted equity is lowest past the cut-off, but only just"
+    elif shape.get("flat_across_bands"):
+        base = "Position against the test does not decide the portfolio"
+    elif shape.get("lowest_band"):
+        base = f"Wanted equity is lowest {shape['lowest_band']}"
+    else:
+        base = "Where the optimum sits against the test"
+    # The panel draws two lines, so a title true of only one of them is a
+    # mis-titled panel. Said here rather than left to the caption.
+    if bridge and bridge.get("the_bridge_changes_the_verdict"):
+        return base + " -- but not with four unfunded years"
+    return base
+
+
+def _bridge_note(bridge: Mapping[str, Any]) -> str:
+    """One line on what the unfunded years do, or nothing if they do little."""
+    if not bridge.get("measured"):
+        return ""
+    if bridge.get("bridge_lowers_equity"):
+        return (f"four unfunded years cost "
+                f"{100 * bridge['mean_equity_gap']:.0f} points of equity")
+    if bridge.get("bridge_raises_equity"):
+        return (f"four unfunded years add "
+                f"{abs(100 * bridge['mean_equity_gap']):.0f} points of equity")
+    return "the unfunded years barely move it"
+
+
 def plot_longevity(swept: pd.DataFrame, shift: pd.DataFrame,
                    ablated: pd.DataFrame, found: Mapping[str, Any],
                    directory: str | Path,

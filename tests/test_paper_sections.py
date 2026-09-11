@@ -700,11 +700,63 @@ class TestShortPaper:
 
         assert sh.ct is sys.modules["content"]
 
-    def test_every_short_section_exists_in_the_long_order(self) -> None:
+    def test_every_inherited_section_exists_in_the_long_order(self) -> None:
+        """A typo in an inherited key would silently drop a section."""
         from paper import short as sh
 
-        unknown = [k for k in sh.SHORT_ORDER if k not in content.SECTION_ORDER]
+        unknown = [k for k in sh.SHORT_ORDER
+                   if k not in content.SECTION_ORDER and k not in sh.OWN]
         assert not unknown
+
+    def test_a_section_it_writes_itself_resolves_to_its_own_number(
+            self) -> None:
+        """Several keys name a section in both documents -- this paper
+        writes its own version. A reference to one must resolve to the
+        number it has *here*, never to the companion's."""
+        from paper import short as sh
+
+        sh.ct.COMPANION = {"name": "the companion study",
+                           "numbers": sh.LONG_NUMBER_ALL}
+        try:
+            with sh.renumbered():
+                for key in sh.OWN:
+                    out = sh.ct.resolve_sections(f"Section #{key}")
+                    assert out == (
+                        f"Section {sh.SHORT_ORDER.index(key) + 1}"), key
+                    assert "companion" not in out, key
+        finally:
+            sh.ct.COMPANION = {}
+
+    def test_a_key_only_this_paper_has_is_not_in_the_long_order(self) -> None:
+        """`model` has no companion section, so a reference to it could not
+        fall back even if the numbering were wrong."""
+        from paper import short as sh
+
+        assert "model" in sh.OWN
+        assert "model" not in content.SECTION_ORDER
+
+    def test_every_own_section_is_in_the_reading_order(self) -> None:
+        from paper import short as sh
+
+        assert set(sh.OWN) <= set(sh.SHORT_ORDER)
+
+    def test_the_model_and_incidence_sections_are_carried(self) -> None:
+        """The two additions the referee report asked for."""
+        from paper import short as sh
+
+        assert "model" in sh.SHORT_ORDER
+        assert "incidence" in sh.SHORT_ORDER
+        assert sh.SHORT_ORDER.index("model") < sh.SHORT_ORDER.index("data")
+
+    def test_every_retitled_and_reopened_key_is_inherited(self) -> None:
+        """Retitling or reopening a section this paper writes itself would
+        do nothing, silently."""
+        from paper import short as sh
+
+        inherited = set(sh.SHORT_ORDER) - set(sh.OWN)
+        assert set(sh.RETITLED) <= inherited
+        assert set(sh.REOPENING) <= inherited
+        assert set(sh.DROPPED) <= inherited
 
     def test_the_argument_sections_are_all_present(self) -> None:
         from paper import short as sh

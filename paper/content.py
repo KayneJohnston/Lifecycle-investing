@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 
 import datetime as dt
-from typing import Any, Callable, Dict, List, Sequence
+from typing import Any, Callable, Dict, List, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -625,6 +625,10 @@ SECTION_ORDER: Tuple[str, ...] = (
     "longevity",
     "leisure",
     "tax",
+    # Who paid for the balance the institutional pair has been arguing over,
+    # and what the means test does to a household it can actually reach.
+    # Last of the studies because it reads all three of them.
+    "incidence",
     # Closing.
     "discussion",
     "limitations",
@@ -663,7 +667,8 @@ EXTENSION_GROUPS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     # is not a charge on the *portfolio* but on the retirement system, and
     # it exists only to check the comparison `leisure` makes.
     ("plan", ("saving", "accumulation", "retirement", "sequence",
-              "spending", "plan", "longevity", "leisure", "tax")),
+              "spending", "plan", "longevity", "leisure", "tax",
+              "incidence")),
 )
 
 
@@ -690,10 +695,13 @@ MOVEMENTS: Tuple[Tuple[str, str, Tuple[str, ...]], ...] = (
      "the portfolio first and the audit of whether solving for one survives "
      "data it was never shown, then the wider asset menu, then the cash-flow "
      "decisions in the order a life presents them — save, retire, spend — "
-     "and last the system the investor retires into",
+     "and last the system the investor retires into, who paid for the "
+     "balance it is applied to, and what it does to a household it can "
+     "actually reach",
      ("glide", "allocation", "leverage", "turnover", "out_of_sample",
       "housing", "mortgage", "saving", "accumulation", "retirement",
-      "sequence", "spending", "plan", "longevity", "leisure", "tax")),
+      "sequence", "spending", "plan", "longevity", "leisure", "tax",
+      "incidence")),
     ("What it means",
      "what survives, what does not, and what a reader should not take from "
      "any of it",
@@ -802,20 +810,33 @@ def section_number(key: str) -> int:
 COMPANION: Dict[str, Any] = {}
 
 
+#: Subsection anchors the current document does not contain, even though it
+#: carries the section they belong to. A shorter cut of a paper drops whole
+#: subsections, and the cross-references into them have to be sent to the
+#: companion rather than left pointing at a heading that is not there.
+#: Entries are ``"key.n"`` prefixes, e.g. ``"data.6"``.
+ABSENT: Tuple[str, ...] = ()
+
+
 def resolve_sections(text: str) -> str:
     """Replace every ``#key`` token in ``text`` with its section number.
 
     When :data:`COMPANION` is set, a key the current reading order does not
     contain renders as its number in the companion document, named. The
-    alternative is a dangling pointer, which the build refuses to ship.
+    alternative is a dangling pointer, which the build refuses to ship. A
+    subsection listed in :data:`ABSENT` is treated the same way, because a
+    reference into a trimmed subsection is dangling for the same reason.
     """
     def swap(match: "re.Match[str]") -> str:
         key, tail = match.group(1), match.group(2)
-        if key in _SECTION_NUMBER:
-            return f"{section_number(key)}{tail}"
         if COMPANION and key in COMPANION.get("numbers", {}):
-            return (f"{COMPANION['numbers'][key]}{tail} of "
-                    f"{COMPANION['name']}")
+            elsewhere = any(
+                tail == absent[len(key):]
+                or tail.startswith(absent[len(key):] + ".")
+                for absent in ABSENT if absent.split(".")[0] == key)
+            if key not in _SECTION_NUMBER or elsewhere:
+                return (f"{COMPANION['numbers'][key]}{tail} of "
+                        f"{COMPANION['name']}")
         return f"{section_number(key)}{tail}"
     return SECTION_TOKEN.sub(swap, text)
 
@@ -8250,6 +8271,153 @@ def section_longevity(ctx: Any) -> List[Flowable]:
     return out
 
 
+def section_incidence(ctx: Any) -> List[Flowable]:
+    """Who paid for the balance, and what the test does to one it can reach.
+
+    Two objections to everything the pension sections claim, answered
+    together because they arrive together and separately because they are
+    not the same objection. The first draft of this section assumed they
+    were.
+    """
+    f = ctx.f
+    swept = f.table("incidence_sweep")
+    optimum = f.table("incidence_optimum")
+    profile = f.table("incidence_band_profile")
+    free_end, paid_end = optimum.iloc[0], optimum.iloc[-1]
+    cost = 100.0 * (float(paid_end["cec_lifetime"])
+                    / float(free_end["cec_lifetime"]) - 1.0)
+    work = 100.0 * (float(paid_end["mean_working_consumption"])
+                    / float(free_end["mean_working_consumption"]) - 1.0)
+    cut = float(profile["cutoff"].iloc[0])
+    area = float(profile["free_area"].iloc[0])
+    arms = list(dict.fromkeys(profile["arm"])) if "arm" in profile else []
+    base_arm = profile[profile["arm"] == arms[0]] if arms else profile
+    bridge_arm = (profile[profile["arm"] == arms[1]] if len(arms) > 1
+                  else base_arm)
+    rule_arm = profile[profile["arm"] == arms[-1]] if len(arms) > 2 else None
+    taper = float(f.cfg["lifecycle"].get("pension_taper", 0.078))
+
+    out: List[Flowable] = [
+        ctx.h1("#incidence. Who Pays for the Guarantee, and Whom the Test "
+               "Binds")]
+    out.append(ctx.p(
+        f"Sections #pension, #leisure and #longevity all rest on the same "
+        f"Australian household, and two objections rest on them. The first "
+        f"is that the Superannuation Guarantee has been free money: its "
+        f"statutory incidence is on the employer, so this project has never "
+        f"charged the worker for it, and every cross-system comparison has "
+        f"handed the Australian arm income the American arm never got. The "
+        f"second is that the household retires on "
+        f"{float(free_end['median_wealth']):.0f} times average earnings "
+        f"against a cut-off of {cut:.1f}, so the assets test at the centre "
+        f"of those sections cannot bind it."))
+    out.append(ctx.p(
+        "It is tempting to answer both with one sweep — charge the "
+        "guarantee, watch the balance fall, and let the household walk down "
+        "onto the test. It does not work. Under full economic incidence the "
+        "worker funds the contribution out of wages, so take-home pay "
+        "falls; but the contribution is still made, so the fund receives "
+        "the same money and compounds it identically. <b>Incidence changes "
+        "what the household gave up, not what it arrives with.</b> Two "
+        "objections, two dials."))
+    out.append(ctx.h2("#incidence.1 Charging the guarantee"))
+    out.append(ctx.p(
+        f"The first dial charges a share of the employer contribution "
+        f"against wages, from none of it to all of it, crossed with every "
+        f"equity share: {len(swept):,} combinations on common random "
+        f"numbers. Charging it in full costs {abs(cost):.1f}% of lifetime "
+        f"certainty-equivalent consumption and lowers mean consumption "
+        f"during the working years by {abs(work):.1f}%, which is the "
+        f"transfer itself. Every Australia-versus-America comparison in "
+        f"this study should be read as bracketed by those two ends rather "
+        f"than pinned at either."))
+    out.append(ctx.p(
+        f"Measured over the retirement window, which is how this study "
+        f"measures everywhere else, the answer is exactly zero — "
+        f"{float(free_end['cec']):.4f} at both ends, to every digit. The "
+        f"retiree's problem is untouched by who paid for the balance. So is "
+        f"the allocation: {float(free_end['equity']):.0%} equity is optimal "
+        f"whether the guarantee was free or funded out of forty years of "
+        f"wages. That is worth stating as an identity rather than a result. "
+        f"It also answers the sharper form of the objection, which is that "
+        f"the free guarantee might have been driving the allocation "
+        f"findings. It was not; it was inflating the level."))
+    out.append(ctx.h2("#incidence.2 Moving the household onto the test"))
+    out.append(ctx.p(
+        f"The second dial scales the balance that reaches the pension age, "
+        f"applied at the retirement boundary and nowhere else, so the "
+        f"career is identical across the grid and a change in the retiree's "
+        f"allocation is a response to the balance rather than to what was "
+        f"given up for it. The equity share swept is the retiree's, with "
+        f"the accumulation portfolio held fixed — otherwise the allocation "
+        f"would decide the balance it was being judged at. The free area is "
+        f"{area:.2f} times average earnings and the cut-off {cut:.2f}, and "
+        f"nothing near either is reachable without this dial."))
+    rows = [["Median balance", "Position", "Pension from day one",
+             "Four years early", "Share of balance"]]
+    for _, row in base_arm.iterrows():
+        early = bridge_arm[bridge_arm["scale"] == row["scale"]]
+        share = (rule_arm[rule_arm["scale"] == row["scale"]]
+                 if rule_arm is not None else None)
+        rows.append([
+            f"{float(row['median_wealth']):.2f}&times;",
+            str(row["position"]),
+            f"{float(row['equity']):.0%}",
+            f"{float(early['equity'].iloc[0]):.0%}" if len(early) else "—",
+            f"{float(share['equity'].iloc[0]):.0%}"
+            if share is not None and len(share) else "—"])
+    out += ctx.table(
+        rows,
+        "The equity share a retiree wants, by where the balance leaves them "
+        "against the assets test, under three arms. Balances are multiples "
+        "of economy-wide average earnings.",
+        note="Each cell is the best of twenty-one equity shares at that "
+             "balance, scored on certainty-equivalent retirement "
+             "consumption over the same simulated lifetimes. The first two "
+             "arms spend a fixed real amount and differ only in the "
+             "retirement date; the third spends a share of the current "
+             "balance.")
+    out.append(ctx.p(
+        f"<b>Under a fixed real withdrawal the household wants no equity "
+        f"anywhere the test can reach.</b> Below the free area, inside the "
+        f"taper band and past the cut-off alike, the optimum is zero; only "
+        f"the two richest balances on the grid — far past any test — want "
+        f"any at all. Retiring four years before the pension begins, which "
+        f"is what the rest of this study does, changes that by an average "
+        f"of one percentage point, so the result is not an artefact of the "
+        f"retirement date."))
+    if rule_arm is not None:
+        out.append(ctx.p(
+            f"<b>Changing the withdrawal rule changes everything.</b> "
+            f"Spending a share of the <i>current</i> balance, the same "
+            f"household wants {float(rule_arm['equity'].median()):.0%} "
+            f"equity at every position. The mechanism is mechanical: a "
+            f"fixed real rule never spends what the portfolio earns, so a "
+            f"good return accumulates into assessable assets, the pension "
+            f"is withdrawn against them at {taper:.1%} a year, and "
+            f"consumption does not rise at all. The upside is confiscated "
+            f"and the downside is not, and equity is dominated. Spend the "
+            f"gain as it arrives and the confiscation never happens."))
+    out += ctx.figure(
+        "fig66_incidence",
+        "Two dials on the Australian arm. Charging the Superannuation "
+        "Guarantee to wages moves lifetime consumption and leaves the "
+        "balance untouched (top row); only moving the balance puts a "
+        "household on the assets test (bottom row).")
+    out.append(ctx.p(
+        "Read against #longevity, which finds that a rule which cannot "
+        "deplete restores the floor an asset test removes, this is the same "
+        "lesson from the other side: a rule which cannot spend destroys the "
+        "case for equity that a floor would otherwise support. The "
+        "portfolio decision and the drawdown decision are one decision "
+        "whenever the pension is asset-tested."))
+    out.append(ctx.p(
+        "Full detail, including the three-regime budget line this section "
+        "tests and the classification of every verdict above, is in "
+        "<i>docs/35_incidence.md</i> in the replication archive."))
+    return out
+
+
 def section_discussion(ctx: Any) -> List[Flowable]:
     f = ctx.f
     lottery = f.table("retirement_lottery_stats").iloc[0]
@@ -10980,6 +11148,7 @@ def story(ctx: Any) -> List[Flowable]:
     parts += section_longevity(ctx)
     parts += section_leisure(ctx)
     parts += section_tax(ctx)
+    parts += section_incidence(ctx)
     parts += section_discussion(ctx)
     parts += section_limitations(ctx)
     parts += section_conclusion(ctx)

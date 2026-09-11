@@ -189,3 +189,140 @@ class TestEveryFigureIsAuthoredForThePage:
     def test_the_style_saves_at_print_resolution(self) -> None:
         assert plots.STYLE["savefig.dpi"] >= 300
         assert plots.STYLE["savefig.bbox"] == "tight"
+
+
+class TestIncidenceFigure:
+    """The four-panel incidence figure, and the title it classifies.
+
+    The title on panel four states the paper's one falsifiable prediction,
+    so a bug that always printed the confirming title would be the worst
+    kind: invisible, and exactly the claim a referee would check.
+    """
+
+    @staticmethod
+    def _swept() -> "pd.DataFrame":
+        import pandas as pd
+
+        rows = []
+        for alpha in (0.0, 0.5, 1.0):
+            for equity in (0.0, 0.5, 1.0):
+                rows.append({
+                    "incidence": alpha, "equity": equity,
+                    "cec": 1.0 + 0.1 * equity,
+                    "cec_lifetime": 1.0 + 0.1 * equity - 0.05 * alpha,
+                    "mean_working_consumption": 1.0 - 0.1 * alpha,
+                    "median_wealth": 40.0, "free_area": 3.0, "cutoff": 7.0,
+                    "share_below_the_free_area": 0.0,
+                    "share_inside_the_taper_band": 0.0,
+                    "share_above_the_cut-off": 1.0})
+        return pd.DataFrame.from_records(rows)
+
+    @staticmethod
+    def _balances(band_equity: float = 0.9, above_equity: float = 0.4,
+                  below_equity: float = 0.6) -> "pd.DataFrame":
+        import pandas as pd
+
+        rows = []
+        wanted = {1.0: below_equity, 5.0: band_equity, 50.0: above_equity}
+        for scale, wealth in ((0.1, 1.0), (0.5, 5.0), (1.0, 50.0)):
+            for equity in (0.0, 0.4, 0.6, 0.9, 1.0):
+                rows.append({
+                    "scale": scale, "equity": equity,
+                    "cec": 1.0 - abs(equity - wanted[wealth]),
+                    "cec_lifetime": 1.0 - abs(equity - wanted[wealth]),
+                    "median_wealth": wealth, "free_area": 3.0, "cutoff": 7.0,
+                    "share_below_the_free_area": 1.0 if wealth < 3 else 0.0,
+                    "share_inside_the_taper_band": 1.0 if 3 <= wealth < 7
+                    else 0.0,
+                    "share_above_the_cut-off": 1.0 if wealth >= 7 else 0.0})
+        return pd.DataFrame.from_records(rows)
+
+    def _render(self, tmp_path: Path, band: float, above: float,
+                bridge_gap: float = 0.3) -> Path:
+        import pandas as pd
+        from src import incidence as ic
+
+        grid = [0.0, 0.4, 0.6, 0.9, 1.0]
+        swept = self._swept()
+        frames = {}
+        for arm, shift in zip(ic.ARMS, (0.0, bridge_gap, -bridge_gap)):
+            block = self._balances(max(0.0, band - shift),
+                                   max(0.0, above - shift))
+            block["arm"] = arm
+            frames[arm] = block
+        balances = pd.concat(frames.values(), ignore_index=True)
+        profiles = {a: ic.band_profile(b) for a, b in frames.items()}
+        shapes = {a: ic.shape_verdict(b, grid) for a, b in profiles.items()}
+        profile = pd.concat([profiles[a] for a in ic.ARMS],
+                            ignore_index=True)
+        return plots.plot_incidence(
+            swept, balances, profile, ic.verdict(
+                ic.optimum_by_incidence(swept)),
+            shapes[ic.ARMS[0]], ic.bridge_verdict(profiles, shapes),
+            tmp_path)
+
+    def test_it_renders(self, tmp_path: Path) -> None:
+        out = self._render(tmp_path, 0.9, 0.4)
+        assert out.exists() and out.stat().st_size > 0
+
+    def test_nothing_is_cropped(self, tmp_path: Path) -> None:
+        assert _ink_on_the_border(self._render(tmp_path, 0.9, 0.4)) == 0
+
+    def test_the_confirming_title_needs_the_confirming_data(self) -> None:
+        from src import incidence as ic
+
+        holds = ic.shape_verdict(ic.band_profile(self._balances(0.9, 0.4)),
+                                 [0.0, 0.4, 0.6, 0.9, 1.0])
+        fails = ic.shape_verdict(ic.band_profile(self._balances(0.4, 0.9)),
+                                 [0.0, 0.4, 0.6, 0.9, 1.0])
+        assert "most inside the band" in plots._shape_title(holds)
+        assert "against the prediction" in plots._shape_title(fails)
+        assert plots._shape_title(holds) != plots._shape_title(fails)
+
+    def test_a_ceiling_optimum_is_named_a_ceiling(self) -> None:
+        from src import incidence as ic
+
+        ceiling = ic.shape_verdict(
+            ic.band_profile(self._balances(1.0, 1.0, 1.0)),
+            [0.0, 0.4, 0.6, 0.9, 1.0])
+        assert "all equity" in plots._shape_title(ceiling)
+
+    def test_an_unmeasured_shape_makes_no_claim(self) -> None:
+        import pandas as pd
+
+        neutral = plots._shape_title({"measured": False})
+        assert "prediction" not in neutral
+        assert plots._shape_title(
+            {"measured": False}) == plots._shape_title({})
+
+    def test_the_title_flags_a_verdict_the_bridge_flips(self) -> None:
+        """Panel four draws both arms, so a title true of only one of them
+        would be a mis-titled panel."""
+        holds = {"measured": True, "prediction_holds": True}
+        flips = {"measured": True, "the_bridge_changes_the_verdict": True}
+        steady = {"measured": True, "the_bridge_changes_the_verdict": False}
+        assert "unfunded" in plots._shape_title(holds, flips)
+        assert "unfunded" not in plots._shape_title(holds, steady)
+        assert "unfunded" not in plots._shape_title(holds, None)
+
+    def test_the_bridge_note_names_the_direction(self) -> None:
+        assert "cost" in plots._bridge_note(
+            {"measured": True, "bridge_lowers_equity": True,
+             "mean_equity_gap": 0.3})
+        assert "add" in plots._bridge_note(
+            {"measured": True, "bridge_raises_equity": True,
+             "mean_equity_gap": -0.3})
+        assert "barely" in plots._bridge_note({"measured": True})
+        assert plots._bridge_note({"measured": False}) == ""
+
+    def test_both_arms_are_drawn(self, tmp_path: Path) -> None:
+        out = self._render(tmp_path, 0.9, 0.4, bridge_gap=0.5)
+        assert out.exists() and out.stat().st_size > 0
+        assert _ink_on_the_border(out) == 0
+
+    def test_a_flat_profile_is_not_called_a_minimum(self) -> None:
+        flat = {"measured": True, "flat_across_bands": True,
+                "lowest_band": None}
+        title = plots._shape_title(flat)
+        assert "lowest" not in title
+        assert "does not decide the portfolio" in title

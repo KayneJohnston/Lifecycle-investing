@@ -399,3 +399,155 @@ class TestSuperannuationGuarantee:
             lc.LifecycleSpec(super_guarantee_rate=1.2)
         with pytest.raises(ValueError, match="super_contributions_tax"):
             lc.LifecycleSpec(super_contributions_tax=1.0)
+
+
+class TestSuperIncidence:
+    """Charging the guarantee to the worker, and what it can and cannot move.
+
+    These pin the identity the incidence study rests on: charging is a
+    transfer inside the worker's own budget, so it moves take-home pay and
+    leaves the balance -- and therefore the whole of retirement -- exactly
+    as it was.
+    """
+
+    def _run(self, spec: lc.LifecycleSpec) -> lc.LifecycleOutcome:
+        paths = constant_paths(8, spec.horizon, dom_eq=0.06, bond=0.02)
+        strat = lc.Strategy(key="s", label="s", weights=np.tile(
+            [1.0, 0.0, 0.0, 0.0], (spec.horizon, 1)))
+        income = lc.simulate_income(spec, paths.n_paths,
+                                    np.random.default_rng(3))
+        return lc.simulate(paths, strat, spec, income)
+
+    def test_statutory_incidence_is_the_default(self) -> None:
+        assert lc.LifecycleSpec().super_incidence == 0.0
+
+    def test_charging_it_lowers_working_consumption(self) -> None:
+        base = lc.LifecycleSpec(savings_rate=0.10, super_guarantee_rate=0.12)
+        free = self._run(base)
+        paid = self._run(dataclasses.replace(base, super_incidence=1.0))
+        work = slice(0, base.n_working)
+        assert (paid.consumption[:, work] < free.consumption[:, work]).all()
+
+    def test_it_charges_exactly_the_net_contribution(self) -> None:
+        base = lc.LifecycleSpec(savings_rate=0.10, super_guarantee_rate=0.12)
+        paths = constant_paths(8, base.horizon, dom_eq=0.06, bond=0.02)
+        strat = lc.Strategy(key="s", label="s", weights=np.tile(
+            [1.0, 0.0, 0.0, 0.0], (base.horizon, 1)))
+        # The same simulated income for both arms: income is stochastic, so
+        # the charge has to be checked against the earnings the household
+        # actually had, not against the deterministic profile.
+        income = lc.simulate_income(base, paths.n_paths,
+                                    np.random.default_rng(3))
+        free = lc.simulate(paths, strat, base, income)
+        paid = lc.simulate(paths, strat,
+                           dataclasses.replace(base, super_incidence=1.0),
+                           income)
+        work = slice(0, base.n_working)
+        gap = free.consumption[:, work] - paid.consumption[:, work]
+        assert np.allclose(gap, base.super_net_rate * income[:, work])
+
+    def test_half_incidence_charges_half(self) -> None:
+        base = lc.LifecycleSpec(savings_rate=0.10, super_guarantee_rate=0.12)
+        free = self._run(base)
+        half = self._run(dataclasses.replace(base, super_incidence=0.5))
+        paid = self._run(dataclasses.replace(base, super_incidence=1.0))
+        work = slice(0, base.n_working)
+        midpoint = 0.5 * (free.consumption[:, work] + paid.consumption[:, work])
+        assert np.allclose(half.consumption[:, work], midpoint)
+
+    def test_it_leaves_the_balance_and_all_of_retirement_untouched(
+            self) -> None:
+        """The identity `docs/35` is built on: incidence moves what the
+        household gave up, never what it arrives with."""
+        base = lc.LifecycleSpec(savings_rate=0.10, super_guarantee_rate=0.12)
+        free = self._run(base)
+        paid = self._run(dataclasses.replace(base, super_incidence=1.0))
+        retired = slice(base.n_working, None)
+        assert np.array_equal(free.wealth_at_retirement,
+                              paid.wealth_at_retirement)
+        assert np.array_equal(free.consumption[:, retired],
+                              paid.consumption[:, retired])
+        assert np.array_equal(free.bequest, paid.bequest)
+
+    def test_with_no_guarantee_the_dial_does_nothing(self) -> None:
+        base = lc.LifecycleSpec(super_guarantee_rate=0.0)
+        free = self._run(base)
+        paid = self._run(dataclasses.replace(base, super_incidence=1.0))
+        assert np.array_equal(free.consumption, paid.consumption)
+
+    def test_out_of_range_incidence_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="super_incidence"):
+            lc.LifecycleSpec(super_incidence=1.5)
+        with pytest.raises(ValueError, match="super_incidence"):
+            lc.LifecycleSpec(super_incidence=-0.5)
+
+
+class TestRetirementBalanceScale:
+    """The counterfactual balance, applied at the boundary and nowhere else."""
+
+    def _run(self, spec: lc.LifecycleSpec) -> lc.LifecycleOutcome:
+        paths = constant_paths(8, spec.horizon, dom_eq=0.06, bond=0.02)
+        strat = lc.Strategy(key="s", label="s", weights=np.tile(
+            [1.0, 0.0, 0.0, 0.0], (spec.horizon, 1)))
+        income = lc.simulate_income(spec, paths.n_paths,
+                                    np.random.default_rng(4))
+        return lc.simulate(paths, strat, spec, income)
+
+    def test_one_is_the_untouched_simulation(self) -> None:
+        base = lc.LifecycleSpec(savings_rate=0.10)
+        a = self._run(base)
+        b = self._run(dataclasses.replace(base, retirement_balance_scale=1.0))
+        assert np.array_equal(a.wealth, b.wealth)
+        assert np.array_equal(a.consumption, b.consumption)
+
+    def test_it_scales_the_arriving_balance_exactly(self) -> None:
+        base = lc.LifecycleSpec(savings_rate=0.10)
+        full = self._run(base)
+        tenth = self._run(dataclasses.replace(base,
+                                              retirement_balance_scale=0.1))
+        assert np.allclose(tenth.wealth_at_retirement,
+                           0.1 * full.wealth_at_retirement)
+
+    def test_working_life_is_identical_across_the_dial(self) -> None:
+        """The point of applying it at the boundary: the two arms differ in
+        the state variable alone, so a change in the retiree's behaviour
+        cannot be a response to what was given up for the balance."""
+        base = lc.LifecycleSpec(savings_rate=0.10)
+        full = self._run(base)
+        tenth = self._run(dataclasses.replace(base,
+                                              retirement_balance_scale=0.1))
+        work = slice(0, base.n_working)
+        assert np.array_equal(full.consumption[:, work],
+                              tenth.consumption[:, work])
+        assert np.array_equal(full.wealth[:, :base.n_working],
+                              tenth.wealth[:, :base.n_working])
+
+    def test_a_smaller_balance_buys_less_retirement(self) -> None:
+        base = lc.LifecycleSpec(savings_rate=0.10)
+        full = self._run(base)
+        tenth = self._run(dataclasses.replace(base,
+                                              retirement_balance_scale=0.1))
+        retired = slice(base.n_working, None)
+        assert (tenth.consumption[:, retired].mean()
+                < full.consumption[:, retired].mean())
+
+    def test_it_can_move_a_household_onto_the_means_test(self) -> None:
+        """The dial exists because nothing else in the model can do this."""
+        from src import incidence as ic
+
+        base = lc.LifecycleSpec(savings_rate=0.10, super_guarantee_rate=0.12,
+                                social_security_formula="means_tested")
+        free, cut = ic.thresholds(base)
+        full = self._run(base)
+        assert (full.wealth_at_retirement > cut).all()
+        scaled = self._run(dataclasses.replace(
+            base, retirement_balance_scale=float(
+                0.5 * (free + cut) / np.median(full.wealth_at_retirement))))
+        bands = ic.band_of(scaled.wealth_at_retirement, free, cut)
+        assert (bands == ic.BANDS[1]).any()
+
+    def test_a_non_positive_scale_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="retirement_balance_scale"):
+            lc.LifecycleSpec(retirement_balance_scale=0.0)
+        with pytest.raises(ValueError, match="retirement_balance_scale"):
+            lc.LifecycleSpec(retirement_balance_scale=-2.0)
