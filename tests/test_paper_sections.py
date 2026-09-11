@@ -678,3 +678,79 @@ class TestReferencesResolve:
         from paper.build_paper import Context
 
         assert Context.resolve("Section #tax") == "Section 34"
+
+
+class TestShortPaper:
+    """The single-thesis paper cut from the long study.
+
+    It reuses the long paper's section writers, so the two can never
+    disagree about a number -- but that reuse is only safe if this module
+    and the renderer are looking at the same `content` module, which they
+    were not at first.
+    """
+
+    def test_it_patches_the_module_the_renderer_actually_uses(self) -> None:
+        """`build_paper` puts its own directory on sys.path and does a
+        top-level `import content`, so `content` and `paper.content` are two
+        objects. Patching the wrong one changed nothing and shipped a paper
+        numbered for a different document."""
+        import sys
+
+        from paper import short as sh
+
+        assert sh.ct is sys.modules["content"]
+
+    def test_every_short_section_exists_in_the_long_order(self) -> None:
+        from paper import short as sh
+
+        unknown = [k for k in sh.SHORT_ORDER if k not in content.SECTION_ORDER]
+        assert not unknown
+
+    def test_the_argument_sections_are_all_present(self) -> None:
+        from paper import short as sh
+
+        for key in ("pension", "leisure", "longevity", "tax"):
+            assert key in sh.SHORT_ORDER, key
+
+    def test_it_is_materially_shorter(self) -> None:
+        from paper import short as sh
+
+        assert len(sh.SHORT_ORDER) <= len(content.SECTION_ORDER) // 3
+
+    def test_renumbering_restores_the_long_order(self) -> None:
+        from paper import short as sh
+
+        before = dict(sh.ct._SECTION_NUMBER)
+        with sh.renumbered():
+            assert sh.ct._SECTION_NUMBER["pension"] == (
+                sh.SHORT_ORDER.index("pension") + 1)
+        assert sh.ct._SECTION_NUMBER == before
+
+    def test_a_section_it_does_not_carry_points_at_the_companion(self) -> None:
+        from paper import short as sh
+
+        sh.ct.COMPANION = {"name": "the companion study",
+                           "numbers": sh.LONG_NUMBER_ALL}
+        try:
+            with sh.renumbered():
+                out = sh.ct.resolve_sections("Section #mortality")
+        finally:
+            sh.ct.COMPANION = {}
+        assert out == (f"Section {content.section_number('mortality')} "
+                       f"of the companion study")
+
+    def test_the_added_references_cover_the_referee_list(self) -> None:
+        from paper import short as sh
+
+        joined = " ".join(sh.EXTRA_REFERENCES)
+        for name in ("Cocco", "Gomes", "Viceira", "Campbell", "Benzoni",
+                     "Dahlquist", "Hubbard", "Milevsky", "Dimson", "Yaari"):
+            assert name in joined, name
+
+    def test_the_calibration_source_is_now_cited(self) -> None:
+        """The long paper names Cocco-Gomes-Maenhout as the source of its
+        income profile and does not list it."""
+        from paper import short as sh
+
+        assert any("Cocco" in r and "Maenhout" in r
+                   for r in sh.EXTRA_REFERENCES)

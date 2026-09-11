@@ -298,6 +298,12 @@ def check_cross_references(pdf_path: str) -> list[str]:
     problems = []
     for match in re.finditer(r"Section (\d{1,2}(?:\.\d{1,2}){0,2})", text):
         ref = match.group(1)
+        # A short build resolves a section it does not carry against the
+        # companion document and says so. That is a pointer a reader can
+        # follow, not a dangling one, so it is not this check's business.
+        tail = " ".join(text[match.end():match.end() + 40].split())
+        if tail.startswith("of the companion study"):
+            continue
         if ref not in headings:
             context = text[max(0, match.start() - 90):match.start() + 60]
             problems.append(f"Section {ref} -> no such heading "

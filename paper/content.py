@@ -795,10 +795,28 @@ def section_number(key: str) -> int:
             f"{sorted(_SECTION_NUMBER)}") from None
 
 
+#: Set by a build that carries only some of the sections. A reference to a
+#: section the current document does not contain resolves against this
+#: instead, so it points a reader at the companion study rather than at a
+#: number that is not in the document they are holding.
+COMPANION: Dict[str, Any] = {}
+
+
 def resolve_sections(text: str) -> str:
-    """Replace every ``#key`` token in ``text`` with its section number."""
+    """Replace every ``#key`` token in ``text`` with its section number.
+
+    When :data:`COMPANION` is set, a key the current reading order does not
+    contain renders as its number in the companion document, named. The
+    alternative is a dangling pointer, which the build refuses to ship.
+    """
     def swap(match: "re.Match[str]") -> str:
-        return f"{section_number(match.group(1))}{match.group(2)}"
+        key, tail = match.group(1), match.group(2)
+        if key in _SECTION_NUMBER:
+            return f"{section_number(key)}{tail}"
+        if COMPANION and key in COMPANION.get("numbers", {}):
+            return (f"{COMPANION['numbers'][key]}{tail} of "
+                    f"{COMPANION['name']}")
+        return f"{section_number(key)}{tail}"
     return SECTION_TOKEN.sub(swap, text)
 
 
