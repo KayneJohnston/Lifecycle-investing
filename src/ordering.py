@@ -186,3 +186,115 @@ def by_system(frame: pd.DataFrame) -> pd.DataFrame:
         return frame
     return frame.pivot(index="rule", columns="system",
                        values="gap_pct").reset_index()
+
+
+def influence(gaps_for: Callable[[Sequence[str]], pd.DataFrame],
+              countries: Sequence[str]) -> pd.DataFrame:
+    """The whole gap table, recomputed once per country removed.
+
+    ``gaps_for(kept)`` returns a gap table built on a panel holding only
+    ``kept``. Sixteen developed markets are not sixteen independent draws --
+    equity returns co-move and the twentieth century happened to all of them
+    at once -- so the delete-one jackknife is the sampling error the *panel*
+    carries. It is the number a sign should be weighed against, and Monte
+    Carlo error is not: a hundred thousand paths drive that close to zero
+    without adding a single country of evidence.
+    """
+    frames: List[pd.DataFrame] = []
+    for dropped in countries:
+        kept = [c for c in countries if c != dropped]
+        LOGGER.info("leave-one-out: dropping %s (%d markets left)",
+                    dropped, len(kept))
+        block = gaps_for(kept).copy()
+        block.insert(0, "dropped", str(dropped))
+        block["n_markets"] = len(kept)
+        frames.append(block)
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+
+def intervals(influence_frame: pd.DataFrame, gapped: pd.DataFrame,
+              column: str = "gap_pct") -> pd.DataFrame:
+    """A delete-one jackknife interval for every system-and-rule cell.
+
+    The sign of a cell is what this paper's claims are made of, so the field
+    that matters is ``sign_survives_every_deletion``: whether the ordering
+    the point estimate reports is the ordering every one of the sixteen
+    sub-panels reports. A cell whose confidence interval straddles zero is a
+    cell that cannot carry a claim about which portfolio wins.
+    """
+    from .panel_robustness import jackknife
+
+    if not len(influence_frame) or not len(gapped):
+        return pd.DataFrame()
+    base = {(str(r["system"]), str(r["rule"])): float(r[column])
+            for _, r in gapped.iterrows()}
+    rows: List[Dict[str, Any]] = []
+    for (system, rule), block in influence_frame.groupby(["system", "rule"]):
+        point = base.get((str(system), str(rule)), float("nan"))
+        found = jackknife(block.rename(columns={column: "gap_pct"}),
+                          baseline_gap=point)
+        values = block[column].to_numpy(dtype=float)
+        values = values[np.isfinite(values)]
+        rows.append({
+            "system": str(system), "rule": str(rule),
+            "gap_pct": point,
+            "standard_error": float(found.get("standard_error", np.nan)),
+            "ci_low": float(found.get("ci_low", np.nan)),
+            "ci_high": float(found.get("ci_high", np.nan)),
+            "loo_low": float(values.min()) if values.size else np.nan,
+            "loo_high": float(values.max()) if values.size else np.nan,
+            "deletions": int(values.size),
+            "sign_survives_every_deletion": bool(
+                values.size and np.all(np.sign(values) == np.sign(point))),
+            "ci_excludes_zero": bool(
+                np.isfinite(found.get("ci_low", np.nan))
+                and found["ci_low"] * found["ci_high"] > 0.0),
+        })
+    out = pd.DataFrame.from_records(rows)
+    order = list(dict.fromkeys(gapped["rule"]))
+    out["rule"] = pd.Categorical(out["rule"], categories=order, ordered=True)
+    out = out.sort_values(["system", "rule"]).reset_index(drop=True)
+    out["rule"] = out["rule"].astype(str)
+    return out
+
+
+def precision_verdict(table: pd.DataFrame, baseline_rule: str,
+                      baseline_system: str = "us_social_security",
+                      contender_system: str = "australia_as_legislated",
+                      ) -> Dict[str, Any]:
+    """Whether the reversal is a sign the panel can actually resolve.
+
+    The paper's headline is a change of sign in one cell. If that cell's
+    interval straddles zero, the headline is a point estimate wearing a
+    claim's clothing, and this says so.
+    """
+    if not len(table):
+        return {"measured": False}
+    hit = table[(table["system"] == contender_system)
+                & (table["rule"] == baseline_rule)]
+    base = table[(table["system"] == baseline_system)
+                 & (table["rule"] == baseline_rule)]
+    if not len(hit) or not len(base):
+        return {"measured": False}
+    row, ref = hit.iloc[0], base.iloc[0]
+    found: Dict[str, Any] = {
+        "measured": True,
+        "cells": int(len(table)),
+        "reversal_gap_pct": float(row["gap_pct"]),
+        "reversal_se": float(row["standard_error"]),
+        "reversal_ci": (float(row["ci_low"]), float(row["ci_high"])),
+        "reversal_loo": (float(row["loo_low"]), float(row["loo_high"])),
+        "reversal_sign_survives": bool(row["sign_survives_every_deletion"]),
+        "reversal_resolved": bool(row["ci_excludes_zero"]),
+        "baseline_gap_pct": float(ref["gap_pct"]),
+        "baseline_se": float(ref["standard_error"]),
+        "baseline_resolved": bool(ref["ci_excludes_zero"]),
+    }
+    # Which cells the panel can and cannot resolve at all. A table where
+    # only the contested one is unresolved says something different from a
+    # table where half of them are.
+    found["resolved_cells"] = int(table["ci_excludes_zero"].sum())
+    unresolved = table[~table["ci_excludes_zero"]]
+    found["unresolved"] = [f"{r['system']} / {r['rule']}"
+                           for _, r in unresolved.iterrows()]
+    return found

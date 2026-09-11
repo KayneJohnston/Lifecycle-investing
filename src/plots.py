@@ -3384,7 +3384,9 @@ def plot_return_sweep(swept: pd.DataFrame, found: Mapping[str, Any],
 
 
 def plot_ordering(swept: pd.DataFrame, gapped: pd.DataFrame,
-                  found: Mapping[str, Any], directory: str | Path,
+                  found: Mapping[str, Any],
+                  intervals: pd.DataFrame | None = None,
+                  directory: str | Path = ".",
                   name: str = "fig67_ordering") -> Path:
     """Which portfolio wins, under which pension, under which rule.
 
@@ -3401,10 +3403,15 @@ def plot_ordering(swept: pd.DataFrame, gapped: pd.DataFrame,
         fig, axes = _grid(len(systems), 3.4, max_cols=1, hspace=0.55)
         rules = list(dict.fromkeys(gapped["rule"]))
         base = str(found.get("baseline_rule", ""))
+        band = intervals if intervals is not None and len(intervals) else None
         # A shared scale across panels, for the same reason they share a
         # figure: a lead of two points in one system and twenty in another
         # is the finding, and per-panel autoscaling would erase it.
-        span = float(np.nanmax(np.abs(gapped["gap_pct"].to_numpy(dtype=float))))
+        reach = [np.abs(gapped["gap_pct"].to_numpy(dtype=float))]
+        if band is not None:
+            reach.append(np.abs(band[["ci_low", "ci_high"]]
+                                .to_numpy(dtype=float)).ravel())
+        span = float(np.nanmax(np.concatenate(reach)))
         span = max(span * 1.15, 1.0)
         for ax, system in zip(axes, systems):
             block = gapped[gapped["system"] == system].set_index("rule")
@@ -3416,6 +3423,22 @@ def plot_ordering(swept: pd.DataFrame, gapped: pd.DataFrame,
                            for v in values],
                     edgecolor=["0.25" if r == base else "none" for r in rules],
                     linewidth=0.9)
+            # The delete-one interval, drawn on the bar rather than beside
+            # it: the claim each bar makes is about its sign, so what the
+            # reader needs to see is whether the whisker crosses zero.
+            if band is not None:
+                seen = band[band["system"] == system].set_index("rule")
+                lo = [float(seen.loc[r, "ci_low"]) if r in seen.index
+                      else np.nan for r in rules]
+                hi = [float(seen.loc[r, "ci_high"]) if r in seen.index
+                      else np.nan for r in rules]
+                mid = np.array([(a + b) / 2.0 for a, b in zip(lo, hi)])
+                half = np.array([(b - a) / 2.0 for a, b in zip(lo, hi)])
+                ok = np.isfinite(mid) & np.isfinite(half)
+                if ok.any():
+                    ax.errorbar(mid[ok], pos[ok], xerr=half[ok], fmt="none",
+                                ecolor="0.25", elinewidth=0.9, capsize=1.8,
+                                capthick=0.9, zorder=4)
             ax.axvline(0.0, color="0.35", linewidth=0.9)
             ax.set_yticks(pos)
             ax.set_yticklabels([_flat(r, 30) for r in rules], fontsize=4.8)
@@ -3432,6 +3455,10 @@ def plot_ordering(swept: pd.DataFrame, gapped: pd.DataFrame,
                          label=_legend("Target-date fund leads")),
                    Patch(facecolor="none", edgecolor="0.25", linewidth=0.9,
                          label=_legend("The rule the paper spends by"))]
+        if band is not None:
+            handles.append(Line2D([], [], color="0.25", linewidth=0.9,
+                                  marker="|", markersize=4,
+                                  label=_legend("Delete-one 95% interval")))
         # Upper left: every bar of interest sits to the right of zero or
         # just left of it, so the far left of the panel is the empty half.
         _key(axes[0], handles=handles, loc="upper left", ncol=1)

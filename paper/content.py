@@ -819,6 +819,14 @@ COMPANION: Dict[str, Any] = {}
 #: Entries are ``"key.n"`` prefixes, e.g. ``"data.6"``.
 ABSENT: Tuple[str, ...] = ()
 
+#: Subsections a shorter cut keeps but renumbers, as
+#: ``{key: {old index: new index}}``. When a cut removes 7.1 through 7.4 the
+#: two survivors must not still print as 7.5 and 7.6, and every reference to
+#: them has to move with the heading. Doing it here rather than by editing
+#: the rendered headings is what keeps the two in step: both go through
+#: :func:`resolve_sections`.
+RENUMBERED: Dict[str, Dict[int, int]] = {}
+
 
 def resolve_sections(text: str) -> str:
     """Replace every ``#key`` token in ``text`` with its section number.
@@ -839,6 +847,12 @@ def resolve_sections(text: str) -> str:
             if key not in _SECTION_NUMBER or elsewhere:
                 return (f"{COMPANION['numbers'][key]}{tail} of "
                         f"{COMPANION['name']}")
+        moved = RENUMBERED.get(key)
+        if moved and tail:
+            parts = tail.lstrip(".").split(".")
+            if parts and parts[0].isdigit() and int(parts[0]) in moved:
+                parts[0] = str(moved[int(parts[0])])
+                tail = "." + ".".join(parts)
         return f"{section_number(key)}{tail}"
     return SECTION_TOKEN.sub(swap, text)
 
@@ -8524,12 +8538,57 @@ def section_ordering(ctx: Any) -> List[Flowable]:
         f"withdrawal rule moves the all-equity lead by "
         f"{float(au['gap_pct'].max() - au['gap_pct'].min()):.1f} percentage "
         f"points."))
+    try:
+        band = f.table("ordering_intervals")
+    except FileNotFoundError:
+        band = None
+    if band is not None and len(band):
+        out.append(ctx.h2("#ordering.1 How precisely the panel resolves "
+                          "each sign"))
+        out.append(ctx.p(
+            "Sixteen developed markets are not sixteen independent draws, "
+            "so each cell is recomputed once per country removed and the "
+            "delete-one jackknife gives the sampling error the panel "
+            "carries. That is the error a sign should be weighed against; "
+            "Monte Carlo error is not, because a hundred thousand paths "
+            "drive it close to zero without adding a country of evidence."))
+        rows = [["Pension system", "Withdrawal rule", "Lead (%)",
+                 "Jackknife s.e.", "95% interval", "Sign holds in all 16"]]
+        for _, row in band.iterrows():
+            rows.append([
+                label.get(str(row["system"]), str(row["system"])),
+                str(row["rule"]),
+                f"{float(row['gap_pct']):+.2f}",
+                f"{float(row['standard_error']):.2f}",
+                f"[{float(row['ci_low']):+.2f}, {float(row['ci_high']):+.2f}]",
+                "yes" if bool(row["sign_survives_every_deletion"]) else "no"])
+        out += ctx.table(
+            rows,
+            "Delete-one-country intervals on the all-equity lead, for the "
+            "two systems the headline compares.",
+            note="An interval containing zero is a cell in which this "
+                 "panel cannot say which portfolio wins.")
+        hit = band[(band["system"] == "australia_as_legislated")
+                   & (band["rule"] == baseline_rule)]
+        if len(hit):
+            row = hit.iloc[0]
+            resolved = bool(row["ci_excludes_zero"])
+            out.append(ctx.p(
+                f"The reversal is "
+                f"{'resolved' if resolved else 'not resolved'} by this "
+                f"cross-section: {float(row['gap_pct']):+.2f}% with a "
+                f"delete-one standard error of "
+                f"{float(row['standard_error']):.2f}, interval "
+                f"[{float(row['ci_low']):+.2f}, "
+                f"{float(row['ci_high']):+.2f}]"
+                f"{'' if resolved else ', which contains zero'}."))
     out += ctx.figure(
         "fig67_ordering",
         "The all-equity portfolio's lead over the target-date fund, by "
         "pension system and withdrawal rule. One panel per system on a "
-        "shared scale; the zero line is the ranking, and the outlined bar "
-        "is the rule the rest of this study spends by.")
+        "shared scale; the zero line is the ranking, the outlined bar is "
+        "the rule the rest of this study spends by, and the whiskers are "
+        "delete-one-country 95% intervals where they were computed.")
     out.append(ctx.p(
         "Full detail is in <i>docs/36_ordering.md</i> in the replication "
         "archive."))

@@ -4926,14 +4926,16 @@ def step36_ordering(cfg: Dict[str, Any],
     # single large chunk is a different estimator in the left tail, which is
     # exactly where a means test puts the action.
     cache: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    active: Dict[str, Any] = {"panel": panel, "paths": n_paths}
 
     def _outcomes(system: str, rule_key: str, rule: Any) -> Dict[str, Any]:
         hit = cache.get((system, rule_key))
         if hit is None:
             aged = by_key[system]
             hit = lc.run_chunked(
-                bs.from_config(panel, cfg), lc.build_strategies(cfg, aged),
-                aged, n_paths, chunk_size, income_seed=seed, spending=rule)
+                bs.from_config(active["panel"], cfg),
+                lc.build_strategies(cfg, aged), aged, int(active["paths"]),
+                chunk_size, income_seed=seed, spending=rule)
             cache.clear()
             cache[(system, rule_key)] = hit
         return hit
@@ -4985,19 +4987,65 @@ def step36_ordering(cfg: Dict[str, Any],
                     found.get("contender_worst_rule"),
                     found.get("contender_best_rule"))
 
+    # -- how precisely the panel resolves each of those signs -------------
+    # Sixteen developed markets are not sixteen independent draws, so the
+    # sampling error that matters is the delete-one jackknife over the
+    # panel. The headline is a change of sign in one cell, and a sign
+    # whose interval straddles zero is not a finding.
+    influence = pd.DataFrame()
+    intervals = pd.DataFrame()
+    precision: Dict[str, Any] = {"measured": False}
+    loo_systems = [str(x) for x in block.get("influence_systems", systems)]
+    if block.get("influence_enabled", False):
+        loo_paths = int(block.get("influence_n_paths", n_paths))
+        countries = list(panel.countries)
+        LOGGER.info("jackknife: %d deletions x %d systems x %d rules at "
+                    "%s paths", len(countries), len(loo_systems), len(rules),
+                    f"{loo_paths:,}")
+
+        def _gaps_for(kept: Sequence[str]) -> pd.DataFrame:
+            active["panel"] = dl.build_tier_a(cfg, countries=list(kept))
+            active["paths"] = loo_paths
+            cache.clear()
+            return odr.gaps(odr.sweep(_simulate, loo_systems, rules,
+                                      strategies, _score, log_every=0))
+
+        influence = odr.influence(_gaps_for, countries)
+        active["panel"], active["paths"] = panel, n_paths
+        cache.clear()
+        intervals = odr.intervals(influence, gapped)
+        precision = odr.precision_verdict(
+            intervals, baseline_rule,
+            baseline_system=str(found.get("baseline_system", "")),
+            contender_system=str(found.get("contender_system", "")))
+        if precision.get("measured"):
+            LOGGER.info("the reversal is %+.2f%% +/- %.2f (1 se), CI "
+                        "[%+.2f, %+.2f], deletions span [%+.2f, %+.2f]; the "
+                        "sign survives every deletion: %s; the interval "
+                        "excludes zero: %s",
+                        precision["reversal_gap_pct"],
+                        precision["reversal_se"], *precision["reversal_ci"],
+                        *precision["reversal_loo"],
+                        precision["reversal_sign_survives"],
+                        precision["reversal_resolved"])
+
     tables = Path(cfg["run"]["table_dir"])
     _save_table(swept, tables, "ordering_sweep")
     _save_table(gapped, tables, "ordering_gaps")
     _save_table(odr.by_system(gapped), tables, "ordering_by_system")
-    figures = [str(plots.plot_ordering(swept, gapped, found,
+    if len(influence):
+        _save_table(influence, tables, "ordering_influence")
+        _save_table(intervals, tables, "ordering_intervals")
+    figures = [str(plots.plot_ordering(swept, gapped, found, intervals,
                                        Path(cfg["run"]["figure_dir"])))]
     elapsed = time.perf_counter() - started
     rp.write_doc_36(
         Path("docs") / "36_ordering.md", cfg,
-        {"swept": swept, "gaps": gapped},
+        {"swept": swept, "gaps": gapped, "intervals": intervals},
         figures,
         {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
-         "verdict": found, "baseline_rule": baseline_rule})
+         "verdict": found, "baseline_rule": baseline_rule,
+         "precision": precision})
     LOGGER.info("docs/36 written (%.0fs)", elapsed)
     state["ordering_gaps"] = gapped
     return state

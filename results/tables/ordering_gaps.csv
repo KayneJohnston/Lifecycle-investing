@@ -1,25 +1,25 @@
 system,rule,challenger,incumbent,gap_pct,leader,best_strategy,best_cec
-age_pension_untested,fixed_real_rule,0.9089219194262154,0.8059253553995984,12.779913590824865,balanced_all_equity,international_equity,0.9664877362250612
+age_pension_untested,fixed_real_rule,0.9089219194262154,0.8059253553995984,12.779913590824865,balanced_all_equity,international_equity,0.9664877362250611
 age_pension_untested,constant_percent at 4%,1.0084486089782714,0.8373237793036286,20.43711571370408,balanced_all_equity,international_equity,1.0959521967834662
 age_pension_untested,amortisation at 0%,1.0770642997797264,0.9070503865531022,18.743601871192283,balanced_all_equity,international_equity,1.1601179043132956
-age_pension_untested,amortisation at 2%,1.1252095651165543,0.9292536417610164,21.087452827646104,balanced_all_equity,international_equity,1.2202043129328346
+age_pension_untested,amortisation at 2%,1.1252095651165543,0.9292536417610163,21.087452827646125,balanced_all_equity,international_equity,1.2202043129328346
 age_pension_untested,amortisation at 4%,1.1423102686472202,0.9296244225838236,22.87868529446029,balanced_all_equity,international_equity,1.2457608751756055
-age_pension_untested,amortisation at 6%,1.124697271132478,0.9092578423006896,23.69398632698767,balanced_all_equity,international_equity,1.230480217583282
+age_pension_untested,amortisation at 6%,1.1246972711324779,0.9092578423006897,23.693986326987627,balanced_all_equity,international_equity,1.230480217583282
 age_pension_untested,amortisation at 8%,1.0772648039068782,0.8733570826995001,23.347577439586352,balanced_all_equity,international_equity,1.1778551838154638
 age_pension_untested,amortisation at 10%,1.0110498270370862,0.829009921473087,21.958712537544578,balanced_all_equity,international_equity,1.1001917365489498
 australia_as_legislated,fixed_real_rule,0.64111077903984,0.6546978833282056,-2.0753243036764513,target_date_fund,target_date_fund,0.6546978833282056
-australia_as_legislated,constant_percent at 4%,0.8615210457013636,0.7274447158764656,18.43113667591294,balanced_all_equity,international_equity,0.949093631018564
-australia_as_legislated,amortisation at 0%,0.94495603703027,0.8259041105229673,14.41473955516679,balanced_all_equity,international_equity,1.027587017202228
+australia_as_legislated,constant_percent at 4%,0.8615210457013636,0.7274447158764656,18.43113667591294,balanced_all_equity,international_equity,0.9490936310185639
+australia_as_legislated,amortisation at 0%,0.9449560370302699,0.8259041105229673,14.41473955516679,balanced_all_equity,international_equity,1.027587017202228
 australia_as_legislated,amortisation at 2%,1.1329346459702474,0.963744003990824,17.555558455234156,balanced_all_equity,international_equity,1.2321784782559242
-australia_as_legislated,amortisation at 4%,1.2721130858206229,1.047592601310882,21.43204182893159,balanced_all_equity,international_equity,1.3842525986474226
+australia_as_legislated,amortisation at 4%,1.2721130858206227,1.047592601310882,21.43204182893157,balanced_all_equity,international_equity,1.3842525986474226
 australia_as_legislated,amortisation at 6%,1.3361507086736706,1.0700553077456825,24.867443673409674,balanced_all_equity,international_equity,1.4578544088786938
 australia_as_legislated,amortisation at 8%,1.3216697270734326,1.0437311844775523,26.629322447139913,balanced_all_equity,international_equity,1.4476316262798867
-australia_as_legislated,amortisation at 10%,1.249262500570775,0.9885445012462232,26.373926413618577,balanced_all_equity,international_equity,1.3701295661828776
+australia_as_legislated,amortisation at 10%,1.249262500570775,0.9885445012462231,26.373926413618598,balanced_all_equity,international_equity,1.3701295661828776
 us_social_security,fixed_real_rule,1.0493326019515596,0.9446112745066872,11.086182249895549,balanced_all_equity,international_equity,1.1094293553441226
 us_social_security,constant_percent at 4%,1.129776498110558,0.9580606993299128,17.9232692563996,balanced_all_equity,international_equity,1.2191390291169464
-us_social_security,amortisation at 0%,1.1919779636948156,1.024133790486841,16.38889125298626,balanced_all_equity,international_equity,1.2751397476773183
+us_social_security,amortisation at 0%,1.1919779636948156,1.024133790486841,16.38889125298626,balanced_all_equity,international_equity,1.2751397476773185
 us_social_security,amortisation at 2%,1.238469240333833,1.0476490118615316,18.214137207387758,balanced_all_equity,international_equity,1.3328704157147624
 us_social_security,amortisation at 4%,1.2566698605070818,1.0507153048194469,19.601366301885736,balanced_all_equity,international_equity,1.3588897724344229
-us_social_security,amortisation at 6%,1.2431410086727492,1.033845582770962,20.244360414136864,balanced_all_equity,international_equity,1.3474845436465457
+us_social_security,amortisation at 6%,1.2431410086727492,1.033845582770962,20.244360414136864,balanced_all_equity,international_equity,1.3474845436465455
 us_social_security,amortisation at 8%,1.2016710709150793,1.0016281239033653,19.971778171737277,balanced_all_equity,international_equity,1.3012341834790224
-us_social_security,amortisation at 10%,1.1416126879739497,0.9607363255172284,18.826847455709906,balanced_all_equity,international_equity,1.2305332865816443
+us_social_security,amortisation at 10%,1.1416126879739497,0.9607363255172283,18.826847455709927,balanced_all_equity,international_equity,1.2305332865816445

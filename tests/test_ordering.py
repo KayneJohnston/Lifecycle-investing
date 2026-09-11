@@ -200,3 +200,126 @@ class TestRuleOrder:
         out = odr.gaps(self._frame())
         assert not isinstance(out["rule"].dtype, pd.CategoricalDtype)
         assert all(isinstance(x, str) for x in out["rule"])
+
+
+class TestInfluence:
+    """Delete-one-country recomputation of the whole gap table."""
+
+    def test_it_runs_once_per_country_with_that_one_removed(self) -> None:
+        seen = []
+
+        def gaps_for(kept):
+            seen.append(tuple(kept))
+            return pd.DataFrame([{"system": "us", "rule": "r",
+                                  "gap_pct": 1.0}])
+
+        out = odr.influence(gaps_for, ["AUS", "USA", "GBR"])
+        assert len(seen) == 3
+        assert all(len(k) == 2 for k in seen)
+        assert ("USA", "GBR") in seen and ("AUS", "GBR") in seen
+
+    def test_the_dropped_country_is_tagged_on_every_row(self) -> None:
+        out = odr.influence(
+            lambda kept: pd.DataFrame([{"system": "us", "rule": "a",
+                                        "gap_pct": 1.0},
+                                       {"system": "us", "rule": "b",
+                                        "gap_pct": 2.0}]),
+            ["AUS", "USA"])
+        assert len(out) == 4
+        assert set(out["dropped"]) == {"AUS", "USA"}
+        assert set(out["n_markets"]) == {1}
+
+    def test_no_countries_gives_an_empty_frame(self) -> None:
+        assert not len(odr.influence(lambda kept: pd.DataFrame(), []))
+
+
+class TestIntervals:
+    @staticmethod
+    def _pair(values, point):
+        """`values` are the per-deletion gaps for one cell."""
+        infl = pd.DataFrame([{"dropped": f"C{i}", "system": "au",
+                              "rule": "fixed", "gap_pct": v}
+                             for i, v in enumerate(values)])
+        gapped = pd.DataFrame([{"system": "au", "rule": "fixed",
+                                "gap_pct": point}])
+        return infl, gapped
+
+    def test_a_tight_cluster_away_from_zero_is_resolved(self) -> None:
+        out = odr.intervals(*self._pair([-2.0, -2.1, -1.9, -2.05], -2.0))
+        row = out.iloc[0]
+        assert row["sign_survives_every_deletion"]
+        assert row["ci_excludes_zero"]
+        assert row["standard_error"] < 1.0
+
+    def test_a_spread_straddling_zero_is_not_resolved(self) -> None:
+        """The branch the paper's headline turns on."""
+        out = odr.intervals(*self._pair([-2.0, 4.0, -6.0, 3.0], -2.0))
+        row = out.iloc[0]
+        assert not row["sign_survives_every_deletion"]
+        assert not row["ci_excludes_zero"]
+
+    def test_a_consistent_sign_can_still_be_unresolved(self) -> None:
+        """Every deletion negative, but so widely spread that the interval
+        crosses zero. Reporting only the sign check would call this settled."""
+        out = odr.intervals(*self._pair([-0.5, -9.0, -0.2, -8.0], -2.0))
+        row = out.iloc[0]
+        assert row["sign_survives_every_deletion"]
+        assert not row["ci_excludes_zero"]
+
+    def test_it_reports_the_raw_deletion_span(self) -> None:
+        out = odr.intervals(*self._pair([-2.0, -5.0, -1.0], -2.0))
+        assert float(out["loo_low"].iloc[0]) == pytest.approx(-5.0)
+        assert float(out["loo_high"].iloc[0]) == pytest.approx(-1.0)
+        assert int(out["deletions"].iloc[0]) == 3
+
+    def test_the_point_estimate_is_the_full_panel_not_the_mean(self) -> None:
+        """The jackknife is centred on the full-panel gap; using the mean of
+        the deletions instead would quietly report a different number from
+        the one in the headline table."""
+        out = odr.intervals(*self._pair([-3.0, -3.0, -3.0], -2.0))
+        assert float(out["gap_pct"].iloc[0]) == pytest.approx(-2.0)
+
+    def test_empty_inputs_give_an_empty_frame(self) -> None:
+        assert not len(odr.intervals(pd.DataFrame(), pd.DataFrame()))
+
+
+class TestPrecisionVerdict:
+    @staticmethod
+    def _table(au_values, us_values, au_point=-2.0, us_point=11.0):
+        rows = []
+        for system, values, point in (("australia_as_legislated", au_values,
+                                       au_point),
+                                      ("us_social_security", us_values,
+                                       us_point)):
+            rows += [{"dropped": f"C{i}", "system": system, "rule": "fixed",
+                      "gap_pct": v} for i, v in enumerate(values)]
+        gapped = pd.DataFrame([
+            {"system": "australia_as_legislated", "rule": "fixed",
+             "gap_pct": au_point},
+            {"system": "us_social_security", "rule": "fixed",
+             "gap_pct": us_point}])
+        return odr.intervals(pd.DataFrame(rows), gapped)
+
+    def test_a_resolved_reversal_is_reported_as_resolved(self) -> None:
+        found = odr.precision_verdict(
+            self._table([-2.0, -2.1, -1.9], [11.0, 11.1, 10.9]), "fixed")
+        assert found["reversal_resolved"]
+        assert found["baseline_resolved"]
+        assert found["unresolved"] == []
+
+    def test_an_unresolved_reversal_is_reported_as_unresolved(self) -> None:
+        found = odr.precision_verdict(
+            self._table([-2.0, 5.0, -8.0], [11.0, 11.1, 10.9]), "fixed")
+        assert not found["reversal_resolved"]
+        assert found["baseline_resolved"]
+        assert "australia_as_legislated / fixed" in found["unresolved"]
+        assert found["resolved_cells"] == 1
+
+    def test_a_missing_cell_is_not_measured(self) -> None:
+        table = self._table([-2.0, -2.1], [11.0, 11.1])
+        assert odr.precision_verdict(table, "no_such_rule") == {
+            "measured": False}
+
+    def test_an_empty_table_is_not_measured(self) -> None:
+        assert odr.precision_verdict(pd.DataFrame(), "fixed") == {
+            "measured": False}

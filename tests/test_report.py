@@ -607,3 +607,111 @@ class TestIncidenceDocRenders:
         text = self._render(tmp_path, gamma2_shift=0.5)
         assert "The corner does not survive" in text
         assert "has to be reported as one" in text
+
+
+class TestOrderingDocRenders:
+    """`write_doc_36` exists to settle an equivocation, and every sentence
+    in it branches. The branch that matters most is the one that says the
+    reversal is *not* a sign the panel can resolve: if the interval straddles
+    zero the document has to withdraw the claim, and a version that could
+    only report success would let it stand."""
+
+    @staticmethod
+    def _frames(au_fixed: float = -2.0, au_amort: float = 26.0,
+                au_spread: float = 0.1, us_fixed: float = 11.0) -> dict:
+        from src import ordering as odr
+
+        challenger, incumbent = odr.HEADLINE
+        rows = []
+        cells = {("us_social_security", "fixed_real_rule"): us_fixed,
+                 ("us_social_security", "amortisation at 8%"): 20.0,
+                 ("australia_as_legislated", "fixed_real_rule"): au_fixed,
+                 ("australia_as_legislated", "amortisation at 8%"): au_amort}
+        for (system, rule), gap in cells.items():
+            rows.append({"system": system, "rule": rule,
+                         "strategy": challenger, "cec": 1.0 + gap / 100,
+                         "prob_ruin": 0.1, "mean_consumption": 1.0,
+                         "p5_consumption": 0.5})
+            rows.append({"system": system, "rule": rule,
+                         "strategy": incumbent, "cec": 1.0,
+                         "prob_ruin": 0.1, "mean_consumption": 1.0,
+                         "p5_consumption": 0.5})
+        swept = pd.DataFrame(rows)
+        gapped = odr.gaps(swept)
+        infl = pd.DataFrame([
+            {"dropped": f"C{i}", "system": system, "rule": rule,
+             "gap_pct": gap + (au_spread * (i - 1) if
+                               system == "australia_as_legislated" else 0.05)}
+            for (system, rule), gap in cells.items() for i in range(3)])
+        return {"swept": swept, "gaps": gapped,
+                "intervals": odr.intervals(infl, gapped)}
+
+    @staticmethod
+    def _notes(frames: dict) -> dict:
+        from src import ordering as odr
+
+        return {"verdict": odr.verdict(
+                    frames["gaps"], "fixed_real_rule",
+                    baseline_system="us_social_security",
+                    contender_system="australia_as_legislated"),
+                "precision": odr.precision_verdict(frames["intervals"],
+                                                   "fixed_real_rule"),
+                "baseline_rule": "fixed_real_rule", "gamma": 5.0,
+                "n_paths": 100, "elapsed_seconds": 12.0}
+
+    def _render(self, tmp_path, **over) -> str:
+        frames = self._frames(**over)
+        return rp.write_doc_36(tmp_path / "36.md", _cfg(), frames,
+                               ["results/figures/fig67.png"],
+                               self._notes(frames)).read_text()
+
+    def test_the_whole_document_renders(self, tmp_path) -> None:
+        assert len(self._render(tmp_path)) > 2_000
+
+    def test_every_section_is_numbered_once_and_in_order(self, tmp_path
+                                                         ) -> None:
+        import re
+
+        numbers = [int(m.group(1)) for m
+                   in re.finditer(r"^## (\d+)\. ", self._render(tmp_path),
+                                  re.M)]
+        assert numbers == list(range(1, len(numbers) + 1))
+
+    def test_a_resolved_reversal_is_reported_as_resolved(self, tmp_path
+                                                          ) -> None:
+        text = self._render(tmp_path, au_spread=0.05)
+        assert "a sign the panel can resolve" in text
+        assert "does not contain zero" in text
+
+    def test_an_unresolved_reversal_withdraws_the_claim(self, tmp_path
+                                                         ) -> None:
+        text = self._render(tmp_path, au_spread=6.0)
+        assert "not a sign this panel can resolve" in text
+        assert "has to be withdrawn" in text
+
+    def test_the_interval_table_is_rendered(self, tmp_path) -> None:
+        text = self._render(tmp_path)
+        assert "Jackknife s.e." in text
+        assert "Sign holds in all 16" in text
+
+    def test_it_names_the_cells_it_cannot_resolve(self, tmp_path) -> None:
+        text = self._render(tmp_path, au_spread=6.0)
+        assert "australia_as_legislated / fixed_real_rule" in text
+
+    def test_no_placeholder_survives(self, tmp_path) -> None:
+        text = self._render(tmp_path)
+        assert "{" not in text and "}" not in text
+
+    def test_an_unmeasured_verdict_does_not_crash_the_build(self, tmp_path
+                                                             ) -> None:
+        """A sweep that does not carry both named regimes used to raise a
+        KeyError from inside the f-string, three hundred lines into the
+        document."""
+        from src import ordering as odr
+
+        frames = self._frames()
+        notes = dict(self._notes(frames))
+        notes["verdict"] = {"measured": False}
+        out = rp.write_doc_36(tmp_path / "36.md", _cfg(), frames,
+                              ["results/figures/fig67.png"], notes)
+        assert "not both in the sweep" in out.read_text()

@@ -785,10 +785,29 @@ class TestShortPaper:
         assert set(sh.DROPPED) <= inherited
 
     def test_the_argument_sections_are_all_present(self) -> None:
+        """The chain the paper's thesis runs along: the pension reverses
+        the ordering, one of its two features does the work, a rule can
+        restore it, and the last section says which portfolio wins where."""
         from paper import short as sh
 
-        for key in ("pension", "leisure", "longevity", "tax"):
+        for key in ("pension", "leisure", "longevity", "ordering"):
             assert key in sh.SHORT_ORDER, key
+
+    def test_a_section_it_drops_still_resolves_to_the_companion(self
+                                                                ) -> None:
+        """The tax section was cut, and the roadmap still points a reader
+        at it. That pointer must land in the companion rather than dangle."""
+        from paper import short as sh
+
+        assert "tax" not in sh.SHORT_ORDER
+        sh.ct.COMPANION = {"name": "the companion study",
+                           "numbers": sh.LONG_NUMBER_ALL}
+        try:
+            with sh.renumbered():
+                out = sh.ct.resolve_sections("Section #tax")
+        finally:
+            sh.ct.COMPANION = {}
+        assert out.endswith("of the companion study")
 
     def test_it_is_materially_shorter(self) -> None:
         from paper import short as sh
@@ -832,3 +851,57 @@ class TestShortPaper:
 
         assert any("Cocco" in r and "Maenhout" in r
                    for r in sh.EXTRA_REFERENCES)
+
+
+class TestSubsectionRenumbering:
+    """Trimming subsections out of an inherited section leaves the survivors
+    at their original numbers, so a section whose first heading is 7.5 tells
+    the reader four subsections went missing. The remap lives in the
+    resolver so the heading and every reference to it move together."""
+
+    def test_a_renumbered_heading_and_its_references_agree(self) -> None:
+        from paper import short as sh
+
+        original = dict(sh.ct.RENUMBERED)
+        sh.ct.RENUMBERED = {"leisure": {5: 1, 6: 2}}
+        try:
+            with sh.renumbered():
+                n = sh.SHORT_ORDER.index("leisure") + 1
+                assert sh.ct.resolve_sections("#leisure.5") == f"{n}.1"
+                assert sh.ct.resolve_sections("#leisure.6") == f"{n}.2"
+                assert sh.ct.resolve_sections("#leisure") == str(n)
+        finally:
+            sh.ct.RENUMBERED = original
+
+    def test_an_unmapped_subsection_is_left_alone(self) -> None:
+        from paper import short as sh
+
+        original = dict(sh.ct.RENUMBERED)
+        sh.ct.RENUMBERED = {"leisure": {5: 1}}
+        try:
+            with sh.renumbered():
+                n = sh.SHORT_ORDER.index("leisure") + 1
+                assert sh.ct.resolve_sections("#leisure.9") == f"{n}.9"
+        finally:
+            sh.ct.RENUMBERED = original
+
+    def test_the_map_is_restored_after_the_story_is_built(self) -> None:
+        import content
+
+        assert content.RENUMBERED == {}
+
+    def test_every_renumbered_key_is_an_inherited_section(self) -> None:
+        from paper import short as sh
+
+        assert set(sh.RENUMBERED) <= set(sh.SHORT_ORDER) - set(sh.OWN)
+
+    def test_no_renumbered_target_collides_with_a_kept_subsection(self
+                                                                  ) -> None:
+        """Mapping 5 -> 1 while a real 1 survives would give two headings
+        the same number."""
+        from paper import short as sh
+
+        for key, moved in sh.RENUMBERED.items():
+            trimmed = len(sh.TRIMMED.get(key, ()))
+            assert len(set(moved.values())) == len(moved), key
+            assert max(moved.values()) <= trimmed + len(moved), key

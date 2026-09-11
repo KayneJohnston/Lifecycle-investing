@@ -11795,7 +11795,15 @@ def write_doc_36(
          "best_strategy": "Best of the whole menu", "best_cec": "Its CEC"}),
         floatfmt="{:.4f}")
 
-    if found.get("pension_reverses_the_ordering"):
+    if not found.get("measured"):
+        # The verdict names two regimes by key; if the sweep does not carry
+        # them there is nothing to compare, and saying so beats raising a
+        # KeyError three hundred lines into a document build.
+        headline = (
+            "**The two regimes this section compares are not both in the "
+            "sweep**, so the headline cannot be re-derived here. The table "
+            "above still reports every cell that was run.")
+    elif found.get("pension_reverses_the_ordering"):
         headline = (
             f"**Under {base}, the pension reverses the ordering.** The "
             f"all-equity portfolio leads the target-date fund by "
@@ -11873,6 +11881,58 @@ def write_doc_36(
             "the whole menu in every row, so nothing is hidden by "
             "reporting the pair.")
 
+    band = frames.get("intervals")
+    precision = notes.get("precision", {})
+    if band is not None and len(band):
+        band_tbl = md_table(_compact(
+            band, ["system", "rule", "gap_pct", "standard_error", "ci_low",
+                   "ci_high", "sign_survives_every_deletion"],
+            {"system": "Pension system", "rule": "Withdrawal rule",
+             "gap_pct": "All-equity lead (%)",
+             "standard_error": "Jackknife s.e.",
+             "ci_low": "CI low", "ci_high": "CI high",
+             "sign_survives_every_deletion": "Sign holds in all 16"}),
+            floatfmt="{:.2f}")
+    else:
+        band_tbl = ""
+
+    if precision.get("measured"):
+        lo, hi = precision["reversal_ci"]
+        dlo, dhi = precision["reversal_loo"]
+        if precision["reversal_resolved"]:
+            lead = (f"**The reversal is a sign the panel can resolve.** The "
+                    f"contested cell is {precision['reversal_gap_pct']:+.2f}% "
+                    f"with a delete-one standard error of "
+                    f"{precision['reversal_se']:.2f}, so the interval is "
+                    f"[{lo:+.2f}, {hi:+.2f}] and does not contain zero.")
+        else:
+            lead = (f"**The reversal is not a sign this panel can resolve.** "
+                    f"The contested cell is "
+                    f"{precision['reversal_gap_pct']:+.2f}% with a delete-one "
+                    f"standard error of {precision['reversal_se']:.2f}. The "
+                    f"interval is [{lo:+.2f}, {hi:+.2f}] and it straddles "
+                    f"zero. On sixteen countries this gap cannot be told "
+                    f"apart from no gap at all, and any sentence that reads "
+                    f"the reversal as established has to be withdrawn.")
+        lead += (
+            f" Across the sixteen sub-panels the cell runs [{dlo:+.2f}, "
+            f"{dhi:+.2f}], and the sign "
+            f"{'holds in every one' if precision['reversal_sign_survives'] else 'does not hold in all of them'}.")
+        lead += (
+            f" For contrast the same cell under the American schedule is "
+            f"{precision['baseline_gap_pct']:+.2f}% with a standard error of "
+            f"{precision['baseline_se']:.2f}, which "
+            f"{'is resolved' if precision['baseline_resolved'] else 'is not resolved either'}.")
+        precision_line = lead
+        resolved = (f"{precision['resolved_cells']} of {precision['cells']} "
+                    f"cells have an interval excluding zero.")
+        if precision["unresolved"]:
+            resolved += (" The ones that do not: "
+                         + _join(precision["unresolved"]) + ".")
+        precision_line += " " + resolved
+    else:
+        precision_line = ""
+
     figure_list = "\n".join(f"* `{f}`" for f in figures)
     intro = _header(
         "36 - Which Portfolio Wins, and Under What",
@@ -11913,7 +11973,21 @@ the headline menu, on common random numbers.
 
 {third}
 
-## 3. What this changes
+## 3. How precisely the panel resolves each sign
+
+Every claim above is a claim about a sign, and the panel is sixteen
+developed markets whose twentieth centuries were not independent. So each
+cell is recomputed sixteen times with one country's history removed, and
+the delete-one jackknife gives the sampling error the *panel* carries.
+That is the error to weigh a sign against. Monte Carlo error is not: a
+hundred thousand paths drive it close to zero without adding a single
+country of evidence.
+
+{band_tbl}
+
+{precision_line}
+
+## 4. What this changes
 
 * The second finding has to be stated as what the evidence supports. The
   wording is not cosmetic: a plan sponsor reading "the ordering reverses
@@ -11926,7 +12000,7 @@ the headline menu, on common random numbers.
 * This section re-derives the first finding on its own grid rather than
   quoting it, so the two cannot drift.
 
-## 4. What is still not modelled
+## 5. What is still not modelled
 
 * The rules here are fixed policies, not solved ones. A retiree who
   re-optimised the withdrawal each year against the means test would do
@@ -11938,11 +12012,11 @@ the headline menu, on common random numbers.
 * Every row holds the retirement date fixed, so nothing here prices the
   interaction between the drawdown rule and when work stops.
 
-## 5. Figures
+## 6. Figures
 
 {figure_list}
 
-## 6. Reproduction
+## 7. Reproduction
 
 ```bash
 python main.py --steps 36

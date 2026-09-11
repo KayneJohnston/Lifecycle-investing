@@ -1160,6 +1160,17 @@ ordering:
   # assume. The last is the rule that supplies its own floor, which is the
   # one the recovery claim rests on.
   percent_rate: 0.04
+  # Delete-one-country intervals on every cell of the gap table. The
+  # headline is a change of sign, sixteen developed markets are not sixteen
+  # independent draws, and a sign whose interval straddles zero is not a
+  # finding. Restricted to the two systems the headline compares: the full
+  # cross would be 384 runs to put an interval on two numbers.
+  influence_enabled: true
+  influence_systems: [us_social_security, australia_as_legislated]
+  # The same path count as the point estimate. A cheaper one would fold the
+  # Monte Carlo difference between two path counts into the interval, which
+  # is precisely the error the jackknife is there to exclude.
+  influence_n_paths: 50000
   assumed_return_grid: [0.00, 0.02, 0.04, 0.06, 0.08, 0.10]
 
 incidence:
