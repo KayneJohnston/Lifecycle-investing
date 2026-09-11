@@ -505,3 +505,80 @@ def rule_verdict(profiles: Mapping[str, pd.DataFrame],
     if len(ARMS) < 3:
         return {"measured": False}
     return contrast(profiles, shapes, ARMS[0], ARMS[2], tolerance)
+
+
+def robustness(frame: pd.DataFrame, columns: Sequence[str],
+               equities: Sequence[float] | None = None,
+               tolerance: float = SHAPE_TOLERANCE) -> pd.DataFrame:
+    """The balance profile re-read under each scoring column.
+
+    The headline of the balance dial is a corner: no equity anywhere the
+    test reaches under one withdrawal rule, all of it under another. A
+    corner at zero is exactly where a constant-relative-risk-aversion
+    objective is least trustworthy -- with a consumption floor near zero,
+    utility is unbounded below, and a handful of near-starvation years can
+    decide the optimum on their own. So the same simulated outcomes are
+    scored at several risk aversions and several floors, and the profile is
+    re-read under each.
+
+    Nothing is re-simulated: the scoring columns are all computed from one
+    set of outcomes, which is what makes this cheap enough to be routine.
+    """
+    rows: List[Dict[str, Any]] = []
+    for column in columns:
+        if column not in frame:
+            continue
+        profile = optimum_by_balance(frame, column)
+        shape = shape_verdict(profile, equities, tolerance)
+        row: Dict[str, Any] = {"scoring": str(column)}
+        for band in BANDS:
+            key = "equity_" + band.replace(" ", "_").replace("-", "_")
+            row[band] = float(shape.get(key, np.nan))
+        bound = profile[profile["median_wealth"] <= profile["cutoff"]] \
+            if "cutoff" in profile else profile.iloc[0:0]
+        row["equity_where_the_test_binds"] = (
+            float(bound[ "equity"].median()) if len(bound) else np.nan)
+        row["equity_overall"] = float(profile["equity"].median()) \
+            if len(profile) else np.nan
+        row["flat_across_bands"] = bool(shape.get("flat_across_bands", False))
+        row["all_at_ceiling"] = bool(shape.get("all_at_ceiling", False))
+        rows.append(row)
+    return pd.DataFrame.from_records(rows)
+
+
+def robustness_verdict(table: pd.DataFrame, baseline: str = "cec",
+                       tolerance: float = SHAPE_TOLERANCE) -> Dict[str, Any]:
+    """Whether the corner survives being scored a different way.
+
+    ``survives`` is the field the prose turns on, and it is deliberately
+    demanding: every alternative scoring must put the household within
+    ``tolerance`` of where the baseline put it. A result that holds at one
+    risk aversion and one floor is a result about that specification.
+    """
+    if not len(table) or baseline not in set(table["scoring"]):
+        return {"measured": False}
+    base = table[table["scoring"] == baseline].iloc[0]
+    others = table[table["scoring"] != baseline]
+    anchor = float(base["equity_where_the_test_binds"])
+    found: Dict[str, Any] = {
+        "measured": True,
+        "baseline": str(baseline),
+        "baseline_equity": anchor,
+        "specifications": int(len(table)),
+    }
+    if not len(others):
+        found["survives"] = True
+        return found
+    gaps = (others["equity_where_the_test_binds"].to_numpy(dtype=float)
+            - anchor)
+    found["max_departure"] = float(np.nanmax(np.abs(gaps)))
+    found["survives"] = bool(found["max_departure"] <= tolerance)
+    found["range_low"] = float(np.nanmin(
+        table["equity_where_the_test_binds"].to_numpy(dtype=float)))
+    found["range_high"] = float(np.nanmax(
+        table["equity_where_the_test_binds"].to_numpy(dtype=float)))
+    worst = int(np.nanargmax(np.abs(gaps)))
+    found["worst_scoring"] = str(others["scoring"].iloc[worst])
+    found["worst_equity"] = float(
+        others["equity_where_the_test_binds"].iloc[worst])
+    return found

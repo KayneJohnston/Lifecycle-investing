@@ -791,3 +791,67 @@ class TestReturnGridEdge:
         found = lv.verdict(swept, lv.ranking_shift(swept),
                            lv.ablation(swept))
         assert "best_return_at_edge" not in found
+
+
+class TestTheHorizonNumbersReachTheProse:
+    """Three NaNs shipped in the body text of both papers.
+
+    `verdict` never carried `expected_age_at_death`, `life_expectancy` or
+    `fixed_horizon_years`; the section that quotes them read them off the
+    verdict with a NaN default and printed "the expected age at death is
+    nan". The values were being computed in the pipeline all along and
+    simply not passed along.
+    """
+
+    @staticmethod
+    def _frame() -> pd.DataFrame:
+        return pd.DataFrame.from_records([{
+            "objective": "fixed", "rule": "gompertz", "rule_label": "gompertz",
+            "rate": float("nan"), "equity": 1.0, "domestic": 0.1,
+            lv.FIXED: 1.0, lv.MORTALITY: 1.1, "ruin_fixed": 0.1,
+            "ruin_mortality": 0.05, "has_rate": False,
+            "assumed_return": float("nan"), "has_assumed_return": False,
+            "label": "gompertz-1.0", "mean_consumption": 1.0}])
+
+    def test_the_numbers_are_carried_through(self) -> None:
+        found = lv.verdict(self._frame(), pd.DataFrame(), pd.DataFrame(),
+                           {"expected_age_at_death": 81.9,
+                            "life_expectancy": 18.9,
+                            "fixed_horizon_years": 30.0})
+        assert found["expected_age_at_death"] == pytest.approx(81.9)
+        assert found["life_expectancy"] == pytest.approx(18.9)
+        assert found["fixed_horizon_years"] == pytest.approx(30.0)
+
+    def test_none_of_them_is_ever_a_nan(self) -> None:
+        found = lv.verdict(self._frame(), pd.DataFrame(), pd.DataFrame(),
+                           {"expected_age_at_death": 81.9,
+                            "life_expectancy": 18.9,
+                            "fixed_horizon_years": 30.0})
+        assert not any(isinstance(v, float) and np.isnan(v)
+                       for k, v in found.items()
+                       if k.endswith(("_age_at_death", "_expectancy",
+                                      "_horizon_years")))
+
+    def test_omitting_them_adds_no_keys(self) -> None:
+        """A caller that does not own a survival curve must not be given
+        placeholder keys the prose would then print."""
+        found = lv.verdict(self._frame(), pd.DataFrame(), pd.DataFrame())
+        for key in ("expected_age_at_death", "life_expectancy",
+                    "fixed_horizon_years"):
+            assert key not in found
+
+    def test_the_pipeline_supplies_all_three(self) -> None:
+        """A source check: the section prints all three, so all three have
+        to be passed at the one call site that feeds it."""
+        import re
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[1] / "main.py").read_text()
+        # The lookbehind matters: `slv.verdict(comparison)` (the sleeve
+        # study) also ends in "lv.verdict(" and matched first.
+        call = re.search(r"(?<![A-Za-z_])lv\.verdict\("
+                         r"(?:[^()]|\([^()]*\))*\)", source)
+        assert call, "no lv.verdict call found in main.py"
+        for key in ("expected_age_at_death", "life_expectancy",
+                    "fixed_horizon_years"):
+            assert key in call.group(0), key

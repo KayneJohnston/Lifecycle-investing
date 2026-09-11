@@ -932,11 +932,19 @@ def run_chunked(
     n_paths: int,
     chunk_size: int,
     income_seed: int = 12345,
+    spending: "sp.SpendingRule | None" = None,
 ) -> Dict[str, LifecycleOutcome]:
     """Stream ``n_paths`` lifetimes through the bootstrap and the simulator.
 
     Memory scales with ``chunk_size``, not ``n_paths``, so 100k+ lifetimes fit
     comfortably; the per-path outcomes are concatenated as they arrive.
+
+    ``spending`` overrides the rule named on the spec, which is what lets a
+    study vary the withdrawal rule while running through the same driver as
+    the headline. Taking a single chunk instead would be a different
+    estimator: the left tail a means test exposes is thin enough that one
+    draw and several concatenated draws do not agree, and a section written
+    to audit the headline has to be computed the way the headline is.
     """
     income_root = np.random.SeedSequence(income_seed)
     n_chunks = int(np.ceil(n_paths / chunk_size))
@@ -946,7 +954,7 @@ def run_chunked(
         rng = np.random.default_rng(next(income_children))
         income = simulate_income(spec, chunk.n_paths, rng,
                                  dom_eq=chunk.dom_eq, intl_eq=chunk.intl_eq)
-        outcomes = simulate_all(chunk, strategies, spec, income)
+        outcomes = simulate_all(chunk, strategies, spec, income, spending)
         for key, outcome in outcomes.items():
             results[key] = outcome if key not in results \
                 else results[key].concat(outcome)

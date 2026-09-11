@@ -735,6 +735,32 @@ class TestShortPaper:
         assert "model" in sh.OWN
         assert "model" not in content.SECTION_ORDER
 
+    def test_the_ordering_section_follows_the_rule_it_depends_on(self
+                                                                 ) -> None:
+        """It asks what the winning withdrawal rule does to the portfolio
+        ranking, so it cannot precede the section that finds that rule."""
+        from paper import short as sh
+
+        assert "ordering" in sh.SHORT_ORDER
+        assert sh.SHORT_ORDER.index("longevity") < \
+            sh.SHORT_ORDER.index("ordering")
+        assert content.SECTION_ORDER.index("longevity") < \
+            content.SECTION_ORDER.index("ordering")
+
+    def test_every_trimmed_anchor_names_a_trimmed_subsection(self) -> None:
+        """`TRIMMED` removes subsections and `TRIMMED_ANCHORS` redirects the
+        references into them. The two going out of step is invisible: a
+        stale anchor sends a live reference to the companion, and a missing
+        one leaves a dangling pointer the build only catches by luck."""
+        from paper import short as sh
+
+        keys = {a.split(".")[0] for a in sh.TRIMMED_ANCHORS}
+        assert keys == set(sh.TRIMMED), (keys, set(sh.TRIMMED))
+        for key, phrases in sh.TRIMMED.items():
+            anchors = [a for a in sh.TRIMMED_ANCHORS
+                       if a.split(".")[0] == key]
+            assert len(anchors) == len(phrases), key
+
     def test_every_own_section_is_in_the_reading_order(self) -> None:
         from paper import short as sh
 

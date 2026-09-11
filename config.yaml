@@ -1137,6 +1137,31 @@ tax:
 # assets test. They are the same objection -- the household is clear of the
 # test because the guarantee was free -- so charging it is what puts the
 # means-test mechanism to the question instead of assuming it.
+ordering:
+  enabled: true
+  # Matched to the pension study's count, because this section audits that
+  # study's headline and a different path count is a different estimator in
+  # the left tail the means test exposes.
+  n_paths: 50000
+  # Which portfolio wins, under which pension system, under which
+  # withdrawal rule. The paper's headline is a strategy comparison and its
+  # second finding was reported as a system comparison; this crosses the
+  # two so the sentence can be checked rather than glossed.
+  # Keys from the pension study's own factorial design, so this section
+  # audits the headline on the headline's own household rather than on the
+  # leisure study's, which defines Australia differently.
+  systems: [us_social_security, age_pension_untested, australia_as_legislated]
+  baseline_system: us_social_security
+  contender_system: australia_as_legislated
+  strategies: [balanced_all_equity, target_date_fund, sixty_forty,
+               domestic_equity, international_equity]
+  # The rule the rest of the paper spends by, a percentage of the current
+  # balance, and the amortisation family across the returns it might
+  # assume. The last is the rule that supplies its own floor, which is the
+  # one the recovery claim rests on.
+  percent_rate: 0.04
+  assumed_return_grid: [0.00, 0.02, 0.04, 0.06, 0.08, 0.10]
+
 incidence:
   enabled: true
   n_paths: 25000
@@ -1166,6 +1191,11 @@ incidence:
   accumulation_equity: 1.0
   domestic_share: 0.10
   strategy: balanced_all_equity
+  # The balance dial's answer is a corner at zero, which is exactly where a
+  # CRRA objective is least trustworthy. Every outcome is re-scored at these
+  # risk aversions and these consumption floors; nothing is re-simulated.
+  robust_gammas: [2.0, 10.0]
+  robust_floors: [0.01, 0.05]
 
 longevity:
   enabled: true

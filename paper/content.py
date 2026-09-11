@@ -627,8 +627,10 @@ SECTION_ORDER: Tuple[str, ...] = (
     "tax",
     # Who paid for the balance the institutional pair has been arguing over,
     # and what the means test does to a household it can actually reach.
-    # Last of the studies because it reads all three of them.
     "incidence",
+    # And the ordering the whole study is about, crossed with the rule --
+    # last of the studies because it reads every one of them.
+    "ordering",
     # Closing.
     "discussion",
     "limitations",
@@ -668,7 +670,7 @@ EXTENSION_GROUPS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     # it exists only to check the comparison `leisure` makes.
     ("plan", ("saving", "accumulation", "retirement", "sequence",
               "spending", "plan", "longevity", "leisure", "tax",
-              "incidence")),
+              "incidence", "ordering")),
 )
 
 
@@ -701,7 +703,7 @@ MOVEMENTS: Tuple[Tuple[str, str, Tuple[str, ...]], ...] = (
      ("glide", "allocation", "leverage", "turnover", "out_of_sample",
       "housing", "mortgage", "saving", "accumulation", "retirement",
       "sequence", "spending", "plan", "longevity", "leisure", "tax",
-      "incidence")),
+      "incidence", "ordering")),
     ("What it means",
      "what survives, what does not, and what a reader should not take from "
      "any of it",
@@ -8018,9 +8020,24 @@ def section_longevity(ctx: Any) -> List[Flowable]:
     cfg = f.cfg
     gamma = float(cfg["utility"]["baseline_risk_aversion"])
 
-    from src import longevity as lng, plan as pl
+    from src import lifecycle as lc, longevity as lng, mortality as mrt
+    from src import plan as pl
 
-    found = lng.verdict(swept, ranking, ablated) if len(swept) \
+    # The three numbers describing the lifespan itself are derived from the
+    # same survival curve the sweep ran on, rather than left to default to
+    # NaN -- which is what they did, and the prose printed "the expected age
+    # at death is nan" in a published draft.
+    _spec = lc.spec_from_config(cfg)
+    _block = cfg.get("longevity", {})
+    _survive = mrt.survival(_spec,
+                            float(_block.get("mortality_modal_age", 88.0)),
+                            float(_block.get("mortality_dispersion", 10.0)))
+    _expected = mrt.life_expectancy(_spec, _survive)
+    horizon = {"expected_age_at_death": _expected,
+               "life_expectancy": _expected - _spec.age_retire,
+               "fixed_horizon_years": float(_spec.age_death
+                                            - _spec.age_retire)}
+    found = lng.verdict(swept, ranking, ablated, horizon) if len(swept) \
         else {"measured": False}
 
     out: List[Flowable] = [
@@ -8415,6 +8432,107 @@ def section_incidence(ctx: Any) -> List[Flowable]:
         "Full detail, including the three-regime budget line this section "
         "tests and the classification of every verdict above, is in "
         "<i>docs/35_incidence.md</i> in the replication archive."))
+    return out
+
+
+def section_ordering(ctx: Any) -> List[Flowable]:
+    """Which portfolio wins, under which pension, under which rule.
+
+    Two orderings run through this study and were being glossed as one: a
+    comparison of two *portfolios* inside a system, and a comparison of two
+    *systems*. Section #leisure establishes the second under an amortisation
+    rule; nothing established the first, and the prose had been reading
+    across.
+    """
+    f = ctx.f
+    gapped = f.table("ordering_gaps")
+    baseline_rule = str(f.cfg["lifecycle"]["retirement"]["rule"])
+    au = gapped[gapped["system"] == "australia_as_legislated"]
+    us = gapped[gapped["system"] == "us_social_security"]
+    au_base = au[au["rule"] == baseline_rule]
+    us_base = us[us["rule"] == baseline_rule]
+    au_best = au.loc[au["gap_pct"].idxmax()]
+    au_worst = au.loc[au["gap_pct"].idxmin()]
+    recovers = bool(float(au_best["gap_pct"]) > 0.0)
+    order = [x for x in ("us_social_security", "age_pension_untested",
+                         "australia_as_legislated")
+             if x in set(gapped["system"])]
+    label = {"us_social_security": "United States",
+             "age_pension_untested": "Age Pension, no means test",
+             "australia_as_legislated": "Australia as legislated"}
+
+    out: List[Flowable] = [
+        ctx.h1("#ordering. Which Portfolio Wins, and Under Which Rule")]
+    out.append(ctx.p(
+        "Section #longevity finds the withdrawal rule a retiree should use "
+        "once the horizon stops being a constant. Section #leisure finds "
+        "that under that rule the Australian household overtakes the "
+        "American one. Neither says which <i>portfolio</i> an Australian "
+        "retiree should then hold, and that is the question this study "
+        "opened with. The two orderings are different quantities and can "
+        "move in opposite directions; this section reports the portfolio "
+        "one directly rather than reading it off the other."))
+    rows = [["Withdrawal rule"] + [label.get(x, x) for x in order]]
+    for rule in dict.fromkeys(gapped["rule"]):
+        cells = [str(rule)]
+        for system in order:
+            hit = gapped[(gapped["system"] == system)
+                         & (gapped["rule"] == rule)]
+            cells.append(f"{float(hit['gap_pct'].iloc[0]):+.2f}%"
+                         if len(hit) else "\u2014")
+        rows.append(cells)
+    out += ctx.table(
+        rows,
+        "The all-equity portfolio's lead over the target-date fund, in "
+        "certainty-equivalent retirement consumption, for every pension "
+        "system and every withdrawal rule. Positive means the all-equity "
+        "portfolio wins.",
+        note="Every cell is scored on the same simulated lifetimes. The "
+             "estate is included, because an amortisation rule spends the "
+             "portfolio to zero by construction and a fixed real rule does "
+             "not.")
+    if len(us_base) and len(au_base):
+        out.append(ctx.p(
+            f"<b>The headline survives being re-derived on this grid.</b> "
+            f"Under {baseline_rule} the all-equity portfolio leads by "
+            f"{float(us_base['gap_pct'].iloc[0]):+.2f}% in the American "
+            f"system and {float(au_base['gap_pct'].iloc[0]):+.2f}% in the "
+            f"Australian one."))
+    if recovers:
+        out.append(ctx.p(
+            f"<b>And the rule can restore it.</b> Under {au_best['rule']} "
+            f"the all-equity portfolio leads by "
+            f"{float(au_best['gap_pct']):+.2f}% in the Australian system, "
+            f"against {float(au_base['gap_pct'].iloc[0]):+.2f}% under the "
+            f"fixed real rule. A rule that supplies its own floor restores "
+            f"the all-equity prescription, and that is now a claim about "
+            f"portfolios rather than an inference from one about countries."))
+    else:
+        out.append(ctx.p(
+            f"<b>The rule cannot restore it.</b> No rule in the menu "
+            f"returns the lead to the all-equity portfolio in the "
+            f"Australian system: the gap runs from "
+            f"{float(au_worst['gap_pct']):+.2f}% under {au_worst['rule']} "
+            f"to {float(au_best['gap_pct']):+.2f}% under {au_best['rule']}, "
+            f"and the target-date fund leads throughout. Section #leisure's "
+            f"finding stands as what it is -- a statement about the level "
+            f"of consumption in two countries -- and must not be read as a "
+            f"statement about portfolios."))
+    out.append(ctx.p(
+        f"Either way the rule belongs in the statement of the result. "
+        f"Within the Australian system alone, changing nothing but the "
+        f"withdrawal rule moves the all-equity lead by "
+        f"{float(au['gap_pct'].max() - au['gap_pct'].min()):.1f} percentage "
+        f"points."))
+    out += ctx.figure(
+        "fig67_ordering",
+        "The all-equity portfolio's lead over the target-date fund, by "
+        "pension system and withdrawal rule. One panel per system on a "
+        "shared scale; the zero line is the ranking, and the outlined bar "
+        "is the rule the rest of this study spends by.")
+    out.append(ctx.p(
+        "Full detail is in <i>docs/36_ordering.md</i> in the replication "
+        "archive."))
     return out
 
 
@@ -11149,6 +11267,7 @@ def story(ctx: Any) -> List[Flowable]:
     parts += section_leisure(ctx)
     parts += section_tax(ctx)
     parts += section_incidence(ctx)
+    parts += section_ordering(ctx)
     parts += section_discussion(ctx)
     parts += section_limitations(ctx)
     parts += section_conclusion(ctx)

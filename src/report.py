@@ -11509,6 +11509,47 @@ def write_doc_35(
         "together, and the rule is the half a retiree can choose.",
         "an artefact of the withdrawal rule it was measured under")
 
+    robust = frames.get("robustness")
+    robust_found = notes.get("robust", {})
+    if robust is not None and len(robust):
+        robust_tbl = md_table(_compact(
+            robust, ["scoring", "equity_where_the_test_binds"]
+            + list(ic.BANDS) + ["all_at_ceiling"],
+            {"scoring": "Scored as",
+             "equity_where_the_test_binds": "Wanted equity where the test binds",
+             **{b: b.capitalize() for b in ic.BANDS},
+             "all_at_ceiling": "Every optimum on the ceiling"}),
+            floatfmt="{:.2f}")
+    else:
+        robust_tbl = ""
+    if robust_found.get("measured"):
+        if robust_found.get("survives"):
+            robust_line = (
+                f"**The corner survives every one of them.** Where the test "
+                f"binds, the household wants "
+                f"{robust_found['baseline_equity']:.0%} equity at the "
+                f"baseline and never more than "
+                f"{100 * robust_found.get('max_departure', 0.0):.0f} "
+                f"percentage points away from that under any of the "
+                f"{int(robust_found['specifications'])} scorings, which "
+                f"span risk aversions from 2 to 10 and consumption floors "
+                f"three orders of magnitude apart. The answer is not a "
+                f"property of the felicity function's behaviour near zero.")
+        else:
+            robust_line = (
+                f"**The corner does not survive.** Where the test binds, "
+                f"wanted equity runs from {robust_found['range_low']:.0%} to "
+                f"{robust_found['range_high']:.0%} across the "
+                f"{int(robust_found['specifications'])} scorings, against "
+                f"{robust_found['baseline_equity']:.0%} at the baseline. "
+                f"The largest departure is under "
+                f"{robust_found['worst_scoring']}, at "
+                f"{robust_found['worst_equity']:.0%}. So the headline above "
+                f"is a statement about this risk aversion and this "
+                f"consumption floor, and has to be reported as one.")
+    else:
+        robust_line = ""
+
     figure_list = "\n".join(f"* `{f}`" for f in figures)
     intro = _header(
         "35 - Who Pays for the Guarantee, and Who the Test Binds",
@@ -11662,7 +11703,26 @@ instead, so the gain is consumed as it arrives.
 
 {rule_line}
 
-## 7. What this changes
+## 7. Is the corner a preference or a singularity?
+
+An optimum at the bottom of the grid deserves more suspicion than one in
+the middle, and this one deserves a particular kind. Constant relative risk
+aversion with a consumption floor near zero is unbounded below: a single
+near-starvation year can move a certainty equivalent further than a decade
+of ordinary ones. The household above wants no equity because the fixed
+real rule exposes it to exactly such years. It is fair to ask whether that
+is the household's preference or the felicity function's asymptote.
+
+The same simulated outcomes are therefore scored again at other risk
+aversions and other floors. Nothing is re-run: the outcomes are the same
+paths, the same balances and the same allocations, read through a different
+objective.
+
+{robust_tbl}
+
+{robust_line}
+
+## 8. What this changes
 
 * **Every Australia-versus-America comparison in this project is bracketed
   rather than pinned**, and the bracket is
@@ -11674,7 +11734,7 @@ instead, so the gain is consumed as it arrives.
 * **The taper is now tested on a household it binds**, which every earlier
   section's discussion of it was not.
 
-## 8. What is still not modelled
+## 9. What is still not modelled
 
 * Partial incidence that varies over the career or across the earnings
   distribution. The literature finds both; this sweep charges one constant
@@ -11689,11 +11749,11 @@ instead, so the gain is consumed as it arrives.
 * The income and deeming tests, which bind alongside the assets test for
   many real pensioners and are not in this model at all.
 
-## 9. Figures
+## 10. Figures
 
 {figure_list}
 
-## 10. Reproduction
+## 11. Reproduction
 
 ```bash
 python main.py --steps 35
@@ -11701,5 +11761,194 @@ python main.py --steps 35
 
 Runtime {float(notes['elapsed_seconds']):.0f}s at {int(notes['n_paths']):,}
 paths, gamma = {gamma:g}. Tables in `results/tables/incidence_*.csv`.
+"""
+    return _write(path, [intro, body])
+
+
+def write_doc_36(
+    path: str | Path,
+    cfg: Mapping[str, Any],
+    frames: Mapping[str, pd.DataFrame],
+    figures: Sequence[str],
+    notes: Mapping[str, Any],
+) -> Path:
+    """Which portfolio wins, under which pension, under which rule.
+
+    This section exists to settle an equivocation, so every sentence in it
+    branches on the sweep. If the all-equity portfolio does not recover its
+    lead, the document says so and names what has to be withdrawn.
+    """
+    from . import ordering as odr
+
+    swept = frames["swept"]
+    gapped = frames["gaps"]
+    found = notes["verdict"]
+    gamma = float(notes["gamma"])
+    base = str(notes["baseline_rule"])
+    challenger, incumbent = odr.HEADLINE
+
+    gap_tbl = md_table(_compact(
+        gapped, ["system", "rule", "gap_pct", "leader", "best_strategy",
+                 "best_cec"],
+        {"system": "Pension system", "rule": "Withdrawal rule",
+         "gap_pct": "All-equity lead (%)", "leader": "Which of the two leads",
+         "best_strategy": "Best of the whole menu", "best_cec": "Its CEC"}),
+        floatfmt="{:.4f}")
+
+    if found.get("pension_reverses_the_ordering"):
+        headline = (
+            f"**Under {base}, the pension reverses the ordering.** The "
+            f"all-equity portfolio leads the target-date fund by "
+            f"{found['baseline_gap_pct']:+.2f}% under the American schedule "
+            f"and by {found['contender_gap_pct']:+.2f}% under Australia's. "
+            f"That is the paper's first finding, re-derived here on the "
+            f"same grid as everything else in this section so the two "
+            f"cannot drift apart.")
+    else:
+        headline = (
+            f"**Under {base} the pension does not reverse the ordering** on "
+            f"this grid: the all-equity lead is "
+            f"{found['baseline_gap_pct']:+.2f}% under the American schedule "
+            f"and {found['contender_gap_pct']:+.2f}% under Australia's, so "
+            f"{found['baseline_leader']} leads in one and "
+            f"{found['contender_leader']} in the other. That contradicts "
+            f"the headline elsewhere in this project and has to be "
+            f"reconciled before either is reported.")
+
+    if found.get("recovers"):
+        recovery = (
+            f"**The all-equity portfolio does recover its lead.** Under "
+            f"{found['recovering_rule']} it leads by "
+            f"{found['recovering_gap_pct']:+.2f}% in the Australian system, "
+            f"against {found['contender_gap_pct']:+.2f}% under {base}. "
+            f"{len(found.get('recovering_rules', []))} of "
+            f"{int(found.get('rules', 0))} rules in the menu return the "
+            f"lead. So the sentence 'a rule that supplies its own floor "
+            f"restores the all-equity ordering' is a statement about "
+            f"portfolios and is supported.")
+    else:
+        recovery = (
+            f"**The all-equity portfolio does not recover its lead under "
+            f"any rule in the menu.** Across {int(found.get('rules', 0))} "
+            f"rules the Australian gap spans "
+            f"{found.get('contender_gap_range_pp', float('nan')):.1f} "
+            f"percentage points, from its worst under "
+            f"{found.get('contender_worst_rule')} to its best under "
+            f"{found.get('contender_best_rule')}, and the target-date fund "
+            f"leads throughout. This matters for how the project's second "
+            f"finding is worded. That an amortisation rule lets the "
+            f"Australian *household* overtake the American one is a "
+            f"statement about the level of consumption in two countries. It "
+            f"is not a statement that an Australian retiree should hold "
+            f"equities, and the two must not be run together.")
+
+    if found.get("sign_depends_on_the_rule"):
+        sign_line = (
+            "**The sign of the strategy gap depends on the withdrawal "
+            "rule.** Within the Australian system alone, some rules put the "
+            "all-equity portfolio ahead and others put it behind, on the "
+            "same returns and the same pension. A portfolio default cannot "
+            "be chosen without also choosing a drawdown default.")
+    else:
+        sign_line = (
+            f"The sign of the strategy gap does not depend on the "
+            f"withdrawal rule: {found.get('contender_leader', 'the same portfolio')} "
+            f"leads under every rule in the menu within the Australian "
+            f"system. The rule moves the size of the gap by "
+            f"{found.get('contender_gap_range_pp', float('nan')):.1f} "
+            f"percentage points without moving its sign, which is a weaker "
+            f"claim than the project has been making and is the one the "
+            f"evidence supports.")
+
+    if found.get("a_third_portfolio_ever_wins"):
+        third = (
+            "**And under some rules neither member of the pair is the best "
+            "portfolio available.** The last two columns of the table "
+            "report the best of the whole menu, which is not always one of "
+            "the two the headline compares -- so \"the target-date fund "
+            "wins\" would be false as well as incomplete for those rows.")
+    else:
+        third = (
+            "One of the two portfolios in the headline pair is the best of "
+            "the whole menu in every row, so nothing is hidden by "
+            "reporting the pair.")
+
+    figure_list = "\n".join(f"* `{f}`" for f in figures)
+    intro = _header(
+        "36 - Which Portfolio Wins, and Under What",
+        "The headline of this project is a comparison of two portfolios. "
+        "Its second finding was reported as a comparison of two countries. "
+        "This section crosses them, because they had been glossed as the "
+        "same thing.")
+
+    body = f"""
+## 1. The equivocation
+
+The claim this project leads with is about portfolios: the all-equity
+portfolio beats the target-date fund under an earnings-related pension and
+loses to it under an asset-tested one. The claim it follows with is that
+under an amortisation withdrawal rule -- one that divides the balance by the
+years remaining and so cannot deplete it -- the ordering *reverses again*.
+
+Read carefully, the second claim was supported by a different comparison
+from the first. `docs/32` establishes that under an amortisation rule the
+Australian *household* overtakes the American one on certainty-equivalent
+consumption. That is a statement about the level of consumption in two
+countries. It says nothing about which portfolio an Australian retiree
+should hold, and no table in this project reported that.
+
+This section reports it. {int(len(swept)):,} combinations: every pension
+system, crossed with every withdrawal rule, crossed with every portfolio in
+the headline menu, on common random numbers.
+
+## 2. The gap, system by system and rule by rule
+
+{gap_tbl}
+
+{headline}
+
+{recovery}
+
+{sign_line}
+
+{third}
+
+## 3. What this changes
+
+* The second finding has to be stated as what the evidence supports. The
+  wording is not cosmetic: a plan sponsor reading "the ordering reverses
+  again" would take it as licence to keep an all-equity default in a
+  means-tested system, which is
+  {"what this section supports" if found.get("recovers") else "not what this section supports"}.
+* The withdrawal rule belongs in the statement of the result either way,
+  because it moves the Australian gap by
+  {found.get('contender_gap_range_pp', float('nan')):.1f} percentage points.
+* This section re-derives the first finding on its own grid rather than
+  quoting it, so the two cannot drift.
+
+## 4. What is still not modelled
+
+* The rules here are fixed policies, not solved ones. A retiree who
+  re-optimised the withdrawal each year against the means test would do
+  better than any of them, and the gap between the best fixed rule and that
+  is not measured here.
+* The strategy menu is the project's own five. A free-form allocation would
+  find something better than all five in every cell; what this section
+  compares is the defaults a plan sponsor actually chooses between.
+* Every row holds the retirement date fixed, so nothing here prices the
+  interaction between the drawdown rule and when work stops.
+
+## 5. Figures
+
+{figure_list}
+
+## 6. Reproduction
+
+```bash
+python main.py --steps 36
+```
+
+Runtime {float(notes['elapsed_seconds']):.0f}s at {int(notes['n_paths']):,}
+paths, gamma = {gamma:g}. Tables in `results/tables/ordering_*.csv`.
 """
     return _write(path, [intro, body])

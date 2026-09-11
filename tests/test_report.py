@@ -409,7 +409,7 @@ class TestIncidenceDocRenders:
     def _frames(band_equity: float = 0.9, above_equity: float = 0.4,
                 below_equity: float = 0.6, lifetime_cost: float = 0.05,
                 move_balance: bool = False, bridge_gap: float = 0.4,
-                rule_gap: float = -0.2) -> dict:
+                rule_gap: float = -0.2, gamma2_shift: float = 0.0) -> dict:
         from src import incidence as ic
 
         swept = []
@@ -439,6 +439,7 @@ class TestIncidenceDocRenders:
                         "arm": arm, "scale": scale, "equity": equity,
                         "cec": 1.0 - abs(equity - peak),
                         "cec_lifetime": 1.0 - abs(equity - peak),
+                        "cec_gamma2": 1.0 - abs(equity - peak - gamma2_shift),
                         "prob_ruin": 0.1,
                         "median_wealth": wealth, "free_area": 3.0,
                         "cutoff": 7.0,
@@ -456,7 +457,10 @@ class TestIncidenceDocRenders:
                 "balances": balance_df,
                 "profile": pd.concat([profiles[a] for a in ic.ARMS],
                                      ignore_index=True),
-                "profiles": profiles}
+                "profiles": profiles,
+                "robustness": ic.robustness(
+                    balance_df, ["cec", "cec_gamma2"],
+                    [0.0, 0.4, 0.6, 0.9, 1.0])}
 
     @staticmethod
     def _notes(frames: dict) -> dict:
@@ -465,10 +469,12 @@ class TestIncidenceDocRenders:
         grid = [0.0, 0.4, 0.6, 0.9, 1.0]
         shapes = {arm: ic.shape_verdict(block, grid)
                   for arm, block in frames["profiles"].items()}
+        table = ic.robustness(frames["balances"], ["cec", "cec_gamma2"], grid)
         return {"verdict": ic.verdict(frames["optimum"]),
                 "shape": shapes[ic.ARMS[0]], "shapes": shapes,
                 "bridge": ic.bridge_verdict(frames["profiles"], shapes),
                 "rule": ic.rule_verdict(frames["profiles"], shapes),
+                "robust": ic.robustness_verdict(table),
                 "gamma": 4.0, "n_paths": 100, "elapsed_seconds": 12.0,
                 "employer_rate": 0.102, "retire_age": 63, "pension_age": 67,
                 "bridge_share": 0.6, "base_rule": "fixed_real_rule",
@@ -582,3 +588,22 @@ class TestIncidenceDocRenders:
                             below_equity=0.6)
         assert "does not vary with position at all" in text
         assert "The optimum is lowest" not in text
+
+    def test_the_robustness_section_is_rendered(self, tmp_path) -> None:
+        text = self._render(tmp_path)
+        assert "preference or a singularity" in text
+        assert "Scored as" in text
+        assert "Wanted equity where the test binds" in text
+
+    def test_a_corner_that_survives_says_so(self, tmp_path) -> None:
+        text = self._render(tmp_path, gamma2_shift=0.0)
+        assert "The corner survives every one of them" in text
+        assert "does not survive" not in text
+
+    def test_a_corner_that_moves_says_so(self, tmp_path) -> None:
+        """The branch that matters. If the answer depends on the risk
+        aversion, the section must say the headline is a statement about
+        that specification rather than about the means test."""
+        text = self._render(tmp_path, gamma2_shift=0.5)
+        assert "The corner does not survive" in text
+        assert "has to be reported as one" in text

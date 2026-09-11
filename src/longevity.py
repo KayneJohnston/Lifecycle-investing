@@ -459,8 +459,18 @@ def rate_split_verdict(preference: pd.DataFrame) -> Dict[str, Any]:
 
 
 def verdict(frame: pd.DataFrame, shift: pd.DataFrame,
-            ablated: pd.DataFrame) -> Dict[str, Any]:
-    """What an uncertain lifespan changes, classified rather than assumed."""
+            ablated: pd.DataFrame,
+            horizon: Mapping[str, float] | None = None) -> Dict[str, Any]:
+    """What an uncertain lifespan changes, classified rather than assumed.
+
+    ``horizon`` carries the three numbers describing the lifespan itself --
+    ``expected_age_at_death``, ``life_expectancy`` and
+    ``fixed_horizon_years``. They are computed by the caller, which owns the
+    survival curve, and they are passed in rather than recomputed because
+    the prose that quotes them must quote the curve the sweep actually ran.
+    They were previously not carried at all, and the paper printed three
+    NaNs where they should have been.
+    """
     if not len(frame):
         return {"measured": False}
     fixed_best = optimum(frame, FIXED)
@@ -477,6 +487,8 @@ def verdict(frame: pd.DataFrame, shift: pd.DataFrame,
         "fixed_domestic": float(fixed_best["domestic"]),
         "mortality_domestic": float(mortality_best["domestic"]),
     }
+    for key, value in dict(horizon or {}).items():
+        found[key] = float(value)
     found["rule_changes"] = bool(
         found["fixed_rule"] != found["mortality_rule"])
     found["allocation_changes"] = bool(

@@ -1,0 +1,6 @@
+scoring,below the free area,inside the taper band,above the cut-off,equity_where_the_test_binds,equity_overall,flat_across_bands,all_at_ceiling
+cec,0.0,0.0,0.0,0.0,0.0,True,False
+cec_gamma2,0.0,0.0,0.0,0.0,0.0,True,False
+cec_gamma10,0.0,0.0,0.0,0.0,0.0,True,False
+cec_floor0.01,0.0,0.0,0.0,0.0,0.0,True,False
+cec_floor0.05,0.0,0.0,0.0,0.0,0.0,True,False

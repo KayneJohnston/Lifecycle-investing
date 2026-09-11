@@ -3321,6 +3321,14 @@ SYSTEM_LABEL: Mapping[str, str] = {
     "us": "United States",
     "au_pension_only": "Age Pension, no guarantee",
     "au_as_legislated": "Australia as legislated",
+    # The pension study's own regime keys, used by the ordering sweep so it
+    # can be compared with the headline it audits.
+    "us_social_security": "United States",
+    "us_matched_saving": "United States, matched saving",
+    "age_pension_untested": "Age Pension, no means test",
+    "age_pension_matched": "Age Pension, matched saving",
+    "australia_as_legislated": "Australia as legislated",
+    "australia_non_homeowner": "Australia, non-homeowner",
 }
 
 
@@ -3372,6 +3380,61 @@ def plot_return_sweep(swept: pd.DataFrame, found: Mapping[str, Any],
         ax.set_ylabel("Certainty-equivalent consumption")
         _title(ax, "The withdrawal rule decides which pension system wins")
         _key(ax, loc="lower right", ncol=1)
+        return _save(fig, directory, name)
+
+
+def plot_ordering(swept: pd.DataFrame, gapped: pd.DataFrame,
+                  found: Mapping[str, Any], directory: str | Path,
+                  name: str = "fig67_ordering") -> Path:
+    """Which portfolio wins, under which pension, under which rule.
+
+    One panel per pension system, sharing a y-axis, because the whole claim
+    is a comparison of the same quantity across systems and putting them on
+    separate scales would hide exactly the thing being compared. The zero
+    line is the ranking: above it the all-equity portfolio leads, below it
+    the target-date fund does.
+    """
+    with plt.rc_context(STYLE):
+        systems = [s for s in SYSTEM_LABEL if s in set(gapped["system"])]
+        systems += [s for s in sorted(set(gapped["system"]))
+                    if s not in systems]
+        fig, axes = _grid(len(systems), 3.4, max_cols=1, hspace=0.55)
+        rules = list(dict.fromkeys(gapped["rule"]))
+        base = str(found.get("baseline_rule", ""))
+        # A shared scale across panels, for the same reason they share a
+        # figure: a lead of two points in one system and twenty in another
+        # is the finding, and per-panel autoscaling would erase it.
+        span = float(np.nanmax(np.abs(gapped["gap_pct"].to_numpy(dtype=float))))
+        span = max(span * 1.15, 1.0)
+        for ax, system in zip(axes, systems):
+            block = gapped[gapped["system"] == system].set_index("rule")
+            values = [float(block.loc[r, "gap_pct"]) if r in block.index
+                      else np.nan for r in rules]
+            pos = np.arange(len(rules), dtype=float)
+            ax.barh(pos, values, height=0.62,
+                    color=[_colour(0) if v > 0 else _colour(1)
+                           for v in values],
+                    edgecolor=["0.25" if r == base else "none" for r in rules],
+                    linewidth=0.9)
+            ax.axvline(0.0, color="0.35", linewidth=0.9)
+            ax.set_yticks(pos)
+            ax.set_yticklabels([_flat(r, 30) for r in rules], fontsize=4.8)
+            ax.invert_yaxis()
+            ax.set_xlim(-span, span)
+            ax.set_xlabel("All-equity lead over the target-date fund (%)")
+            _title(ax, SYSTEM_LABEL.get(system, system))
+        # Explicit patches, not empty bar calls: `barh([], [], color=...)`
+        # produces a container matplotlib draws from the axes' own cycle, so
+        # all three entries came out the same blue and the key said nothing.
+        handles = [Patch(facecolor=_colour(0),
+                         label=_legend("All-equity leads")),
+                   Patch(facecolor=_colour(1),
+                         label=_legend("Target-date fund leads")),
+                   Patch(facecolor="none", edgecolor="0.25", linewidth=0.9,
+                         label=_legend("The rule the paper spends by"))]
+        # Upper left: every bar of interest sits to the right of zero or
+        # just left of it, so the far left of the panel is the empty half.
+        _key(axes[0], handles=handles, loc="upper left", ncol=1)
         return _save(fig, directory, name)
 
 

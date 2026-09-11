@@ -42,6 +42,7 @@ from src import longevity as lv
 from src import mortality as mrt
 from src import mortgage as mgg
 from src import observed as obs
+from src import ordering as odr
 from src import oos
 from src import pension as pn
 from src import plan as pl
@@ -4582,7 +4583,11 @@ def step34_longevity(cfg: Dict[str, Any],
     winners = lv.by_objective(swept)
     shift = lv.ranking_shift(swept)
     ablated = lv.ablation(swept)
-    found = lv.verdict(swept, shift, ablated)
+    found = lv.verdict(swept, shift, ablated,
+                       {"expected_age_at_death": expected_age,
+                        "life_expectancy": expectancy,
+                        "fixed_horizon_years": float(
+                            spec.age_death - spec.age_retire)})
     found["life_expectancy"] = float(expectancy)
     found["expected_age_at_death"] = float(expected_age)
     found["fixed_horizon_years"] = float(spec.age_death - spec.age_retire)
@@ -4700,6 +4705,25 @@ def step35_incidence(cfg: Dict[str, Any],
     lifetime_cfg = dict(cfg)
     lifetime_cfg["utility"] = dict(util, consumption_window="full")
 
+    # The balance dial's headline is a corner at zero equity, and a corner
+    # at zero is where a CRRA objective is least trustworthy: with the
+    # consumption floor near zero the felicity function is unbounded below,
+    # so a handful of near-starvation years can decide the optimum on their
+    # own. Every outcome is therefore scored at several risk aversions and
+    # several floors. None of this re-simulates anything -- the scoring is
+    # cheap and the simulation is not -- so the robustness costs nothing but
+    # a few extra columns.
+    robust_gammas = [float(x) for x in block.get("robust_gammas", (2.0, 10.0))]
+    robust_floors = [float(x) for x in block.get("robust_floors", ())]
+    scorings: List[Tuple[str, Dict[str, Any], float]] = [("cec", cfg, gamma)]
+    for value in robust_gammas:
+        scorings.append((f"cec_gamma{value:g}", cfg, value))
+    for value in robust_floors:
+        floored = dict(cfg)
+        floored["utility"] = dict(util, consumption_floor=value)
+        scorings.append((f"cec_floor{value:g}", floored, gamma))
+    ROBUST_COLUMNS = [name for name, _, _ in scorings]
+
     def _score_with(aged: Any) -> Any:
         def _score(outcome: Any) -> Dict[str, Any]:
             window = outcome.consumption[:, aged.n_working:]
@@ -4712,6 +4736,11 @@ def step35_incidence(cfg: Dict[str, Any],
                     ut.bundle_from_outcome(outcome, lifetime_cfg, aged),
                     gamma, beta, float(util["bequest_weight"]),
                     bool(util["bequest_enabled"]))),
+                **{name: float(ut.crra_certainty_equivalent(
+                    ut.bundle_from_outcome(outcome, which, aged), risk, beta,
+                    float(util["bequest_weight"]),
+                    bool(util["bequest_enabled"])))
+                   for name, which, risk in scorings[1:]},
                 "prob_ruin": float(np.mean(outcome.ruin)),
                 "mean_consumption": float(window.mean()),
                 "p5_consumption": float(np.percentile(window, 5)),
@@ -4792,6 +4821,18 @@ def step35_incidence(cfg: Dict[str, Any],
     shape = shapes[inc.ARMS[0]]
     bridge = inc.bridge_verdict(profiles, shapes)
     rule = inc.rule_verdict(profiles, shapes)
+    # Re-read the base arm's profile under every scoring, so the corner can
+    # be reported as robust or as a property of one specification.
+    robust = inc.robustness(
+        balance_frames[0], ROBUST_COLUMNS, equities)
+    robust_found = inc.robustness_verdict(robust)
+    LOGGER.info("the corner at %.0f%% equity holds across %d scorings: %s "
+                "(range %.0f%%-%.0f%%)",
+                100 * robust_found.get("baseline_equity", float("nan")),
+                int(robust_found.get("specifications", 0)),
+                robust_found.get("survives"),
+                100 * robust_found.get("range_low", float("nan")),
+                100 * robust_found.get("range_high", float("nan")))
     for name, found_c in (("the four-year bridge", bridge),
                           ("the withdrawal rule", rule)):
         LOGGER.info("%s moves wanted equity by %.0f points on average "
@@ -4807,6 +4848,7 @@ def step35_incidence(cfg: Dict[str, Any],
     _save_table(optima, tables, "incidence_optimum")
     _save_table(balances, tables, "incidence_balance_sweep")
     _save_table(profile, tables, "incidence_band_profile")
+    _save_table(robust, tables, "incidence_robustness")
     figures = [str(plots.plot_incidence(
         swept, balances, profile, found, shape, bridge,
         Path(cfg["run"]["figure_dir"])))]
@@ -4814,12 +4856,13 @@ def step35_incidence(cfg: Dict[str, Any],
     rp.write_doc_35(
         Path("docs") / "35_incidence.md", cfg,
         {"swept": swept, "optimum": optima, "balances": balances,
-         "profile": profile},
+         "profile": profile, "robustness": robust},
         figures,
         {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
          "employer_rate": float(base.super_net_rate),
          "verdict": found, "shape": shape, "shapes": shapes,
-         "bridge": bridge, "rule": rule, "pension_age": pension_age,
+         "bridge": bridge, "rule": rule, "robust": robust_found,
+         "pension_age": pension_age,
          "base_rule": str(base.retirement_rule),
          "rule_rate": float(base.rule_rate),
          "retire_age": int(base.age_retire),
@@ -4827,6 +4870,136 @@ def step35_incidence(cfg: Dict[str, Any],
     LOGGER.info("docs/35 written (%.0fs)", elapsed)
     state["incidence_sweep"] = swept
     state["incidence_balances"] = balances
+    return state
+
+
+def step36_ordering(cfg: Dict[str, Any],
+                    state: Dict[str, Any]) -> Dict[str, Any]:
+    """Which portfolio wins, under which pension, under which rule."""
+    block = cfg.get("ordering", {})
+    if not block.get("enabled", False):
+        LOGGER.info("ordering study disabled; skipping step 36")
+        return state
+    LOGGER.info("=== STEP 36: which portfolio wins, and under what ===")
+    started = time.perf_counter()
+
+    panel = state.get("panel") or dl.build_panel(cfg)
+    spec = state.get("spec") or lc.spec_from_config(cfg)
+    gamma = float(cfg["utility"]["baseline_risk_aversion"])
+    beta = float(cfg["utility"]["discount_factor"])
+    util = cfg["utility"]
+    n_paths = int(block.get("n_paths", cfg["bootstrap"]["n_paths"]))
+    chunk_size = int(cfg["bootstrap"]["chunk_size"])
+    seed = int(cfg["run"]["seed"])
+
+    # The regimes are built by the *pension* study's own factorial design,
+    # not by the leisure study's. The two define "Australia as legislated"
+    # differently -- the leisure one adds a claiming-age gate and a partial
+    # benefit before it -- and this section exists to audit the headline, so
+    # it has to be scored on the headline's own household or the comparison
+    # is between two different countries rather than two portfolios.
+    designed = pn.default_systems(
+        spec.savings_rate, pn.from_config(cfg),
+        float(cfg.get("pension", {}).get("sg_rate", pn.SG_RATE)),
+        float(cfg.get("pension", {}).get("sg_contributions_tax",
+                                         pn.SG_CONTRIBUTIONS_TAX)))
+    by_key = pn.specs(spec, designed)
+    systems = [str(x) for x in block.get("systems", tuple(by_key))]
+    unknown = [x for x in systems if x not in by_key]
+    if unknown:
+        raise ValueError(f"unknown pension regime {unknown!r}; the design "
+                         f"carries {sorted(by_key)}")
+    strategies = [str(x) for x in block.get("strategies", odr.HEADLINE)]
+    baseline_rule = str(spec.retirement_rule)
+    rules: List[Tuple[str, Any]] = [
+        (baseline_rule, spg.from_spec(baseline_rule, spec.rule_rate))]
+    percent = float(block.get("percent_rate", spec.rule_rate))
+    rules.append((f"constant_percent at {percent:.0%}",
+                  spg.build("constant_percent", rate=percent)))
+    for value in [float(x) for x in block.get("assumed_return_grid", ())]:
+        rules.append((f"amortisation at {value:.0%}",
+                      spg.build("amortisation", assumed_return=value)))
+
+    # One `run_chunked` per (system, rule), cached, because it returns every
+    # strategy at once and re-running it per strategy would be five times
+    # the work for the same numbers. The driver is the headline's own: a
+    # single large chunk is a different estimator in the left tail, which is
+    # exactly where a means test puts the action.
+    cache: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+    def _outcomes(system: str, rule_key: str, rule: Any) -> Dict[str, Any]:
+        hit = cache.get((system, rule_key))
+        if hit is None:
+            aged = by_key[system]
+            hit = lc.run_chunked(
+                bs.from_config(panel, cfg), lc.build_strategies(cfg, aged),
+                aged, n_paths, chunk_size, income_seed=seed, spending=rule)
+            cache.clear()
+            cache[(system, rule_key)] = hit
+        return hit
+
+    def _simulate(system: str, rule: Any, strategy: str) -> Any:
+        return _outcomes(system, _rule_key[id(rule)], rule)[strategy]
+
+    def _score(outcome: Any) -> Dict[str, Any]:
+        # The estate is carried, because an amortisation rule spends the
+        # portfolio to zero by construction and a fixed real rule leaves a
+        # large one; excluding it would hand the amortisation family a free
+        # win on a margin the config prices.
+        window = outcome.consumption[:, spec.n_working:]
+        return {
+            "cec": float(ut.crra_certainty_equivalent(
+                ut.bundle_from_outcome(outcome, cfg, spec), gamma, beta,
+                float(util["bequest_weight"]),
+                bool(util["bequest_enabled"]))),
+            "prob_ruin": float(np.mean(outcome.ruin)),
+            "mean_consumption": float(window.mean()),
+            "p5_consumption": float(np.percentile(window, 5)),
+        }
+
+    _rule_key = {id(rule): key for key, rule in rules}
+    LOGGER.info("%d systems x %d rules x %d strategies", len(systems),
+                len(rules), len(strategies))
+    swept = odr.sweep(_simulate, systems, rules, strategies, _score)
+    gapped = odr.gaps(swept)
+    found = odr.verdict(gapped, baseline_rule,
+                        baseline_system=str(block.get(
+                            "baseline_system", "us_social_security")),
+                        contender_system=str(block.get(
+                            "contender_system", "australia_as_legislated")))
+    LOGGER.info("under %s the challenger leads by %+.2f%% in %s and %+.2f%% "
+                "in %s; it recovers the lead under another rule: %s",
+                baseline_rule, found.get("baseline_gap_pct", float("nan")),
+                found.get("baseline_system", "us_social_security"),
+                found.get("contender_gap_pct", float("nan")),
+                found.get("contender_system", "australia_as_legislated"),
+                found.get("recovers"))
+    if found.get("recovers"):
+        LOGGER.info("  best recovery: %s at %+.2f%%",
+                    found.get("recovering_rule"),
+                    found.get("recovering_gap_pct", float("nan")))
+    else:
+        LOGGER.info("  no rule in the menu returns the lead; the gap spans "
+                    "%.1f points from %s to %s",
+                    found.get("contender_gap_range_pp", float("nan")),
+                    found.get("contender_worst_rule"),
+                    found.get("contender_best_rule"))
+
+    tables = Path(cfg["run"]["table_dir"])
+    _save_table(swept, tables, "ordering_sweep")
+    _save_table(gapped, tables, "ordering_gaps")
+    _save_table(odr.by_system(gapped), tables, "ordering_by_system")
+    figures = [str(plots.plot_ordering(swept, gapped, found,
+                                       Path(cfg["run"]["figure_dir"])))]
+    elapsed = time.perf_counter() - started
+    rp.write_doc_36(
+        Path("docs") / "36_ordering.md", cfg,
+        {"swept": swept, "gaps": gapped},
+        figures,
+        {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
+         "verdict": found, "baseline_rule": baseline_rule})
+    LOGGER.info("docs/36 written (%.0fs)", elapsed)
+    state["ordering_gaps"] = gapped
     return state
 
 
@@ -4846,11 +5019,12 @@ STEPS = {1: step1_dataset, 2: step2_bootstrap, 3: step3_lifecycle,
          30: step30_franking, 31: step31_plan,
          32: step32_leisure, 33: step33_tax,
          34: step34_longevity,
-         35: step35_incidence}
+         35: step35_incidence,
+         36: step36_ordering}
 
 
 def run(config_path: str = "config.yaml",
-        steps: Sequence[int] = tuple(range(1, 36)),
+        steps: Sequence[int] = tuple(range(1, 37)),
         quick: bool = False) -> Dict[str, Any]:
     """Execute the pipeline and return the accumulated state."""
     cfg = dl.load_config(config_path)
@@ -4880,8 +5054,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--steps", nargs="+", type=int,
-                        default=list(range(1, 36)),
-                        choices=list(range(1, 36)))
+                        default=list(range(1, 37)),
+                        choices=list(range(1, 37)))
     parser.add_argument("--quick", action="store_true",
                         help="small N for smoke tests")
     parser.add_argument("--verbose", action="store_true")

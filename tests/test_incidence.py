@@ -511,3 +511,82 @@ class TestAFlatProfileHasNoLowestBand:
         assert not found["flat_across_bands"]
         assert found["lowest_band"] == ic.BANDS[2]
         assert found["minimum_above_the_cutoff"]
+
+
+class TestRobustness:
+    """The corner at zero equity, re-read under other preferences.
+
+    A CRRA objective with a consumption floor near zero is unbounded below,
+    so an optimum at the bottom of the grid can be the felicity function's
+    asymptote rather than the household's preference. These pin that the
+    check can come out either way and that the prose branches on which.
+    """
+
+    @staticmethod
+    def _frame(**columns: list) -> pd.DataFrame:
+        rows = []
+        wealth = [1.0, 5.0, 50.0]
+        for i, (scale, w) in enumerate(zip((0.1, 0.5, 1.0), wealth)):
+            for j, equity in enumerate((0.0, 0.5, 1.0)):
+                row = {"scale": scale, "equity": equity, "median_wealth": w,
+                       "free_area": 3.0, "cutoff": 7.0,
+                       "share_inside_the_taper_band": 0.2}
+                for name, wanted in columns.items():
+                    # A tent peaked at the wanted share for this balance.
+                    row[name] = 1.0 - abs(equity - wanted[i])
+                rows.append(row)
+        return pd.DataFrame.from_records(rows)
+
+    def test_it_reads_the_profile_under_every_column(self) -> None:
+        table = ic.robustness(
+            self._frame(cec=[0.0, 0.0, 1.0], cec_gamma2=[0.0, 0.0, 1.0]),
+            ["cec", "cec_gamma2"], [0.0, 0.5, 1.0])
+        assert list(table["scoring"]) == ["cec", "cec_gamma2"]
+
+    def test_a_column_the_sweep_lacks_is_skipped(self) -> None:
+        table = ic.robustness(self._frame(cec=[0.0, 0.0, 1.0]),
+                              ["cec", "cec_gamma99"], [0.0, 0.5, 1.0])
+        assert list(table["scoring"]) == ["cec"]
+
+    def test_it_reports_what_the_bound_households_want(self) -> None:
+        """Only the balances at or below the cut-off count: the test cannot
+        bind a household past it, and averaging them in would dilute the
+        one number the section is about."""
+        table = ic.robustness(self._frame(cec=[0.0, 0.0, 1.0]), ["cec"],
+                              [0.0, 0.5, 1.0])
+        assert float(table["equity_where_the_test_binds"].iloc[0]) == \
+            pytest.approx(0.0)
+
+    def test_a_corner_that_holds_everywhere_survives(self) -> None:
+        table = ic.robustness(
+            self._frame(cec=[0.0, 0.0, 1.0], cec_gamma2=[0.0, 0.0, 1.0],
+                        cec_floor0_05=[0.0, 0.0, 1.0]),
+            ["cec", "cec_gamma2", "cec_floor0_05"], [0.0, 0.5, 1.0])
+        found = ic.robustness_verdict(table)
+        assert found["survives"]
+        assert found["max_departure"] == pytest.approx(0.0)
+
+    def test_a_corner_that_moves_does_not_survive(self) -> None:
+        """The branch that matters: if raising the floor puts the household
+        at full equity, the headline is a statement about the floor."""
+        table = ic.robustness(
+            self._frame(cec=[0.0, 0.0, 1.0], cec_floor0_05=[1.0, 1.0, 1.0]),
+            ["cec", "cec_floor0_05"], [0.0, 0.5, 1.0])
+        found = ic.robustness_verdict(table)
+        assert not found["survives"]
+        assert found["worst_scoring"] == "cec_floor0_05"
+        assert found["worst_equity"] == pytest.approx(1.0)
+        assert found["range_high"] == pytest.approx(1.0)
+
+    def test_the_baseline_alone_trivially_survives(self) -> None:
+        table = ic.robustness(self._frame(cec=[0.0, 0.0, 1.0]), ["cec"],
+                              [0.0, 0.5, 1.0])
+        assert ic.robustness_verdict(table)["survives"]
+
+    def test_a_missing_baseline_is_not_measured(self) -> None:
+        table = ic.robustness(self._frame(cec_gamma2=[0.0, 0.0, 1.0]),
+                              ["cec_gamma2"], [0.0, 0.5, 1.0])
+        assert ic.robustness_verdict(table) == {"measured": False}
+
+    def test_an_empty_table_is_not_measured(self) -> None:
+        assert ic.robustness_verdict(pd.DataFrame()) == {"measured": False}
