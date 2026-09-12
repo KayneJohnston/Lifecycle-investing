@@ -392,3 +392,326 @@ class TestUncertainHorizonDocRenders:
             self._notes(frames)).read_text()
         assert "assumed return has an interior optimum" in rendered
         assert "assumed-return optimum is a corner" not in rendered
+
+
+class TestIncidenceDocRenders:
+    """`write_doc_35` branches on both dials, and every branch is a claim.
+
+    The section's whole value is that it reports what the sweep found even
+    when that contradicts what the section was built to show -- the first
+    version of the study assumed charging the guarantee would move the
+    household onto the means test, and it does not. So each branch is
+    rendered here, and the confirming and refuting texts are checked to be
+    different documents rather than the same paragraph with a sign flipped.
+    """
+
+    @staticmethod
+    def _frames(band_equity: float = 0.9, above_equity: float = 0.4,
+                below_equity: float = 0.6, lifetime_cost: float = 0.05,
+                move_balance: bool = False, bridge_gap: float = 0.4,
+                rule_gap: float = -0.2, gamma2_shift: float = 0.0) -> dict:
+        from src import incidence as ic
+
+        swept = []
+        for alpha in (0.0, 0.5, 1.0):
+            for equity in (0.0, 0.5, 1.0):
+                swept.append({
+                    "incidence": alpha, "equity": equity,
+                    "cec": 1.4 - 0.2 * (equity - 0.8) ** 2,
+                    "cec_lifetime": (1.4 - 0.2 * (equity - 0.8) ** 2
+                                     - lifetime_cost * alpha),
+                    "mean_working_consumption": 1.0 - 0.1 * alpha,
+                    "median_wealth": 40.0 - (10.0 * alpha if move_balance
+                                             else 0.0),
+                    "free_area": 3.0, "cutoff": 7.0,
+                    "share_below_the_free_area": 0.0,
+                    "share_inside_the_taper_band": 0.0,
+                    "share_above_the_cut-off": 1.0})
+        balances = []
+        wanted = {1.0: below_equity, 5.0: band_equity, 50.0: above_equity}
+        # Both retirement dates, because section 6 of the document compares
+        # them and a fixture with one arm would leave it unrendered.
+        for arm, shift in zip(ic.ARMS, (0.0, bridge_gap, rule_gap)):
+            for scale, wealth in ((0.1, 1.0), (0.5, 5.0), (1.0, 50.0)):
+                for equity in (0.0, 0.4, 0.6, 0.9, 1.0):
+                    peak = max(0.0, wanted[wealth] - shift)
+                    balances.append({
+                        "arm": arm, "scale": scale, "equity": equity,
+                        "cec": 1.0 - abs(equity - peak),
+                        "cec_lifetime": 1.0 - abs(equity - peak),
+                        "cec_gamma2": 1.0 - abs(equity - peak - gamma2_shift),
+                        "prob_ruin": 0.1,
+                        "median_wealth": wealth, "free_area": 3.0,
+                        "cutoff": 7.0,
+                        "share_below_the_free_area": 1.0 if wealth < 3
+                        else 0.0,
+                        "share_inside_the_taper_band": 1.0 if 3 <= wealth < 7
+                        else 0.0,
+                        "share_above_the_cut-off": 1.0 if wealth >= 7
+                        else 0.0})
+        swept_df, balance_df = pd.DataFrame(swept), pd.DataFrame(balances)
+        profiles = {arm: ic.band_profile(balance_df[balance_df["arm"] == arm])
+                    for arm in ic.ARMS}
+        return {"swept": swept_df,
+                "optimum": ic.optimum_by_incidence(swept_df),
+                "balances": balance_df,
+                "profile": pd.concat([profiles[a] for a in ic.ARMS],
+                                     ignore_index=True),
+                "profiles": profiles,
+                "robustness": ic.robustness(
+                    balance_df, ["cec", "cec_gamma2"],
+                    [0.0, 0.4, 0.6, 0.9, 1.0])}
+
+    @staticmethod
+    def _notes(frames: dict) -> dict:
+        from src import incidence as ic
+
+        grid = [0.0, 0.4, 0.6, 0.9, 1.0]
+        shapes = {arm: ic.shape_verdict(block, grid)
+                  for arm, block in frames["profiles"].items()}
+        table = ic.robustness(frames["balances"], ["cec", "cec_gamma2"], grid)
+        return {"verdict": ic.verdict(frames["optimum"]),
+                "shape": shapes[ic.ARMS[0]], "shapes": shapes,
+                "bridge": ic.bridge_verdict(frames["profiles"], shapes),
+                "rule": ic.rule_verdict(frames["profiles"], shapes),
+                "robust": ic.robustness_verdict(table),
+                "gamma": 4.0, "n_paths": 100, "elapsed_seconds": 12.0,
+                "employer_rate": 0.102, "retire_age": 63, "pension_age": 67,
+                "bridge_share": 0.6, "base_rule": "fixed_real_rule",
+                "rule_rate": 0.04}
+
+    def _render(self, tmp_path, **over) -> str:
+        frames = self._frames(**over)
+        out = rp.write_doc_35(tmp_path / "35.md", _cfg(), frames,
+                              ["results/figures/fig66.png"],
+                              self._notes(frames))
+        return out.read_text()
+
+    def test_the_whole_document_renders(self, tmp_path) -> None:
+        text = self._render(tmp_path)
+        assert len(text) > 3_000
+
+    def test_every_section_is_numbered_once_and_in_order(self, tmp_path
+                                                         ) -> None:
+        import re
+
+        text = self._render(tmp_path)
+        numbers = [int(m.group(1)) for m
+                   in re.finditer(r"^## (\d+)\. ", text, re.M)]
+        assert numbers == list(range(1, len(numbers) + 1))
+
+    def test_it_states_the_invariance_when_the_balance_does_not_move(
+            self, tmp_path) -> None:
+        text = self._render(tmp_path)
+        assert "does not move at all" in text
+        assert "exactly zero" in text
+
+    def test_it_flags_a_leak_when_the_balance_does_move(self, tmp_path
+                                                        ) -> None:
+        """A moving balance would mean the two dials had crossed wires, and
+        the document has to say so rather than report it as a finding."""
+        text = self._render(tmp_path, move_balance=True)
+        assert "does not move at all" not in text
+        assert "second-order effect" in text
+
+    def test_the_confirming_and_refuting_shapes_are_different_documents(
+            self, tmp_path) -> None:
+        holds = self._render(tmp_path, band_equity=0.9, above_equity=0.4)
+        fails = self._render(tmp_path, band_equity=0.4, above_equity=0.9)
+        assert "The prediction holds" in holds
+        assert "The prediction fails" in fails
+        assert "The prediction holds" not in fails
+
+    def test_a_ceiling_optimum_claims_nothing_about_the_shape(self, tmp_path
+                                                              ) -> None:
+        text = self._render(tmp_path, band_equity=1.0, above_equity=1.0,
+                            below_equity=1.0)
+        assert "neither confirmed nor refuted" in text
+        assert "The prediction holds" not in text
+
+    def test_it_reports_the_cost_of_charging_the_guarantee(self, tmp_path
+                                                           ) -> None:
+        text = self._render(tmp_path, lifetime_cost=0.07)
+        assert "lifetime" in text
+        assert "%" in text
+
+    def test_it_says_the_household_did_not_reach_the_test(self, tmp_path
+                                                          ) -> None:
+        text = self._render(tmp_path)
+        assert "does not do is bring the household" in text
+
+    def test_no_placeholder_survives_into_the_document(self, tmp_path
+                                                       ) -> None:
+        text = self._render(tmp_path)
+        assert "nan" not in text.lower().replace("finance", "")
+        assert "{" not in text and "}" not in text
+
+    def test_both_controls_are_rendered(self, tmp_path) -> None:
+        text = self._render(tmp_path, bridge_gap=0.4, rule_gap=-0.2)
+        assert "Two controls on the result" in text
+        assert "Four years standing on part of the pension" in text
+        assert "Spending a share of the balance instead" in text
+        for arm in __import__("src.incidence", fromlist=["x"]).ARMS:
+            assert arm.capitalize() in text
+
+    def test_a_control_that_changes_nothing_says_so(self, tmp_path) -> None:
+        text = self._render(tmp_path, bridge_gap=0.0, rule_gap=0.0)
+        assert text.count("barely moves the allocation") == 2
+        assert text.count("does not change the verdict") == 2
+
+    def test_the_two_controls_are_read_the_same_way(self, tmp_path) -> None:
+        """One helper renders both, so a fix to one is a fix to both."""
+        text = self._render(tmp_path, bridge_gap=0.4, rule_gap=0.4)
+        assert text.count("The gap is widest at") == 2
+
+    def test_a_control_that_flips_the_verdict_says_so(self, tmp_path) -> None:
+        """The reason the controls exist: if the shape test comes out one
+        way in the base arm and the other way in a control, the section
+        must not report only one of them."""
+        text = self._render(tmp_path, band_equity=0.9, above_equity=0.4,
+                            bridge_gap=0.5)
+        assert "it changes the verdict" in text
+        assert "hole in the floor" in text
+
+    def test_the_rule_control_names_what_a_retiree_can_choose(
+            self, tmp_path) -> None:
+        text = self._render(tmp_path, band_equity=0.9, above_equity=0.4,
+                            bridge_gap=0.0, rule_gap=0.5)
+        assert "the rule is the half a retiree can choose" in text
+
+    def test_a_flat_profile_says_so_rather_than_naming_a_lowest_band(
+            self, tmp_path) -> None:
+        """All three bands wanting the same share is a real outcome, and
+        `min` on equal values would otherwise pick one and the prose would
+        state it as a finding."""
+        text = self._render(tmp_path, band_equity=0.6, above_equity=0.6,
+                            below_equity=0.6)
+        assert "does not vary with position at all" in text
+        assert "The optimum is lowest" not in text
+
+    def test_the_robustness_section_is_rendered(self, tmp_path) -> None:
+        text = self._render(tmp_path)
+        assert "preference or a singularity" in text
+        assert "Scored as" in text
+        assert "Wanted equity where the test binds" in text
+
+    def test_a_corner_that_survives_says_so(self, tmp_path) -> None:
+        text = self._render(tmp_path, gamma2_shift=0.0)
+        assert "The corner survives every one of them" in text
+        assert "does not survive" not in text
+
+    def test_a_corner_that_moves_says_so(self, tmp_path) -> None:
+        """The branch that matters. If the answer depends on the risk
+        aversion, the section must say the headline is a statement about
+        that specification rather than about the means test."""
+        text = self._render(tmp_path, gamma2_shift=0.5)
+        assert "The corner does not survive" in text
+        assert "has to be reported as one" in text
+
+
+class TestOrderingDocRenders:
+    """`write_doc_36` exists to settle an equivocation, and every sentence
+    in it branches. The branch that matters most is the one that says the
+    reversal is *not* a sign the panel can resolve: if the interval straddles
+    zero the document has to withdraw the claim, and a version that could
+    only report success would let it stand."""
+
+    @staticmethod
+    def _frames(au_fixed: float = -2.0, au_amort: float = 26.0,
+                au_spread: float = 0.1, us_fixed: float = 11.0) -> dict:
+        from src import ordering as odr
+
+        challenger, incumbent = odr.HEADLINE
+        rows = []
+        cells = {("us_social_security", "fixed_real_rule"): us_fixed,
+                 ("us_social_security", "amortisation at 8%"): 20.0,
+                 ("australia_as_legislated", "fixed_real_rule"): au_fixed,
+                 ("australia_as_legislated", "amortisation at 8%"): au_amort}
+        for (system, rule), gap in cells.items():
+            rows.append({"system": system, "rule": rule,
+                         "strategy": challenger, "cec": 1.0 + gap / 100,
+                         "prob_ruin": 0.1, "mean_consumption": 1.0,
+                         "p5_consumption": 0.5})
+            rows.append({"system": system, "rule": rule,
+                         "strategy": incumbent, "cec": 1.0,
+                         "prob_ruin": 0.1, "mean_consumption": 1.0,
+                         "p5_consumption": 0.5})
+        swept = pd.DataFrame(rows)
+        gapped = odr.gaps(swept)
+        infl = pd.DataFrame([
+            {"dropped": f"C{i}", "system": system, "rule": rule,
+             "gap_pct": gap + (au_spread * (i - 1) if
+                               system == "australia_as_legislated" else 0.05)}
+            for (system, rule), gap in cells.items() for i in range(3)])
+        return {"swept": swept, "gaps": gapped,
+                "intervals": odr.intervals(infl, gapped)}
+
+    @staticmethod
+    def _notes(frames: dict) -> dict:
+        from src import ordering as odr
+
+        return {"verdict": odr.verdict(
+                    frames["gaps"], "fixed_real_rule",
+                    baseline_system="us_social_security",
+                    contender_system="australia_as_legislated"),
+                "precision": odr.precision_verdict(frames["intervals"],
+                                                   "fixed_real_rule"),
+                "baseline_rule": "fixed_real_rule", "gamma": 5.0,
+                "n_paths": 100, "elapsed_seconds": 12.0}
+
+    def _render(self, tmp_path, **over) -> str:
+        frames = self._frames(**over)
+        return rp.write_doc_36(tmp_path / "36.md", _cfg(), frames,
+                               ["results/figures/fig67.png"],
+                               self._notes(frames)).read_text()
+
+    def test_the_whole_document_renders(self, tmp_path) -> None:
+        assert len(self._render(tmp_path)) > 2_000
+
+    def test_every_section_is_numbered_once_and_in_order(self, tmp_path
+                                                         ) -> None:
+        import re
+
+        numbers = [int(m.group(1)) for m
+                   in re.finditer(r"^## (\d+)\. ", self._render(tmp_path),
+                                  re.M)]
+        assert numbers == list(range(1, len(numbers) + 1))
+
+    def test_a_resolved_reversal_is_reported_as_resolved(self, tmp_path
+                                                          ) -> None:
+        text = self._render(tmp_path, au_spread=0.05)
+        assert "a sign the panel can resolve" in text
+        assert "does not contain zero" in text
+
+    def test_an_unresolved_reversal_withdraws_the_claim(self, tmp_path
+                                                         ) -> None:
+        text = self._render(tmp_path, au_spread=6.0)
+        assert "not a sign this panel can resolve" in text
+        assert "has to be withdrawn" in text
+
+    def test_the_interval_table_is_rendered(self, tmp_path) -> None:
+        text = self._render(tmp_path)
+        assert "Jackknife s.e." in text
+        assert "Sign holds in all 16" in text
+
+    def test_it_names_the_cells_it_cannot_resolve(self, tmp_path) -> None:
+        text = self._render(tmp_path, au_spread=6.0)
+        assert "australia_as_legislated / fixed_real_rule" in text
+
+    def test_no_placeholder_survives(self, tmp_path) -> None:
+        text = self._render(tmp_path)
+        assert "{" not in text and "}" not in text
+
+    def test_an_unmeasured_verdict_does_not_crash_the_build(self, tmp_path
+                                                             ) -> None:
+        """A sweep that does not carry both named regimes used to raise a
+        KeyError from inside the f-string, three hundred lines into the
+        document."""
+        from src import ordering as odr
+
+        frames = self._frames()
+        notes = dict(self._notes(frames))
+        notes["verdict"] = {"measured": False}
+        out = rp.write_doc_36(tmp_path / "36.md", _cfg(), frames,
+                              ["results/figures/fig67.png"], notes)
+        assert "not both in the sweep" in out.read_text()

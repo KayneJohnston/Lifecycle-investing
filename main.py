@@ -32,6 +32,7 @@ from src import franking as fk
 from src import glidepath as gp
 from src import hedging as hg
 from src import housing as hsg
+from src import incidence as inc
 from src import inflation as inf
 from src import leisure as le
 from src import leverage as lev
@@ -41,6 +42,7 @@ from src import longevity as lv
 from src import mortality as mrt
 from src import mortgage as mgg
 from src import observed as obs
+from src import ordering as odr
 from src import oos
 from src import pension as pn
 from src import plan as pl
@@ -4581,7 +4583,11 @@ def step34_longevity(cfg: Dict[str, Any],
     winners = lv.by_objective(swept)
     shift = lv.ranking_shift(swept)
     ablated = lv.ablation(swept)
-    found = lv.verdict(swept, shift, ablated)
+    found = lv.verdict(swept, shift, ablated,
+                       {"expected_age_at_death": expected_age,
+                        "life_expectancy": expectancy,
+                        "fixed_horizon_years": float(
+                            spec.age_death - spec.age_retire)})
     found["life_expectancy"] = float(expectancy)
     found["expected_age_at_death"] = float(expected_age)
     found["fixed_horizon_years"] = float(spec.age_death - spec.age_retire)
@@ -4633,6 +4639,541 @@ def step34_longevity(cfg: Dict[str, Any],
     return state
 
 
+def step35_incidence(cfg: Dict[str, Any],
+                     state: Dict[str, Any]) -> Dict[str, Any]:
+    """Charge the guarantee; then move the balance until the test bites."""
+    block = cfg.get("incidence", {})
+    if not block.get("enabled", False):
+        LOGGER.info("incidence study disabled; skipping step 35")
+        return state
+    LOGGER.info("=== STEP 35: who pays for the guarantee ===")
+    started = time.perf_counter()
+
+    panel = state.get("panel") or dl.build_panel(cfg)
+    spec = state.get("spec") or lc.spec_from_config(cfg)
+    gamma = float(cfg["utility"]["baseline_risk_aversion"])
+    beta = float(cfg["utility"]["discount_factor"])
+    util = cfg["utility"]
+    n_paths = int(block.get("n_paths", cfg["bootstrap"]["n_paths"]))
+    for chunk in bs.from_config(panel, cfg).chunks(n_paths, n_paths):
+        paths = chunk
+
+    over, _ = le.system_overrides("au_as_legislated", cfg)
+    bond_share = float(cfg.get("glide", {}).get("bond_share", 0.7))
+    domestic = float(block.get("domestic_share", 0.1))
+    equities = [float(x) for x in block.get("equity_grid", (1.0,))]
+    base = dataclasses.replace(spec, **over)
+
+    def _spec_for(alpha: float) -> Any:
+        return dataclasses.replace(base, super_incidence=float(alpha))
+
+    def _spec_at(scale: float) -> Any:
+        return dataclasses.replace(base, retirement_balance_scale=float(scale))
+
+    # The accumulation allocation for the balance dial. Held at the
+    # project's headline portfolio rather than swept, for two reasons that
+    # are really one. The prediction being tested is about the *retiree's*
+    # allocation, and an equity share applied from age 25 would also decide
+    # the balance it is then being evaluated at -- so the household's
+    # position against the assets test would be endogenous to the very
+    # choice the sweep is trying to explain, and two adjacent points on the
+    # balance grid could differ more in wealth than the grid step implies.
+    accumulation_equity = float(block.get("accumulation_equity", 1.0))
+
+    def _run(aged: Any, equity: float, *, retiree_only: bool = False) -> Any:
+        income = lc.simulate_income(
+            aged, n_paths, np.random.default_rng(int(cfg["run"]["seed"])),
+            dom_eq=paths.dom_eq, intl_eq=paths.intl_eq)
+        shares = np.full(aged.horizon, equity)
+        if retiree_only:
+            shares[:aged.n_working] = accumulation_equity
+        weights = gp.weights_from_shares(shares,
+                                         np.full(aged.horizon, domestic),
+                                         bond_share)
+        strategy = lc.Strategy(key="grid",
+                               label=f"equity {equity:.0%}", weights=weights)
+        return lc.simulate(paths, strategy, aged, income)
+
+    # Two objectives, because the two dials ask different questions and
+    # only one of them is visible to the project's usual one. The standard
+    # certainty equivalent scores the *retirement* window, so it cannot see
+    # the incidence of the guarantee at all: charging a worker for forty
+    # years changes nothing about the retiree's problem, and reporting a
+    # flat line off that measure would be an artefact of the window rather
+    # than a finding. The lifetime measure scores every year of the
+    # simulation, which is where a working-life transfer actually lands.
+    lifetime_cfg = dict(cfg)
+    lifetime_cfg["utility"] = dict(util, consumption_window="full")
+
+    # The balance dial's headline is a corner at zero equity, and a corner
+    # at zero is where a CRRA objective is least trustworthy: with the
+    # consumption floor near zero the felicity function is unbounded below,
+    # so a handful of near-starvation years can decide the optimum on their
+    # own. Every outcome is therefore scored at several risk aversions and
+    # several floors. None of this re-simulates anything -- the scoring is
+    # cheap and the simulation is not -- so the robustness costs nothing but
+    # a few extra columns.
+    robust_gammas = [float(x) for x in block.get("robust_gammas", (2.0, 10.0))]
+    robust_floors = [float(x) for x in block.get("robust_floors", ())]
+    scorings: List[Tuple[str, Dict[str, Any], float]] = [("cec", cfg, gamma)]
+    for value in robust_gammas:
+        scorings.append((f"cec_gamma{value:g}", cfg, value))
+    for value in robust_floors:
+        floored = dict(cfg)
+        floored["utility"] = dict(util, consumption_floor=value)
+        scorings.append((f"cec_floor{value:g}", floored, gamma))
+    ROBUST_COLUMNS = [name for name, _, _ in scorings]
+
+    def _score_with(aged: Any) -> Any:
+        def _score(outcome: Any) -> Dict[str, Any]:
+            window = outcome.consumption[:, aged.n_working:]
+            return {
+                "cec": float(ut.crra_certainty_equivalent(
+                    ut.bundle_from_outcome(outcome, cfg, aged), gamma, beta,
+                    float(util["bequest_weight"]),
+                    bool(util["bequest_enabled"]))),
+                "cec_lifetime": float(ut.crra_certainty_equivalent(
+                    ut.bundle_from_outcome(outcome, lifetime_cfg, aged),
+                    gamma, beta, float(util["bequest_weight"]),
+                    bool(util["bequest_enabled"]))),
+                **{name: float(ut.crra_certainty_equivalent(
+                    ut.bundle_from_outcome(outcome, which, aged), risk, beta,
+                    float(util["bequest_weight"]),
+                    bool(util["bequest_enabled"])))
+                   for name, which, risk in scorings[1:]},
+                "prob_ruin": float(np.mean(outcome.ruin)),
+                "mean_consumption": float(window.mean()),
+                "p5_consumption": float(np.percentile(window, 5)),
+                "mean_working_consumption": float(
+                    outcome.consumption[:, :aged.n_working].mean()),
+            }
+        return _score
+
+    # -- dial one: who pays for the guarantee -----------------------------
+    LOGGER.info("charging the guarantee across %d shares x %d allocations",
+                len(block.get("incidence_grid", (0.0, 1.0))), len(equities))
+    swept = inc.sweep(
+        lambda alpha, equity: _run(_spec_for(alpha), equity), _spec_for,
+        [float(x) for x in block.get("incidence_grid", (0.0, 1.0))],
+        equities, _score_with(base))
+    # Selected on the lifetime measure: it is the only one this dial moves.
+    optima = inc.optimum_by_incidence(swept, "cec_lifetime")
+    found = inc.verdict(optima)
+    LOGGER.info("incidence %.0f%% -> %.0f%%: wealth at 67 %.1fx -> %.1fx "
+                "against a cut-off of %.1fx; CEC %+.2f%%; best equity "
+                "%.0f%% -> %.0f%%; reaches the test: %s",
+                100 * found.get("free_incidence", float("nan")),
+                100 * found.get("paid_incidence", float("nan")),
+                found.get("free_wealth", float("nan")),
+                found.get("paid_wealth", float("nan")),
+                found.get("cutoff", float("nan")),
+                found.get("cec_lifetime_fall_pct", float("nan")),
+                100 * found.get("free_equity", float("nan")),
+                100 * found.get("paid_equity", float("nan")),
+                found.get("reaches_the_test"))
+
+    # -- dial two: the balance the household actually arrives with --------
+    # Run at two retirement dates. This project retires its household at
+    # 63 and the Age Pension starts at 67, so four of its retirement years
+    # stand on a partial benefit rather than the full one -- and at this
+    # risk aversion those four years dominate the certainty equivalent of a
+    # small balance. Reporting only that arm would credit the taper with
+    # what a hole in the floor is doing, so the taper prediction is tested
+    # on a household whose pension starts the day work does, and the early
+    # retirement date is kept as the comparison.
+    scales = [float(x) for x in block.get("balance_grid", (1.0,))]
+    pension_age = int(base.benefit_start_age or base.age_retire)
+    aligned = dataclasses.replace(base, age_retire=pension_age)
+    arms = {inc.ARMS[0]: aligned,
+            inc.ARMS[1]: base,
+            inc.ARMS[2]: dataclasses.replace(
+                aligned, retirement_rule="fixed_percentage")}
+    balance_frames: List[pd.DataFrame] = []
+    profiles: Dict[str, pd.DataFrame] = {}
+    shapes: Dict[str, Dict[str, Any]] = {}
+    for arm, arm_base in arms.items():
+        LOGGER.info("balance dial, %s: %d scales x %d allocations",
+                    arm, len(scales), len(equities))
+
+        def _spec_arm(scale: float, _base: Any = arm_base) -> Any:
+            return dataclasses.replace(
+                _base, retirement_balance_scale=float(scale))
+
+        frame = inc.balance_sweep(
+            lambda scale, equity, _s=_spec_arm: _run(
+                _s(scale), equity, retiree_only=True),
+            _spec_arm, scales, equities, _score_with(arm_base), arm=arm)
+        balance_frames.append(frame)
+        profiles[arm] = inc.band_profile(frame)
+        shapes[arm] = inc.shape_verdict(profiles[arm], equities)
+        LOGGER.info("  reaches %s; best equity by band %s; prediction "
+                    "holds: %s",
+                    ", ".join(shapes[arm].get("bands_reached", []))
+                    or "no band",
+                    {b: round(shapes[arm].get(
+                        "equity_" + b.replace(" ", "_").replace("-", "_"),
+                        float("nan")), 2)
+                     for b in shapes[arm].get("bands_reached", [])},
+                    shapes[arm].get("prediction_holds"))
+    balances = pd.concat(balance_frames, ignore_index=True)
+    profile = pd.concat([profiles[a] for a in inc.ARMS if a in profiles],
+                        ignore_index=True)
+    shape = shapes[inc.ARMS[0]]
+    bridge = inc.bridge_verdict(profiles, shapes)
+    rule = inc.rule_verdict(profiles, shapes)
+    # Re-read the base arm's profile under every scoring, so the corner can
+    # be reported as robust or as a property of one specification.
+    robust = inc.robustness(
+        balance_frames[0], ROBUST_COLUMNS, equities)
+    robust_found = inc.robustness_verdict(robust)
+    LOGGER.info("the corner at %.0f%% equity holds across %d scorings: %s "
+                "(range %.0f%%-%.0f%%)",
+                100 * robust_found.get("baseline_equity", float("nan")),
+                int(robust_found.get("specifications", 0)),
+                robust_found.get("survives"),
+                100 * robust_found.get("range_low", float("nan")),
+                100 * robust_found.get("range_high", float("nan")))
+    for name, found_c in (("the four-year bridge", bridge),
+                          ("the withdrawal rule", rule)):
+        LOGGER.info("%s moves wanted equity by %.0f points on average "
+                    "(worst %.0f at %.1fx, %s); it changes the verdict: %s",
+                    name, 100 * found_c.get("mean_equity_gap", float("nan")),
+                    100 * found_c.get("max_equity_gap", float("nan")),
+                    found_c.get("worst_wealth", float("nan")),
+                    found_c.get("worst_position", "?"),
+                    found_c.get("changes_the_verdict"))
+
+    # -- and the other half of the defence: the panel ---------------------
+    # The corner above is checked against five preference specifications
+    # and, until this, against nothing else. The ordering study carries a
+    # delete-one-country jackknife; this is the same check on this result,
+    # restricted to the base arm and the balances the test can reach, which
+    # is the only part of the grid the claim is about.
+    inc_influence = pd.DataFrame()
+    inc_precision: Dict[str, Any] = {"measured": False}
+    if block.get("influence_enabled", False):
+        loo_paths = int(block.get("influence_n_paths", n_paths))
+        cut_scales = [x for x in scales
+                      if x * float(profile["median_wealth"].max())
+                      / max(scales) <= float(profile["cutoff"].iloc[0])]
+        cut_scales = cut_scales or scales
+        countries = list(panel.countries)
+        LOGGER.info("jackknife: %d deletions x %d scales x %d allocations "
+                    "at %s paths", len(countries), len(cut_scales),
+                    len(equities), f"{loo_paths:,}")
+
+        def _profile_for(kept: Sequence[str]) -> pd.DataFrame:
+            sub = dl.build_tier_a(cfg, countries=list(kept))
+            for chunk in bs.from_config(sub, cfg).chunks(loo_paths,
+                                                         loo_paths):
+                sub_paths = chunk
+            base_arm = arms[inc.ARMS[0]]
+
+            def _spec_sub(scale: float) -> Any:
+                return dataclasses.replace(
+                    base_arm, retirement_balance_scale=float(scale))
+
+            def _run_sub(scale: float, equity: float) -> Any:
+                aged = _spec_sub(scale)
+                income = lc.simulate_income(
+                    aged, loo_paths,
+                    np.random.default_rng(int(cfg["run"]["seed"])),
+                    dom_eq=sub_paths.dom_eq, intl_eq=sub_paths.intl_eq)
+                shares = np.full(aged.horizon, equity)
+                shares[:aged.n_working] = accumulation_equity
+                weights = gp.weights_from_shares(
+                    shares, np.full(aged.horizon, domestic), bond_share)
+                strategy = lc.Strategy(key="grid", label="grid",
+                                       weights=weights)
+                return lc.simulate(sub_paths, strategy, aged, income)
+
+            return inc.band_profile(inc.balance_sweep(
+                _run_sub, _spec_sub, cut_scales, equities,
+                _score_with(base_arm), log_every=0))
+
+        inc_influence = inc.influence(_profile_for, countries)
+        inc_precision = inc.influence_verdict(
+            inc_influence,
+            float(robust_found.get("baseline_equity", float("nan"))))
+        if inc_precision.get("measured"):
+            LOGGER.info("the corner holds in every deletion: %s (range "
+                        "%.0f%%-%.0f%% across %d sub-panels)",
+                        inc_precision["identical_in_every_deletion"],
+                        100 * inc_precision["low"],
+                        100 * inc_precision["high"],
+                        inc_precision["deletions"])
+
+    tables = Path(cfg["run"]["table_dir"])
+    _save_table(swept, tables, "incidence_sweep")
+    _save_table(optima, tables, "incidence_optimum")
+    _save_table(balances, tables, "incidence_balance_sweep")
+    _save_table(profile, tables, "incidence_band_profile")
+    _save_table(robust, tables, "incidence_robustness")
+    if len(inc_influence):
+        _save_table(inc_influence, tables, "incidence_influence")
+    figures = [str(plots.plot_incidence(
+        swept, balances, profile, found, shape, bridge,
+        Path(cfg["run"]["figure_dir"])))]
+    elapsed = time.perf_counter() - started
+    rp.write_doc_35(
+        Path("docs") / "35_incidence.md", cfg,
+        {"swept": swept, "optimum": optima, "balances": balances,
+         "profile": profile, "robustness": robust,
+         "influence": inc_influence},
+        figures,
+        {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
+         "employer_rate": float(base.super_net_rate),
+         "verdict": found, "shape": shape, "shapes": shapes,
+         "bridge": bridge, "rule": rule, "robust": robust_found,
+         "panel_precision": inc_precision,
+         "pension_age": pension_age,
+         "base_rule": str(base.retirement_rule),
+         "rule_rate": float(base.rule_rate),
+         "retire_age": int(base.age_retire),
+         "bridge_share": float(base.pre_eligibility_benefit_share)})
+    LOGGER.info("docs/35 written (%.0fs)", elapsed)
+    state["incidence_sweep"] = swept
+    state["incidence_balances"] = balances
+    return state
+
+
+def step36_ordering(cfg: Dict[str, Any],
+                    state: Dict[str, Any]) -> Dict[str, Any]:
+    """Which portfolio wins, under which pension, under which rule."""
+    block = cfg.get("ordering", {})
+    if not block.get("enabled", False):
+        LOGGER.info("ordering study disabled; skipping step 36")
+        return state
+    LOGGER.info("=== STEP 36: which portfolio wins, and under what ===")
+    started = time.perf_counter()
+
+    panel = state.get("panel") or dl.build_panel(cfg)
+    spec = state.get("spec") or lc.spec_from_config(cfg)
+    gamma = float(cfg["utility"]["baseline_risk_aversion"])
+    beta = float(cfg["utility"]["discount_factor"])
+    util = cfg["utility"]
+    n_paths = int(block.get("n_paths", cfg["bootstrap"]["n_paths"]))
+    chunk_size = int(cfg["bootstrap"]["chunk_size"])
+    seed = int(cfg["run"]["seed"])
+
+    # The regimes are built by the *pension* study's own factorial design,
+    # not by the leisure study's. The two define "Australia as legislated"
+    # differently -- the leisure one adds a claiming-age gate and a partial
+    # benefit before it -- and this section exists to audit the headline, so
+    # it has to be scored on the headline's own household or the comparison
+    # is between two different countries rather than two portfolios.
+    designed = pn.default_systems(
+        spec.savings_rate, pn.from_config(cfg),
+        float(cfg.get("pension", {}).get("sg_rate", pn.SG_RATE)),
+        float(cfg.get("pension", {}).get("sg_contributions_tax",
+                                         pn.SG_CONTRIBUTIONS_TAX)))
+    by_key = pn.specs(spec, designed)
+    systems = [str(x) for x in block.get("systems", tuple(by_key))]
+    unknown = [x for x in systems if x not in by_key]
+    if unknown:
+        raise ValueError(f"unknown pension regime {unknown!r}; the design "
+                         f"carries {sorted(by_key)}")
+    strategies = [str(x) for x in block.get("strategies", odr.HEADLINE)]
+    baseline_rule = str(spec.retirement_rule)
+    rules: List[Tuple[str, Any]] = [
+        (baseline_rule, spg.from_spec(baseline_rule, spec.rule_rate))]
+    percent = float(block.get("percent_rate", spec.rule_rate))
+    rules.append((f"constant_percent at {percent:.0%}",
+                  spg.build("constant_percent", rate=percent)))
+    for value in [float(x) for x in block.get("assumed_return_grid", ())]:
+        rules.append((f"amortisation at {value:.0%}",
+                      spg.build("amortisation", assumed_return=value)))
+
+    # One `run_chunked` per (system, rule), cached, because it returns every
+    # strategy at once and re-running it per strategy would be five times
+    # the work for the same numbers. The driver is the headline's own: a
+    # single large chunk is a different estimator in the left tail, which is
+    # exactly where a means test puts the action.
+    cache: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    active: Dict[str, Any] = {"panel": panel, "paths": n_paths}
+
+    def _outcomes(system: str, rule_key: str, rule: Any) -> Dict[str, Any]:
+        hit = cache.get((system, rule_key))
+        if hit is None:
+            aged = by_key[system]
+            hit = lc.run_chunked(
+                bs.from_config(active["panel"], cfg),
+                lc.build_strategies(cfg, aged), aged, int(active["paths"]),
+                chunk_size, income_seed=seed, spending=rule)
+            cache.clear()
+            cache[(system, rule_key)] = hit
+        return hit
+
+    def _simulate(system: str, rule: Any, strategy: str) -> Any:
+        return _outcomes(system, _rule_key[id(rule)], rule)[strategy]
+
+    # The ordering is also scored at other risk aversions. The balance dial
+    # in step 35 is defended against the preference specification and not
+    # against the panel; this sweep was defended against the panel and not
+    # against the preference. Scoring costs nothing next to simulating, so
+    # each result is now checked against both objections.
+    robust_gammas = [float(x) for x in block.get("robust_gammas", ())]
+
+    def _score(outcome: Any) -> Dict[str, Any]:
+        # The estate is carried, because an amortisation rule spends the
+        # portfolio to zero by construction and a fixed real rule leaves a
+        # large one; excluding it would hand the amortisation family a free
+        # win on a margin the config prices.
+        window = outcome.consumption[:, spec.n_working:]
+        bundle = ut.bundle_from_outcome(outcome, cfg, spec)
+        return {
+            "cec": float(ut.crra_certainty_equivalent(
+                bundle, gamma, beta, float(util["bequest_weight"]),
+                bool(util["bequest_enabled"]))),
+            **{f"cec_gamma{g:g}": float(ut.crra_certainty_equivalent(
+                bundle, g, beta, float(util["bequest_weight"]),
+                bool(util["bequest_enabled"]))) for g in robust_gammas},
+            "prob_ruin": float(np.mean(outcome.ruin)),
+            "mean_consumption": float(window.mean()),
+            "p5_consumption": float(np.percentile(window, 5)),
+        }
+
+    _rule_key = {id(rule): key for key, rule in rules}
+    LOGGER.info("%d systems x %d rules x %d strategies", len(systems),
+                len(rules), len(strategies))
+    swept = odr.sweep(_simulate, systems, rules, strategies, _score)
+    gapped = odr.gaps(swept)
+    found = odr.verdict(gapped, baseline_rule,
+                        baseline_system=str(block.get(
+                            "baseline_system", "us_social_security")),
+                        contender_system=str(block.get(
+                            "contender_system", "australia_as_legislated")))
+    LOGGER.info("under %s the challenger leads by %+.2f%% in %s and %+.2f%% "
+                "in %s; it recovers the lead under another rule: %s",
+                baseline_rule, found.get("baseline_gap_pct", float("nan")),
+                found.get("baseline_system", "us_social_security"),
+                found.get("contender_gap_pct", float("nan")),
+                found.get("contender_system", "australia_as_legislated"),
+                found.get("recovers"))
+    if found.get("recovers"):
+        LOGGER.info("  best recovery: %s at %+.2f%%",
+                    found.get("recovering_rule"),
+                    found.get("recovering_gap_pct", float("nan")))
+    else:
+        LOGGER.info("  no rule in the menu returns the lead; the gap spans "
+                    "%.1f points from %s to %s",
+                    found.get("contender_gap_range_pp", float("nan")),
+                    found.get("contender_worst_rule"),
+                    found.get("contender_best_rule"))
+
+    # -- how precisely the panel resolves each of those signs -------------
+    # Sixteen developed markets are not sixteen independent draws, so the
+    # sampling error that matters is the delete-one jackknife over the
+    # panel. The headline is a change of sign in one cell, and a sign
+    # whose interval straddles zero is not a finding.
+    influence = pd.DataFrame()
+    intervals = pd.DataFrame()
+    precision: Dict[str, Any] = {"measured": False}
+    loo_systems = [str(x) for x in block.get("influence_systems", systems)]
+    if block.get("influence_enabled", False):
+        loo_paths = int(block.get("influence_n_paths", n_paths))
+        countries = list(panel.countries)
+        LOGGER.info("jackknife: %d deletions x %d systems x %d rules at "
+                    "%s paths", len(countries), len(loo_systems), len(rules),
+                    f"{loo_paths:,}")
+
+        def _gaps_for(kept: Sequence[str]) -> pd.DataFrame:
+            active["panel"] = dl.build_tier_a(cfg, countries=list(kept))
+            active["paths"] = loo_paths
+            cache.clear()
+            return odr.gaps(odr.sweep(_simulate, loo_systems, rules,
+                                      strategies, _score, log_every=0))
+
+        influence = odr.influence(_gaps_for, countries)
+        active["panel"], active["paths"] = panel, n_paths
+        cache.clear()
+        intervals = odr.intervals(influence, gapped)
+        precision = odr.precision_verdict(
+            intervals, baseline_rule,
+            baseline_system=str(found.get("baseline_system", "")),
+            contender_system=str(found.get("contender_system", "")))
+        if precision.get("measured"):
+            LOGGER.info("the reversal is %+.2f%% +/- %.2f (1 se), CI "
+                        "[%+.2f, %+.2f], deletions span [%+.2f, %+.2f]; the "
+                        "sign survives every deletion: %s; the interval "
+                        "excludes zero: %s",
+                        precision["reversal_gap_pct"],
+                        precision["reversal_se"], *precision["reversal_ci"],
+                        *precision["reversal_loo"],
+                        precision["reversal_sign_survives"],
+                        precision["reversal_resolved"])
+
+    # -- the difference the paper's claim is actually about ---------------
+    # An interval on two levels is not an interval on their difference, and
+    # the claim this section survives on is that changing the rule moves the
+    # lead by tens of points. The deletions are paired, so the difference
+    # has its own jackknife.
+    differences = pd.DataFrame()
+    difference_found: Dict[str, Any] = {"measured": False}
+    if len(influence):
+        differences = odr.difference_intervals(
+            influence, gapped, baseline_rule,
+            str(found.get("contender_system", "")))
+        difference_found = odr.difference_verdict(differences)
+        if difference_found.get("measured"):
+            LOGGER.info("against %s, the widest rule effect is %s at "
+                        "%+.1f pp +/- %.1f, CI [%+.1f, %+.1f]; %d of %d "
+                        "differences exclude zero",
+                        difference_found["reference_rule"],
+                        difference_found["widest_rule"],
+                        difference_found["widest_pp"],
+                        difference_found["widest_se"],
+                        *difference_found["widest_ci"],
+                        difference_found["resolved"],
+                        difference_found["comparisons"])
+
+    # -- and the same gaps at other risk aversions ------------------------
+    by_gamma = pd.DataFrame()
+    gamma_found: Dict[str, Any] = {"measured": False}
+    if robust_gammas:
+        frames = [gapped.assign(gamma=gamma)]
+        for value in robust_gammas:
+            column = f"cec_gamma{value:g}"
+            if column in swept:
+                frames.append(odr.gaps(swept, column=column).assign(
+                    gamma=value))
+        by_gamma = pd.concat(frames, ignore_index=True)
+        gamma_found = odr.gamma_verdict(by_gamma, baseline_rule,
+                                        str(found.get("contender_system", "")))
+        if gamma_found.get("measured"):
+            LOGGER.info("across gamma %s the contested cell runs "
+                        "%+.2f%% to %+.2f%% and its sign holds: %s",
+                        gamma_found["gammas"], gamma_found["low"],
+                        gamma_found["high"], gamma_found["sign_holds"])
+
+    tables = Path(cfg["run"]["table_dir"])
+    _save_table(swept, tables, "ordering_sweep")
+    _save_table(gapped, tables, "ordering_gaps")
+    _save_table(odr.by_system(gapped), tables, "ordering_by_system")
+    if len(influence):
+        _save_table(influence, tables, "ordering_influence")
+        _save_table(intervals, tables, "ordering_intervals")
+    if len(differences):
+        _save_table(differences, tables, "ordering_differences")
+    if len(by_gamma):
+        _save_table(by_gamma, tables, "ordering_by_gamma")
+    figures = [str(plots.plot_ordering(swept, gapped, found, intervals,
+                                       Path(cfg["run"]["figure_dir"])))]
+    elapsed = time.perf_counter() - started
+    rp.write_doc_36(
+        Path("docs") / "36_ordering.md", cfg,
+        {"swept": swept, "gaps": gapped, "intervals": intervals,
+         "differences": differences, "by_gamma": by_gamma},
+        figures,
+        {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
+         "verdict": found, "baseline_rule": baseline_rule,
+         "precision": precision, "difference": difference_found,
+         "gamma_check": gamma_found})
+    LOGGER.info("docs/36 written (%.0fs)", elapsed)
+    state["ordering_gaps"] = gapped
+    return state
+
+
 STEPS = {1: step1_dataset, 2: step2_bootstrap, 3: step3_lifecycle,
          4: step4_report, 5: step5_sensitivity, 6: step6_spending,
          7: step7_glide_path, 8: step8_hedging, 9: step9_retirement_timing,
@@ -4648,11 +5189,13 @@ STEPS = {1: step1_dataset, 2: step2_bootstrap, 3: step3_lifecycle,
          28: step28_withholding, 29: step29_sequence,
          30: step30_franking, 31: step31_plan,
          32: step32_leisure, 33: step33_tax,
-         34: step34_longevity}
+         34: step34_longevity,
+         35: step35_incidence,
+         36: step36_ordering}
 
 
 def run(config_path: str = "config.yaml",
-        steps: Sequence[int] = tuple(range(1, 35)),
+        steps: Sequence[int] = tuple(range(1, 37)),
         quick: bool = False) -> Dict[str, Any]:
     """Execute the pipeline and return the accumulated state."""
     cfg = dl.load_config(config_path)
@@ -4682,8 +5225,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--steps", nargs="+", type=int,
-                        default=list(range(1, 35)),
-                        choices=list(range(1, 35)))
+                        default=list(range(1, 37)),
+                        choices=list(range(1, 37)))
     parser.add_argument("--quick", action="store_true",
                         help="small N for smoke tests")
     parser.add_argument("--verbose", action="store_true")

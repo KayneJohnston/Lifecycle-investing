@@ -700,17 +700,114 @@ class TestShortPaper:
 
         assert sh.ct is sys.modules["content"]
 
-    def test_every_short_section_exists_in_the_long_order(self) -> None:
+    def test_every_inherited_section_exists_in_the_long_order(self) -> None:
+        """A typo in an inherited key would silently drop a section."""
         from paper import short as sh
 
-        unknown = [k for k in sh.SHORT_ORDER if k not in content.SECTION_ORDER]
+        unknown = [k for k in sh.SHORT_ORDER
+                   if k not in content.SECTION_ORDER and k not in sh.OWN]
         assert not unknown
 
-    def test_the_argument_sections_are_all_present(self) -> None:
+    def test_a_section_it_writes_itself_resolves_to_its_own_number(
+            self) -> None:
+        """Several keys name a section in both documents -- this paper
+        writes its own version. A reference to one must resolve to the
+        number it has *here*, never to the companion's."""
         from paper import short as sh
 
-        for key in ("pension", "leisure", "longevity", "tax"):
+        sh.ct.COMPANION = {"name": "the companion study",
+                           "numbers": sh.LONG_NUMBER_ALL}
+        try:
+            with sh.renumbered():
+                for key in sh.OWN:
+                    out = sh.ct.resolve_sections(f"Section #{key}")
+                    assert out == (
+                        f"Section {sh.SHORT_ORDER.index(key) + 1}"), key
+                    assert "companion" not in out, key
+        finally:
+            sh.ct.COMPANION = {}
+
+    def test_a_key_only_this_paper_has_is_not_in_the_long_order(self) -> None:
+        """`model` has no companion section, so a reference to it could not
+        fall back even if the numbering were wrong."""
+        from paper import short as sh
+
+        assert "model" in sh.OWN
+        assert "model" not in content.SECTION_ORDER
+
+    def test_the_ordering_section_follows_the_rule_it_depends_on(self
+                                                                 ) -> None:
+        """It asks what the winning withdrawal rule does to the portfolio
+        ranking, so it cannot precede the section that finds that rule."""
+        from paper import short as sh
+
+        assert "ordering" in sh.SHORT_ORDER
+        assert sh.SHORT_ORDER.index("longevity") < \
+            sh.SHORT_ORDER.index("ordering")
+        assert content.SECTION_ORDER.index("longevity") < \
+            content.SECTION_ORDER.index("ordering")
+
+    def test_every_trimmed_anchor_names_a_trimmed_subsection(self) -> None:
+        """`TRIMMED` removes subsections and `TRIMMED_ANCHORS` redirects the
+        references into them. The two going out of step is invisible: a
+        stale anchor sends a live reference to the companion, and a missing
+        one leaves a dangling pointer the build only catches by luck."""
+        from paper import short as sh
+
+        keys = {a.split(".")[0] for a in sh.TRIMMED_ANCHORS}
+        assert keys == set(sh.TRIMMED), (keys, set(sh.TRIMMED))
+        for key, phrases in sh.TRIMMED.items():
+            anchors = [a for a in sh.TRIMMED_ANCHORS
+                       if a.split(".")[0] == key]
+            assert len(anchors) == len(phrases), key
+
+    def test_every_own_section_is_in_the_reading_order(self) -> None:
+        from paper import short as sh
+
+        assert set(sh.OWN) <= set(sh.SHORT_ORDER)
+
+    def test_the_model_and_incidence_sections_are_carried(self) -> None:
+        """The two additions the referee report asked for."""
+        from paper import short as sh
+
+        assert "model" in sh.SHORT_ORDER
+        assert "incidence" in sh.SHORT_ORDER
+        assert sh.SHORT_ORDER.index("model") < sh.SHORT_ORDER.index("data")
+
+    def test_every_retitled_and_reopened_key_is_inherited(self) -> None:
+        """Retitling or reopening a section this paper writes itself would
+        do nothing, silently."""
+        from paper import short as sh
+
+        inherited = set(sh.SHORT_ORDER) - set(sh.OWN)
+        assert set(sh.RETITLED) <= inherited
+        assert set(sh.REOPENING) <= inherited
+        assert set(sh.DROPPED) <= inherited
+
+    def test_the_argument_sections_are_all_present(self) -> None:
+        """The chain the paper's thesis runs along: the pension reverses
+        the ordering, one of its two features does the work, a rule can
+        restore it, and the last section says which portfolio wins where."""
+        from paper import short as sh
+
+        for key in ("pension", "leisure", "longevity", "ordering"):
             assert key in sh.SHORT_ORDER, key
+
+    def test_a_section_it_drops_still_resolves_to_the_companion(self
+                                                                ) -> None:
+        """The tax section was cut, and the roadmap still points a reader
+        at it. That pointer must land in the companion rather than dangle."""
+        from paper import short as sh
+
+        assert "tax" not in sh.SHORT_ORDER
+        sh.ct.COMPANION = {"name": "the companion study",
+                           "numbers": sh.LONG_NUMBER_ALL}
+        try:
+            with sh.renumbered():
+                out = sh.ct.resolve_sections("Section #tax")
+        finally:
+            sh.ct.COMPANION = {}
+        assert out.endswith("of the companion study")
 
     def test_it_is_materially_shorter(self) -> None:
         from paper import short as sh
@@ -754,3 +851,337 @@ class TestShortPaper:
 
         assert any("Cocco" in r and "Maenhout" in r
                    for r in sh.EXTRA_REFERENCES)
+
+
+class TestSubsectionRenumbering:
+    """Trimming subsections out of an inherited section leaves the survivors
+    at their original numbers, so a section whose first heading is 7.5 tells
+    the reader four subsections went missing. The remap lives in the
+    resolver so the heading and every reference to it move together."""
+
+    def test_a_renumbered_heading_and_its_references_agree(self) -> None:
+        from paper import short as sh
+
+        original = dict(sh.ct.RENUMBERED)
+        sh.ct.RENUMBERED = {"leisure": {5: 1, 6: 2}}
+        try:
+            with sh.renumbered():
+                n = sh.SHORT_ORDER.index("leisure") + 1
+                assert sh.ct.resolve_sections("#leisure.5") == f"{n}.1"
+                assert sh.ct.resolve_sections("#leisure.6") == f"{n}.2"
+                assert sh.ct.resolve_sections("#leisure") == str(n)
+        finally:
+            sh.ct.RENUMBERED = original
+
+    def test_an_unmapped_subsection_is_left_alone(self) -> None:
+        from paper import short as sh
+
+        original = dict(sh.ct.RENUMBERED)
+        sh.ct.RENUMBERED = {"leisure": {5: 1}}
+        try:
+            with sh.renumbered():
+                n = sh.SHORT_ORDER.index("leisure") + 1
+                assert sh.ct.resolve_sections("#leisure.9") == f"{n}.9"
+        finally:
+            sh.ct.RENUMBERED = original
+
+    def test_the_map_is_restored_after_the_story_is_built(self) -> None:
+        import content
+
+        assert content.RENUMBERED == {}
+
+    def test_every_renumbered_key_is_an_inherited_section(self) -> None:
+        from paper import short as sh
+
+        assert set(sh.RENUMBERED) <= set(sh.SHORT_ORDER) - set(sh.OWN)
+
+    def test_no_renumbered_target_collides_with_a_kept_subsection(self
+                                                                  ) -> None:
+        """Mapping 5 -> 1 while a real 1 survives would give two headings
+        the same number."""
+        from paper import short as sh
+
+        for key, moved in sh.RENUMBERED.items():
+            trimmed = len(sh.TRIMMED.get(key, ()))
+            assert len(set(moved.values())) == len(moved), key
+            assert max(moved.values()) <= trimmed + len(moved), key
+
+
+class TestFloatNumbering:
+    """Figure and table numbers are issued by a counter on the context and
+    the short paper trims whole subsections *after* that counter has run, so
+    the numbering used to arrive with holes in it: Figure 1 then Figure 5,
+    Table 3 then Table 8 then Table 23. The renumbering pass closes them on
+    the assembled story, where what survived is known."""
+
+    @staticmethod
+    def _story(numbers):
+        """A story of caption heads at the given numbers, half of them
+        nested inside a ``KeepTogether`` the way the real builder nests them.
+        """
+        import build_paper as bp
+        from reportlab.platypus import KeepTogether
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import Paragraph
+
+        head = ParagraphStyle("caption_head")
+        out = []
+        for i, (kind, n) in enumerate(numbers):
+            caption = Paragraph(f"{kind} {n}. A caption", head)
+            out.append(KeepTogether([caption]) if i % 2 else caption)
+        return out, bp
+
+    def test_the_two_walkers_stay_distinct(self) -> None:
+        """`_walk` flattens the story for reading and `_slots` yields
+        mutable positions for rewriting. A second `def _walk` shadowed the
+        first, and the only symptom was the missing-glyph check quietly
+        matching nothing -- it filters for Paragraphs, and the generator
+        hands back tuples."""
+        import build_paper as bp
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import KeepTogether, Paragraph
+
+        inner = Paragraph("leaf", ParagraphStyle("body"))
+        story = [KeepTogether([inner])]
+        assert inner in bp._walk(story)
+        assert list(bp._slots(story)) == [(story, 0), ([inner], 0)]
+
+    def test_gaps_are_closed_in_document_order(self) -> None:
+        story, bp = self._story([("Figure", 1), ("Figure", 5), ("Figure", 6)])
+        mapping = bp.renumber_floats(story)
+        assert mapping["Figure"] == {1: 1, 5: 2, 6: 3}
+
+    def test_the_printed_captions_are_rewritten(self) -> None:
+        story, bp = self._story([("Table", 3), ("Table", 8), ("Table", 23)])
+        bp.renumber_floats(story)
+        printed = [fl.getPlainText() if hasattr(fl, "getPlainText")
+                   else fl._content[0].getPlainText() for fl in story]
+        assert [p.split(".")[0] for p in printed] == [
+            "Table 1", "Table 2", "Table 3"]
+
+    def test_figures_and_tables_are_counted_separately(self) -> None:
+        story, bp = self._story([("Figure", 2), ("Table", 7), ("Figure", 9)])
+        mapping = bp.renumber_floats(story)
+        assert mapping == {"Figure": {2: 1, 9: 2}, "Table": {7: 1}}
+
+    def test_a_document_with_nothing_trimmed_is_left_alone(self) -> None:
+        story, bp = self._story([("Figure", 1), ("Figure", 2)])
+        before = [id(fl) for fl in story]
+        bp.renumber_floats(story)
+        assert [id(fl) for fl in story] == before
+
+    def test_a_named_float_resolves_to_its_final_number(self) -> None:
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import Paragraph
+
+        story, bp = self._story([("Table", 3), ("Table", 8)])
+        story.append(Paragraph("see @table:fidelity for the check",
+                               ParagraphStyle("body")))
+        bp.renumber_floats(story, {"fidelity": ("Table", 8)})
+        assert story[-1].getPlainText() == "see Table 2 for the check"
+
+    def test_a_name_no_float_claims_stops_the_build(self) -> None:
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import Paragraph
+
+        story, bp = self._story([("Table", 3)])
+        story.append(Paragraph("see @table:missing", ParagraphStyle("body")))
+        with pytest.raises(SystemExit, match="does not print"):
+            bp.renumber_floats(story, {})
+
+    def test_a_name_on_a_trimmed_float_stops_the_build(self) -> None:
+        """The anchor was registered, but the float it named was trimmed out
+        of this paper -- so the reference has nothing to point at."""
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import Paragraph
+
+        story, bp = self._story([("Table", 3)])
+        story.append(Paragraph("see @table:gone", ParagraphStyle("body")))
+        with pytest.raises(SystemExit, match="does not print"):
+            bp.renumber_floats(story, {"gone": ("Table", 8)})
+
+    def test_two_floats_cannot_share_a_name(self) -> None:
+        import build_paper as bp
+
+        ctx = bp.Context.__new__(bp.Context)
+        ctx.float_anchors = {}
+        ctx._anchor("dup", "Table", 1)
+        with pytest.raises(SystemExit, match="claimed twice"):
+            ctx._anchor("dup", "Figure", 2)
+
+    def test_an_unnamed_float_registers_nothing(self) -> None:
+        import build_paper as bp
+
+        ctx = bp.Context.__new__(bp.Context)
+        ctx.float_anchors = {}
+        ctx._anchor("", "Table", 1)
+        assert ctx.float_anchors == {}
+
+
+class TestNoFloatIsCitedByANumber:
+    """A literal "Table 4" in the prose is a pointer nothing checks. One had
+    been pointing at the wrong table since the numbering last moved, in both
+    papers at once. Named anchors are checked; bare numbers are not, so the
+    prose is not allowed to contain them."""
+
+    #: The caption heads the builder writes are the legitimate occurrences,
+    #: and they are built from the counter rather than typed.
+    CITATION = re.compile(r'"[^"]*\b(?:Figure|Table) \d+\b')
+
+    def test_the_shared_sections_cite_no_float_by_number(self) -> None:
+        found = self.CITATION.findall(FLAT)
+        assert not found, found
+
+    def test_the_short_paper_cites_no_float_by_number(self) -> None:
+        source = (PAPER / "short.py").read_text()
+        flat = re.sub(r'"\s*\n\s*(f?)"', "", source)
+        found = self.CITATION.findall(flat)
+        assert not found, found
+
+    def test_every_anchor_the_prose_names_is_registered_somewhere(self
+                                                                  ) -> None:
+        """The reference and the ``anchor=`` that satisfies it are written in
+        two different places, and a build only catches the mismatch for the
+        paper it builds."""
+        import build_paper as bp
+
+        source = _RAW + (PAPER / "short.py").read_text()
+        named = {m.group(2)
+                 for m in bp._FLOAT_ANCHOR_REFERENCE.finditer(source)}
+        declared = set(re.findall(r'anchor="([a-z0-9_]+)"', source))
+        assert named <= declared, sorted(named - declared)
+
+
+class TestRuleLabels:
+    """Withdrawal rules reach the results tables under the key the pipeline
+    runs them by, and three of them are Python identifiers. They were
+    printing as identifiers in table columns, in a parameter appendix and
+    once in the middle of a sentence, in both papers."""
+
+    def test_the_baseline_rule_is_written_for_a_reader(self) -> None:
+        assert content.rule_label("fixed_real_rule") == "fixed real"
+
+    def test_a_rate_survives_the_relabelling(self) -> None:
+        assert content.rule_label("constant_percent at 4%") == \
+            "percentage of balance at 4%"
+
+    def test_a_label_that_is_already_prose_is_left_alone(self) -> None:
+        assert content.rule_label("amortisation at 6%") == "amortisation at 6%"
+
+    def test_a_plan_label_keeps_its_retirement_age(self) -> None:
+        """`plan.Plan.label` appends the retirement age to the rule key, so
+        the relabelling has to be a prefix swap and not a lookup."""
+        assert content.rule_label("constant_percent at 7.0%, retire at 63") \
+            == "percentage of balance at 7.0%, retire at 63"
+
+    def test_an_unknown_rule_loses_its_underscores(self) -> None:
+        assert content.rule_label("some_new_rule") == "some new rule"
+
+    def test_both_papers_print_no_rule_key(self) -> None:
+        """The check that matters: no identifier reaches a page. Read off
+        the built documents, because the leak was never in one place."""
+        import re
+
+        from pypdf import PdfReader
+
+        keys = sorted(content.RULE_LABELS)
+        pattern = re.compile(r"\b(" + "|".join(keys) + r")\b")
+        for name in ("floor_beneath_the_portfolio.pdf",
+                     "lifecycle_asset_allocation.pdf"):
+            path = PAPER / name
+            if not path.exists():
+                pytest.skip(f"{name} has not been built")
+            text = "\n".join((page.extract_text() or "")
+                             for page in PdfReader(str(path)).pages)
+            # "amortisation" is a word as well as a key, so only the keys
+            # that are not English are a leak.
+            found = {m.group(0) for m in pattern.finditer(text)
+                     if "_" in m.group(0)}
+            assert not found, (name, sorted(found))
+
+
+class TestTheReadmeIndexesEveryDocument:
+    """The README's table is the repository's index. Four sections were
+    added without rows, and the sentence under the table still said
+    "thirty-two" -- so the two newest studies, which the paper leans on,
+    were invisible to anyone reading the front page."""
+
+    ROOT = PAPER.parent
+
+    @classmethod
+    def _readme(cls) -> str:
+        return (cls.ROOT / "README.md").read_text()
+
+    @classmethod
+    def _documents(cls) -> list:
+        return sorted(p.name for p in (cls.ROOT / "docs").glob("*.md"))
+
+    def test_every_document_has_a_row(self) -> None:
+        import re
+
+        linked = set(re.findall(r"\(docs/([0-9]+_[a-z_]+\.md)\)",
+                                self._readme()))
+        missing = sorted(set(self._documents()) - linked)
+        assert not missing, missing
+
+    def test_no_row_points_at_a_document_that_is_gone(self) -> None:
+        import re
+
+        linked = set(re.findall(r"\(docs/([0-9]+_[a-z_]+\.md)\)",
+                                self._readme()))
+        assert not sorted(linked - set(self._documents()))
+
+    def test_the_layout_block_counts_the_documents(self) -> None:
+        import re
+
+        claimed = re.search(r"generated analysis documents \((\d+) files\)",
+                            self._readme())
+        assert claimed, "the layout block has been reworded"
+        assert int(claimed.group(1)) == len(self._documents())
+
+    def test_the_newest_step_has_a_worked_example(self) -> None:
+        """The quick-start block is a selection, not a catalogue, so most
+        steps need no line. The newest one does: four studies were added
+        without one, and the list stopped advertising the work that the
+        paper's last two sections rest on."""
+        import re
+        import sys
+
+        sys.path.insert(0, str(self.ROOT))
+        main = pytest.importorskip("main")
+        listed = {int(n) for line in self._readme().split("\n")
+                  if line.startswith("python main.py --steps ")
+                  for n in re.findall(r"\d+", line.split("#")[0])}
+        assert max(main.STEPS) in listed, sorted(listed)[-4:]
+
+    def test_the_advertised_test_count_is_the_real_one(self) -> None:
+        """Quoted in the quick-start block, where a reader checks their
+        checkout is complete. It had been stale by eight hundred."""
+        import re
+        import subprocess
+
+        claimed = re.search(r"pytest tests/ -q\s+# ([\d,]+) tests",
+                            self._readme())
+        assert claimed, "the quick-start block has been reworded"
+        run = subprocess.run(
+            [sys.executable, "-m", "pytest", "tests/", "-q",
+             "--collect-only", "-p", "no:cacheprovider"],
+            cwd=self.ROOT, capture_output=True, text=True)
+        found = re.search(r"(\d+) tests collected", run.stdout)
+        assert found, run.stdout[-400:]
+        assert int(claimed.group(1).replace(",", "")) == int(found.group(1))
+
+    def test_the_count_under_the_table_is_right(self) -> None:
+        """A number written as a word, so it cannot be updated by the
+        pipeline and has to be checked."""
+        import re
+
+        words = {30: "thirty", 31: "thirty-one", 32: "thirty-two",
+                 33: "thirty-three", 34: "thirty-four", 35: "thirty-five",
+                 36: "thirty-six", 37: "thirty-seven", 38: "thirty-eight",
+                 39: "thirty-nine", 40: "forty"}
+        n = len(self._documents())
+        claimed = re.search(r"All ([a-z-]+) are \*\*generated\*\*",
+                            self._readme())
+        assert claimed, "the sentence under the table has been reworded"
+        assert claimed.group(1) == words[n], (claimed.group(1), n)

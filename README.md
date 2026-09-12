@@ -134,8 +134,12 @@ is the read-through; the table below is the build.
 | [`docs/30_franking_credits.md`](docs/30_franking_credits.md) | Dividend imputation -- the credit that lands only on the home leg, exactly mirroring the withholding tax that falls only on the foreign one -- and what the two of them together do to the case for going abroad |
 | [`docs/31_plan_and_portfolio.md`](docs/31_plan_and_portfolio.md) | Dropping the assumption every other document makes: the withdrawal rule and the allocation solved *together* rather than one at a time, which shows the ranking of portfolios separates from the rule and the location of the optimum does not |
 | [`docs/32_cost_of_working.md`](docs/32_cost_of_working.md) | Putting a price on the years spent working, so the retirement date has an optimum instead of a corner -- and reporting the break-even rather than a recommendation: what a year of your own time must be worth to justify stopping early |
+| [`docs/33_retirement_tax.md`](docs/33_retirement_tax.md) | The tax each system actually charges in retirement. Every other document here is tax-free, which is harmless until two countries are compared -- one of which exempts the fund's earnings and the other does not |
+| [`docs/34_uncertain_horizon.md`](docs/34_uncertain_horizon.md) | The withdrawal rule scored against a lifespan drawn from a mortality table rather than one that ends at ninety-three with certainty, which is not a neutral change: a fixed horizon flatters the rules that divide by it |
+| [`docs/35_incidence.md`](docs/35_incidence.md) | Two assumptions the earlier sections make for free, removed: who actually pays for the Superannuation Guarantee, and what the retiree wants once the balance is scaled until the assets test genuinely binds -- where the answer stops being a fact about the pension and becomes one about the withdrawal rule |
+| [`docs/36_ordering.md`](docs/36_ordering.md) | The portfolio comparison crossed with the pension system and the withdrawal rule, because the project's headline (two portfolios) and its second finding (two countries) had been glossed as the same quantity -- with delete-one-country intervals on every cell, on the differences between them, and the same grid re-scored at three risk aversions |
 
-All thirty-two are **generated** by `main.py` from live pipeline objects --
+All thirty-six are **generated** by `main.py` from live pipeline objects --
 edit `src/report.py`, not the Markdown.
 
 ## How much of this data is real
@@ -648,7 +652,7 @@ pip install numpy pandas scipy matplotlib pyyaml openpyxl pytest
 
 python main.py --quick      # ~1 min smoke run at reduced N
 python main.py              # ~1 h full run: N = 100,000 plus sweeps and searches
-python -m pytest tests/ -q  # 730 tests
+python -m pytest tests/ -q  # 1,580 tests
 ```
 
 Selected steps and alternative configurations:
@@ -682,13 +686,17 @@ python main.py --steps 29           # sequence-of-returns risk, isolated
 python main.py --steps 30           # dividend imputation and the tax wedge
 python main.py --steps 31           # the plan and the portfolio, solved together
 python main.py --steps 32           # what a year of retirement is worth
+python main.py --steps 33           # the tax each system charges in retirement
+python main.py --steps 34           # the rule when the horizon is not known
+python main.py --steps 35           # who pays for the guarantee, and who the test binds
+python main.py --steps 36           # which portfolio wins, and under what
 python main.py --config other.yaml  # a different parameterisation
 ```
 
 ## Layout
 
 ```
-├── docs/                 # generated analysis documents (32 files)
+├── docs/                 # generated analysis documents (36 files)
 ├── data/
 │   ├── raw/              # primary source files, unmodified
 │   ├── processed/        # standardised real return panels (.csv and .npz)

@@ -11153,3 +11153,1000 @@ Runtime {float(notes['elapsed_seconds']):.0f}s at {int(notes['n_paths']):,}
 paths, gamma = {gamma:g}. Tables in `results/tables/longevity_*.csv`.
 """
     return _write(path, [intro, body])
+
+
+def write_doc_35(
+    path: str | Path,
+    cfg: Mapping[str, Any],
+    frames: Mapping[str, pd.DataFrame],
+    figures: Sequence[str],
+    notes: Mapping[str, Any],
+) -> Path:
+    """Who pays for the guarantee, and where the household sits against the test.
+
+    Every claim below branches on the sweep. This section exists because two
+    reviewers' objections -- that the guarantee has been free, and that the
+    household is nowhere near the test it is being used to study -- looked
+    like one objection and are not. The prose says so because the sweep
+    says so.
+    """
+    from . import incidence as ic
+
+    BAND_IN, BAND_ABOVE = ic.BANDS[1], ic.BANDS[2]
+
+    swept = frames["swept"]
+    optima = frames["optimum"]
+    balances = frames["balances"]
+    profile = frames["profile"]
+    found = notes["verdict"]
+    shape = notes["shape"]
+    gamma = float(notes["gamma"])
+
+    optimum_tbl = md_table(_compact(
+        optima,
+        ["incidence", "mean_working_consumption", "cec_lifetime", "cec",
+         "equity", "median_wealth"],
+        {"incidence": "Charged to the worker",
+         "mean_working_consumption": "Mean consumption while working",
+         "cec_lifetime": "CEC, whole life", "cec": "CEC, retirement only",
+         "equity": "Best equity share",
+         "median_wealth": "Median balance at 67 (x AWE)"}),
+        floatfmt="{:.4f}")
+
+    aligned = (profile[profile["arm"] == ic.ARMS[0]]
+               if "arm" in profile else profile)
+    bridged = (profile[profile["arm"] == ic.ARMS[1]]
+               if "arm" in profile else profile.iloc[0:0])
+    profile_tbl = md_table(_compact(
+        aligned, ["scale", "median_wealth", "position", "equity", "cec",
+                  "share_inside_the_taper_band"],
+        {"scale": "Balance, as a multiple of the model's",
+         "median_wealth": "Median balance at retirement (x AWE)",
+         "position": "Where that leaves the median household",
+         "equity": "Best equity share", "cec": "CEC",
+         "share_inside_the_taper_band": "Paths in the band"}),
+        floatfmt="{:.4f}")
+
+    others = [a for a in ic.ARMS[1:]
+              if "arm" in profile and a in set(profile["arm"])]
+    if others:
+        side = aligned[["scale", "median_wealth", "position",
+                        "equity"]].rename(columns={"equity": ic.ARMS[0]})
+        for arm in others:
+            block = profile[profile["arm"] == arm][["scale", "equity"]]
+            side = side.merge(block.rename(columns={"equity": arm}),
+                              on="scale")
+        bridge_tbl = md_table(_compact(
+            side, ["median_wealth", "position"] + list(ic.ARMS),
+            {"median_wealth": "Median balance (x AWE)",
+             "position": "Position",
+             **{a: a.capitalize() for a in ic.ARMS}}), floatfmt="{:.4f}")
+    else:
+        bridge_tbl = ("*Only one arm was run, so there is no comparison to "
+                      "draw here.*")
+
+    free_area = float(found.get("free_area", float("nan")))
+    cutoff = float(found.get("cutoff", float("nan")))
+
+    # -- dial one -----------------------------------------------------------
+    if found.get("balance_unchanged"):
+        balance_line = (
+            f"**And the balance does not move at all** -- "
+            f"{found['free_wealth']:.1f} times average earnings at either "
+            f"end of the dial. That is not a bug and it is the whole point. "
+            f"Under full economic incidence the worker funds the "
+            f"contribution out of wages, so take-home pay falls; but the "
+            f"contribution is still *made*, so the fund receives the same "
+            f"money and compounds it the same way. Incidence changes what "
+            f"the household gave up, not what it arrives with.")
+    else:
+        balance_line = (
+            f"The balance moves {found['wealth_fall_pct']:+.1f}% across the "
+            f"dial, from {found['free_wealth']:.1f} to "
+            f"{found['paid_wealth']:.1f} times average earnings. It should "
+            f"not move at all -- the contribution is made either way -- so "
+            f"a non-zero number here is a second-order effect of the "
+            f"simulator worth chasing before the section is relied on.")
+
+    cost_line = (
+        f"**Charging the guarantee costs "
+        f"{abs(found['cec_lifetime_fall_pct']):.1f}% of lifetime "
+        f"certainty-equivalent consumption.** At the statutory incidence "
+        f"the household scores {found['free_cec_lifetime']:.4f}; funding "
+        f"every dollar of the guarantee out of wages for forty years leaves "
+        f"it {found['paid_cec_lifetime']:.4f}. Mean consumption during the "
+        f"working years falls "
+        f"{abs(found.get('working_fall_pct', float('nan'))):.1f}%, which is "
+        f"the transfer itself. That is the size of the free lunch the "
+        f"Australian arm has been served in every cross-system comparison "
+        f"in this project, and the honest reading of those comparisons is "
+        f"that they are bracketed by the two ends of this dial rather than "
+        f"pinned at either.")
+
+    if found.get("retirement_cec_invariant"):
+        invariance_line = (
+            f"**Measured the way the rest of this project measures, the "
+            f"answer is exactly zero** -- {found['free_cec']:.4f} at both "
+            f"ends, to every digit. The standard certainty equivalent here "
+            f"scores the retirement window, and the retiree's problem is "
+            f"untouched by who paid for the balance: same wealth, same "
+            f"pension, same returns. That is worth stating as an identity "
+            f"rather than a result, because it is the reason the table "
+            f"above carries two measures and the reason the incidence dial "
+            f"cannot answer the second objection. It is also a check on the "
+            f"simulator: an exact zero is what a correctly implemented "
+            f"working-life transfer should produce.")
+    else:
+        invariance_line = (
+            f"The retirement-window measure moves "
+            f"{found.get('cec_fall_pct', float('nan')):+.4f}% across the "
+            f"dial. It should be exactly zero -- the retiree's problem is "
+            f"identical at every incidence -- so a non-zero number is a "
+            f"leak between the working and retired halves of the simulator "
+            f"and wants chasing before this section is relied on.")
+
+    if found.get("equity_unchanged"):
+        equity_line = (
+            f"**The allocation does not move**, even on the lifetime "
+            f"measure. The household wants {found['free_equity']:.0%} "
+            f"equity whether the guarantee is free or paid for in full. "
+            f"That is the answer to whether the earlier sections' "
+            f"allocation results were resting on the free guarantee: they "
+            f"were not. What the free guarantee inflated is the *level* of "
+            f"Australian consumption, not the portfolio chosen to deliver "
+            f"it.")
+    elif found.get("equity_falls_when_charged"):
+        equity_line = (
+            f"**The allocation moves down**, from {found['free_equity']:.0%} "
+            f"equity to {found['paid_equity']:.0%}. Working-life consumption "
+            f"is lower at every age, so the household is poorer over the "
+            f"whole lifetime and less willing to carry the portfolio's "
+            f"variance -- an income effect, not a change in the retiree's "
+            f"problem, which is identical across this dial.")
+    else:
+        equity_line = (
+            f"**The allocation moves up**, from {found['free_equity']:.0%} "
+            f"equity to {found['paid_equity']:.0%}. The retiree's problem is "
+            f"identical across this dial -- same balance, same pension, same "
+            f"returns -- so the movement is coming from the working years, "
+            f"where consumption is now lower and the pension a larger share "
+            f"of what the household will eventually eat.")
+
+    reach_line = (
+        f"**What charging the guarantee does not do is bring the household "
+        f"to the test.** Even paying for every dollar of it, the median path "
+        f"reaches 67 holding {found['paid_wealth']:.1f} times average "
+        f"earnings against a cut-off of {cutoff:.1f} -- "
+        f"{found['paid_wealth'] / cutoff:.0f} times past it, with "
+        f"{found.get('paid_in_band', 0.0):.0%} of paths inside the band. "
+        f"The second objection survives the first sweep intact, and needs "
+        f"its own dial."
+        if not found.get("reaches_the_test") else
+        f"**Charging the guarantee brings the household to the test.** The "
+        f"median path retires on {found['paid_wealth']:.1f} times average "
+        f"earnings against a cut-off of {cutoff:.1f}, with "
+        f"{found.get('paid_in_band', 0.0):.0%} of paths inside the band.")
+
+    # -- dial two -----------------------------------------------------------
+    reached = list(shape.get("bands_reached", []))
+    if len(reached) > 1:
+        span_line = (
+            f"The grid moves the median household across "
+            f"{len(reached)} of the three positions -- "
+            f"{_join([str(b) for b in reached])} -- so what follows is a "
+            f"comparison and not a single point.")
+    else:
+        span_line = (
+            f"Every balance in the grid leaves the median household in the "
+            f"same position, {reached[0] if reached else 'unclassified'}, so "
+            f"the shape below is not tested by it and the grid needs "
+            f"widening before anything is read off it.")
+
+    def _share(band: str) -> float:
+        key = "equity_" + band.replace(" ", "_").replace("-", "_")
+        return float(shape.get(key, float("nan")))
+
+    if shape.get("all_at_ceiling"):
+        shape_line = (
+            "**The optimum is all equity at every balance, so the shape "
+            "test returns nothing.** A prediction about where a maximum "
+            "sits cannot be tested against a grid whose maximum is always "
+            "the last point on it. Whatever the taper is doing to the "
+            "household's appetite for risk, it is not enough to pull the "
+            "optimum off the ceiling at this risk aversion, and the "
+            "prediction is neither confirmed nor refuted here.")
+    elif shape.get("prediction_holds"):
+        shape_line = (
+            f"**The prediction holds.** The household wants "
+            f"{_share(BAND_IN):.0%} equity inside the taper band and "
+            f"{_share(BAND_ABOVE):.0%} above the cut-off -- "
+            f"{100 * shape.get('band_above_gap', 0.0):.0f} percentage points "
+            f"more where the pension is being withdrawn than where it has "
+            f"been withdrawn entirely. The taper reads as insurance, not as "
+            f"a tax on risk-taking: inside the band a good outcome is "
+            f"clawed back and a bad one is cushioned, and a household facing "
+            f"that budget line holds *more* equity, not less. The minimum "
+            f"sits past the cut-off, which is where the model says it "
+            f"should.")
+    elif shape.get("above_beats_band"):
+        shape_line = (
+            f"**The prediction fails, and in the direction the intuition it "
+            f"was written against would have picked.** The household wants "
+            f"{_share(BAND_IN):.0%} equity inside the band and "
+            f"{_share(BAND_ABOVE):.0%} above the cut-off. The insurance "
+            f"reading of the taper is wrong on this calibration: whatever "
+            f"the kink does to the shape of the budget line, the household "
+            f"inside the band is holding a smaller portfolio against an "
+            f"unchanged floor, and that effect is the larger of the two.")
+    elif shape.get("minimum_above_the_cutoff"):
+        shape_line = (
+            f"**The minimum is where the model says, and the margin is "
+            f"inside the noise.** Wanted equity is {_share(BAND_IN):.0%} "
+            f"inside the band and {_share(BAND_ABOVE):.0%} above the "
+            f"cut-off, a gap of "
+            f"{100 * shape.get('band_above_gap', 0.0):.0f} points against a "
+            f"tolerance of {100 * ic.SHAPE_TOLERANCE:.0f}. The direction is "
+            f"right; the magnitude is not something to build on.")
+    elif shape.get("flat_across_bands"):
+        shape_line = (
+            f"**Wanted equity does not vary with position at all.** It is "
+            f"{shape.get('common_equity', float('nan')):.0%} below the free "
+            f"area, inside the taper band and above the cut-off alike, and "
+            f"the whole spread across the three is "
+            f"{100 * shape.get('band_spread', 0.0):.0f} percentage points. "
+            f"The prediction is not so much refuted as bypassed: something "
+            f"other than the household's position against the test is "
+            f"deciding the portfolio, and Section 6 identifies it.")
+    else:
+        shape_line = (
+            f"**The optimum is lowest {shape.get('lowest_band') or 'somewhere the model did not predict'}**, "
+            f"which is not what the kinked budget line implies. Wanted "
+            f"equity by position: "
+            + ", ".join(f"{b} {_share(b):.0%}" for b in reached) + ".")
+
+    at_edge = sum(1 for x in shape.get("at_grid_edge", []) if x)
+    scales_run = int(shape.get("scales", 0)) or 1
+    if shape.get("any_at_grid_edge") and not shape.get("all_at_ceiling"):
+        span = (f"{float(shape.get('equity_grid_low', 0.0)):.0%} to "
+                f"{float(shape.get('equity_grid_high', 1.0)):.0%}")
+        if at_edge > scales_run / 2:
+            edge_line = (
+                f"**Most of these optima are corners.** {at_edge} of "
+                f"{scales_run} sit on the edge of the equity grid ({span}), "
+                f"so the shape above is being read off truncations rather "
+                f"than peaks. A corner at the floor is still informative -- "
+                f"it says the household wants no more equity than the "
+                f"lowest share on offer, and would take less if less were "
+                f"available -- but it carries no information about *how "
+                f"much* less, and a difference between two corners is not "
+                f"a measured difference. Read the shape as a direction, "
+                f"not a magnitude.")
+        else:
+            edge_line = (
+                f"{at_edge} of {scales_run} optima sit on the edge of the "
+                f"equity grid ({span}), so those are truncations rather "
+                f"than peaks; the shape above is read off the interior "
+                f"ones.")
+    elif not shape.get("all_at_ceiling"):
+        edge_line = (
+            f"No optimum sits on the edge of the equity grid "
+            f"({float(shape.get('equity_grid_low', 0.0)):.0%} to "
+            f"{float(shape.get('equity_grid_high', 1.0)):.0%}), so every "
+            f"point in the profile is a peak rather than the end of the "
+            f"grid.")
+    else:
+        edge_line = ""
+
+    def _control(found_c: Mapping[str, Any], subject: str, other: str,
+                 mistake: str, artefact: str) -> str:
+        """The same three sentences for either control, read the same way."""
+        if not found_c.get("measured"):
+            return ""
+        if found_c.get("bridge_lowers_equity"):
+            lead = (f"**{subject} costs "
+                    f"{100 * found_c['mean_equity_gap']:.0f} percentage "
+                    f"points of wanted equity on average.**")
+        elif found_c.get("bridge_raises_equity"):
+            lead = (f"**{subject} adds "
+                    f"{abs(100 * found_c['mean_equity_gap']):.0f} percentage "
+                    f"points of wanted equity on average.**")
+        else:
+            lead = f"**{subject} barely moves the allocation.**"
+        line = (
+            f"{lead} The gap is widest at "
+            f"{found_c['worst_wealth']:.1f} times average earnings -- a "
+            f"household {found_c['worst_position']} -- where it reaches "
+            f"{100 * found_c['max_equity_gap']:.0f} points. Averaged over "
+            f"the grid the base arm wants "
+            f"{found_c['aligned_mean_equity']:.0%} equity and {other} wants "
+            f"{found_c['bridged_mean_equity']:.0%}.")
+        if found_c.get("shape_label_flips"):
+            line += (
+                f" And it changes the verdict: the shape test "
+                f"{'passes' if found_c.get('aligned_prediction_holds') else 'fails'} "
+                f"in the base arm and "
+                f"{'passes' if found_c.get('bridged_prediction_holds') else 'fails'} "
+                f"in the control. {mistake}")
+        elif found_c.get("moves_the_allocation"):
+            # Both arms can carry the same shape label and still disagree
+            # about the whole allocation -- and when they do, saying the
+            # label agreed would be the most misleading sentence available.
+            why = ""
+            if found_c.get("bridged_untestable"):
+                why = (" The control does not overturn the shape test so "
+                       "much as dissolve it: every optimum there sits on "
+                       "the top of the equity grid, so there is no shape "
+                       "left to test.")
+            elif found_c.get("aligned_untestable"):
+                why = (" The base arm has no shape to test -- every "
+                       "optimum sits on the top of the equity grid -- so "
+                       "the comparison is between a corner and a curve.")
+            line += (
+                f" The shape test reads the same way in both arms, but that "
+                f"is not agreement: a swing of "
+                f"{abs(100 * found_c['mean_equity_gap']):.0f} points is the "
+                f"whole allocation.{why} {mistake}")
+        else:
+            line += (
+                f" It does not change the verdict: the shape test comes out "
+                f"the same way in both arms and the allocation barely "
+                f"moves, so the result above is not {artefact}.")
+        return line
+
+    bridge = notes.get("bridge", {})
+    bridge_line = _control(
+        bridge, "Four years standing on part of the pension",
+        "the household that stops four years early",
+        "A section that reported only the early-retirement arm would have "
+        "credited the taper with what a hole in the floor was doing.",
+        "an artefact of this project's retirement date")
+    rule_found = notes.get("rule", {})
+    rule_line = _control(
+        rule_found, "Spending a share of the balance instead of a fixed "
+        "real amount", "the household spending a share of its balance",
+        "So the allocation near the assets test is not a fact about the "
+        "test alone: it is a fact about the test and the withdrawal rule "
+        "together, and the rule is the half a retiree can choose.",
+        "an artefact of the withdrawal rule it was measured under")
+
+    robust = frames.get("robustness")
+    robust_found = notes.get("robust", {})
+    if robust is not None and len(robust):
+        robust_tbl = md_table(_compact(
+            robust, ["scoring", "equity_where_the_test_binds"]
+            + list(ic.BANDS) + ["all_at_ceiling"],
+            {"scoring": "Scored as",
+             "equity_where_the_test_binds": "Wanted equity where the test binds",
+             **{b: b.capitalize() for b in ic.BANDS},
+             "all_at_ceiling": "Every optimum on the ceiling"}),
+            floatfmt="{:.2f}")
+    else:
+        robust_tbl = ""
+    if robust_found.get("measured"):
+        if robust_found.get("survives"):
+            robust_line = (
+                f"**The corner survives every one of them.** Where the test "
+                f"binds, the household wants "
+                f"{robust_found['baseline_equity']:.0%} equity at the "
+                f"baseline and never more than "
+                f"{100 * robust_found.get('max_departure', 0.0):.0f} "
+                f"percentage points away from that under any of the "
+                f"{int(robust_found['specifications'])} scorings, which "
+                f"span risk aversions from 2 to 10 and consumption floors "
+                f"three orders of magnitude apart. The answer is not a "
+                f"property of the felicity function's behaviour near zero.")
+        else:
+            robust_line = (
+                f"**The corner does not survive.** Where the test binds, "
+                f"wanted equity runs from {robust_found['range_low']:.0%} to "
+                f"{robust_found['range_high']:.0%} across the "
+                f"{int(robust_found['specifications'])} scorings, against "
+                f"{robust_found['baseline_equity']:.0%} at the baseline. "
+                f"The largest departure is under "
+                f"{robust_found['worst_scoring']}, at "
+                f"{robust_found['worst_equity']:.0%}. So the headline above "
+                f"is a statement about this risk aversion and this "
+                f"consumption floor, and has to be reported as one.")
+    else:
+        robust_line = ""
+
+    panel = notes.get("panel_precision", {})
+    if panel.get("measured"):
+        if panel["identical_in_every_deletion"]:
+            panel_line = (
+                f"**And it survives the panel too.** Recomputed sixteen "
+                f"times with one country's history removed each time, the "
+                f"share the household wants where the test binds is "
+                f"{panel['point']:.0%} in every one of them. There is no "
+                f"interval to quote because there is no variation to put an "
+                f"interval around."
+                if panel["at_the_floor"] else
+                f"**And it survives the panel too.** Across "
+                f"{panel['deletions']} delete-one sub-panels the share is "
+                f"{panel['point']:.0%} every time.")
+        else:
+            panel_line = (
+                f"**The panel moves it.** Across {panel['deletions']} "
+                f"delete-one sub-panels the share the household wants where "
+                f"the test binds runs {panel['low']:.0%} to "
+                f"{panel['high']:.0%} against a point estimate of "
+                f"{panel['point']:.0%}")
+            if panel.get("interval_is_meaningful"):
+                panel_line += (
+                    f", a jackknife standard error of "
+                    f"{100 * panel['standard_error']:.1f} points and an "
+                    f"interval of [{100 * panel['ci_low']:.0f}, "
+                    f"{100 * panel['ci_high']:.0f}]")
+            panel_line += (
+                ". The corner is a property of this cross-section as much "
+                "as of the household, and the claim has to carry that.")
+    else:
+        panel_line = ""
+
+    figure_list = "\n".join(f"* `{f}`" for f in figures)
+    intro = _header(
+        "35 - Who Pays for the Guarantee, and Who the Test Binds",
+        "The Superannuation Guarantee has been free money in every section "
+        "before this one, and the household has been far too rich to be "
+        "means-tested. Both are fixed here, and they turn out to be "
+        "different problems.")
+
+    body = f"""
+## 1. Two objections that look like one
+
+The first: the statutory incidence of the Superannuation Guarantee is on
+the employer, and this project has modelled it that way. Working-life
+consumption is income less voluntary saving, and the
+{float(notes.get('employer_rate', float('nan'))):.1%} of income the employer
+contributes net of contributions tax arrives on top. Most of the empirical
+incidence literature puts it on wages instead. If that is right, every
+Australia-versus-America comparison in this project has handed the
+Australian arm a tenth of income the American arm never got.
+
+The second: the household simulated here retires far past the assets-test
+cut-off. A paper whose subject is a means test has been demonstrating that
+means test on the one household it cannot bind.
+
+The tempting move is to answer both with one sweep -- charge the guarantee,
+watch the balance fall, and let the household walk down onto the test. It
+does not work, and the reason is worth stating plainly because the first
+draft of this section assumed otherwise. Under full economic incidence the
+worker funds the contribution out of wages, so take-home pay falls; but the
+contribution is still made, so the fund receives exactly the same money.
+**Incidence moves what the household gave up, not what it arrives with.**
+
+So there are two dials here, and they answer different questions.
+
+## 2. What the model predicts
+
+Write `A` for the free area, `b` for the full pension and `tau` for the
+taper. Retirement consumption is portfolio plus benefit, and the benefit is
+a kinked function of wealth:
+
+| Where the household sits | Consumption |
+| --- | --- |
+| Below the free area | `c = W R + b` |
+| Inside the taper band | `c = (1 - tau) W R + (b + tau A)` |
+| Above the cut-off | `c = W R` |
+
+Read the middle row carefully, because both of its terms push the same way.
+Inside the band the exposure to the portfolio is scaled **down** by
+`1 - tau`, and the guaranteed part is raised **up** to `b + tau A`. The
+taper is not a tax on risk-taking; it is insurance against it. The household
+inside the band keeps less of a good outcome and is held further off the
+floor in a bad one.
+
+So the prediction is that the optimal equity share is **non-monotone in
+wealth**, and that its minimum is **above** the cut-off -- where the pension
+has been tapered away entirely -- not inside the band where it is being
+withdrawn. It is a prediction that can fail, and in an obvious way: a
+household inside the band holds a smaller portfolio against an unchanged
+floor, and past some point that portfolio's own volatility is what it eats.
+Section 5 puts the two effects against each other.
+
+On this calibration the free area is {free_area:.1f} times average earnings
+and the cut-off {cutoff:.1f}.
+
+## 3. Dial one: charging the guarantee
+
+{int(len(swept)):,} combinations -- every share of the guarantee charged to
+the worker, crossed with every equity share, on common random numbers.
+Charging is a single parameter, `super_incidence`, which subtracts that
+fraction of the employer contribution from working-life consumption. At
+zero the guarantee is free money and take-home pay is untouched; at one the
+worker pays for all of it in forgone wages, for forty years.
+
+{optimum_tbl}
+
+{cost_line}
+
+{invariance_line}
+
+{balance_line}
+
+{equity_line}
+
+{reach_line}
+
+## 4. Dial two: the balance the household arrives with
+
+The second dial is `retirement_balance_scale`: a multiple of the balance
+this model's contribution assumptions produce, applied once and at the
+retirement boundary. The career is identical across the grid -- same
+income, same saving, same take-home pay for forty years -- so the retiree's
+problem is the only thing that differs, and a change in the allocation can
+be read as a response to the balance rather than to what was given up for
+it.
+
+The dial is a counterfactual, and worth being blunt about: it is *not* a
+claim that Australians save less than this model's household. It is the
+statement that a household near the assets test holds a fraction of what
+this model's household holds, and that the retiree's problem at that
+balance is what the section is about. A model household saving a fifth of
+a constant real income for forty-two years at panel returns arrives with
+{found['free_wealth']:.0f} times average earnings; the cut-off is
+{cutoff:.1f}. Nothing near the test is reachable without moving the
+balance directly.
+
+{int(len(balances)):,} combinations. {span_line}
+
+{profile_tbl}
+
+## 5. Does the optimum have the shape the model predicts?
+
+{shape_line}
+
+{edge_line}
+
+## 6. Two controls on the result
+
+A result this sharp deserves to be attacked before it is believed, and
+there are two obvious ways it could be an artefact rather than a finding.
+Each gets an arm of its own, run on the same balances and the same
+allocations.
+
+**The first is the retirement date.** This project retires its household at
+{int(notes.get('retire_age', 0))} and the Age Pension starts at
+{int(notes.get('pension_age', 0))}. For those four years the household
+stands on {float(notes.get('bridge_share', 0.0)):.0%} of the rate rather
+than all of it, and at this risk aversion a few thin years at the start of
+retirement can dominate the certainty equivalent of a small balance. So the
+shape test above is run on a household whose pension begins the day work
+does, and the project's own date is kept as the control. That control also
+measures something in its own right: this paper's mechanism is that an
+asset-tested pension reverses the all-equity prescription by *removing a
+floor*, and four years standing on part of a floor is that mechanism in
+miniature.
+
+**The second is the withdrawal rule**, and it is the more dangerous of the
+two. The base arm spends {float(notes.get('rule_rate', 0.0)):.1%} of the
+*starting* balance in real terms every year, which is what the rest of this
+project does. Under a rule like that the portfolio's earnings are never
+spent -- they accumulate. For a household near the assets test that is
+close to the worst possible arrangement: a good equity outcome converts
+into assessable assets, the pension is withdrawn against them, and
+consumption does not rise by a cent. The taper becomes a pure loss on the
+upside, and equity gets priced accordingly no matter what the shape of the
+budget line is. The control spends a share of the *current* balance
+instead, so the gain is consumed as it arrives.
+
+{bridge_tbl}
+
+{bridge_line}
+
+{rule_line}
+
+## 7. Is the corner a preference or a singularity?
+
+An optimum at the bottom of the grid deserves more suspicion than one in
+the middle, and this one deserves a particular kind. Constant relative risk
+aversion with a consumption floor near zero is unbounded below: a single
+near-starvation year can move a certainty equivalent further than a decade
+of ordinary ones. The household above wants no equity because the fixed
+real rule exposes it to exactly such years. It is fair to ask whether that
+is the household's preference or the felicity function's asymptote.
+
+The same simulated outcomes are therefore scored again at other risk
+aversions and other floors. Nothing is re-run: the outcomes are the same
+paths, the same balances and the same allocations, read through a different
+objective.
+
+{robust_tbl}
+
+{robust_line}
+
+Preferences are one of the two ways a result like this can be an artefact.
+The other is the panel: sixteen developed markets whose twentieth centuries
+were not independent of one another. So the base arm is recomputed sixteen
+times with one country's history removed each time, over the balances the
+test can actually reach, which is the only part of the grid the claim is
+about.
+
+{panel_line}
+
+## 8. What this changes
+
+* **Every Australia-versus-America comparison in this project is bracketed
+  rather than pinned**, and the bracket is
+  {abs(found['cec_lifetime_fall_pct']):.1f}% of lifetime
+  certainty-equivalent consumption wide. The headline elsewhere uses the statutory incidence; this section
+  says what the other end looks like.
+* The allocation results elsewhere
+  {"survive charging the guarantee unchanged" if found.get("equity_unchanged") else "move when the guarantee is charged, by the amount in the table above"}.
+* **The taper is now tested on a household it binds**, which every earlier
+  section's discussion of it was not.
+
+## 9. What is still not modelled
+
+* Partial incidence that varies over the career or across the earnings
+  distribution. The literature finds both; this sweep charges one constant
+  fraction for forty years.
+* The general-equilibrium half: if wages fall by the contribution, the tax
+  paid on those wages falls too, and the transfer system this project takes
+  as given would not be the same system.
+* A household that arrives at the band *because* of its own choices --
+  lower saving, career breaks, an earlier stop -- rather than by having its
+  balance scaled. Those households differ in working-life consumption too,
+  and the second dial is built to hold that fixed on purpose.
+* The income and deeming tests, which bind alongside the assets test for
+  many real pensioners and are not in this model at all.
+
+## 10. Figures
+
+{figure_list}
+
+## 11. Reproduction
+
+```bash
+python main.py --steps 35
+```
+
+Runtime {float(notes['elapsed_seconds']):.0f}s at {int(notes['n_paths']):,}
+paths, gamma = {gamma:g}. Tables in `results/tables/incidence_*.csv`.
+"""
+    return _write(path, [intro, body])
+
+
+def write_doc_36(
+    path: str | Path,
+    cfg: Mapping[str, Any],
+    frames: Mapping[str, pd.DataFrame],
+    figures: Sequence[str],
+    notes: Mapping[str, Any],
+) -> Path:
+    """Which portfolio wins, under which pension, under which rule.
+
+    This section exists to settle an equivocation, so every sentence in it
+    branches on the sweep. If the all-equity portfolio does not recover its
+    lead, the document says so and names what has to be withdrawn.
+    """
+    from . import ordering as odr
+
+    swept = frames["swept"]
+    gapped = frames["gaps"]
+    found = notes["verdict"]
+    gamma = float(notes["gamma"])
+    base = str(notes["baseline_rule"])
+    challenger, incumbent = odr.HEADLINE
+
+    gap_tbl = md_table(_compact(
+        gapped, ["system", "rule", "gap_pct", "leader", "best_strategy",
+                 "best_cec"],
+        {"system": "Pension system", "rule": "Withdrawal rule",
+         "gap_pct": "All-equity lead (%)", "leader": "Which of the two leads",
+         "best_strategy": "Best of the whole menu", "best_cec": "Its CEC"}),
+        floatfmt="{:.4f}")
+
+    if not found.get("measured"):
+        # The verdict names two regimes by key; if the sweep does not carry
+        # them there is nothing to compare, and saying so beats raising a
+        # KeyError three hundred lines into a document build.
+        headline = (
+            "**The two regimes this section compares are not both in the "
+            "sweep**, so the headline cannot be re-derived here. The table "
+            "above still reports every cell that was run.")
+    elif found.get("pension_reverses_the_ordering"):
+        headline = (
+            f"**Under {base}, the pension reverses the ordering.** The "
+            f"all-equity portfolio leads the target-date fund by "
+            f"{found['baseline_gap_pct']:+.2f}% under the American schedule "
+            f"and by {found['contender_gap_pct']:+.2f}% under Australia's. "
+            f"That is the paper's first finding, re-derived here on the "
+            f"same grid as everything else in this section so the two "
+            f"cannot drift apart.")
+    else:
+        headline = (
+            f"**Under {base} the pension does not reverse the ordering** on "
+            f"this grid: the all-equity lead is "
+            f"{found['baseline_gap_pct']:+.2f}% under the American schedule "
+            f"and {found['contender_gap_pct']:+.2f}% under Australia's, so "
+            f"{found['baseline_leader']} leads in one and "
+            f"{found['contender_leader']} in the other. That contradicts "
+            f"the headline elsewhere in this project and has to be "
+            f"reconciled before either is reported.")
+
+    if found.get("recovers"):
+        recovery = (
+            f"**The all-equity portfolio does recover its lead.** Under "
+            f"{found['recovering_rule']} it leads by "
+            f"{found['recovering_gap_pct']:+.2f}% in the Australian system, "
+            f"against {found['contender_gap_pct']:+.2f}% under {base}. "
+            f"{len(found.get('recovering_rules', []))} of "
+            f"{int(found.get('rules', 0))} rules in the menu return the "
+            f"lead. So the sentence 'a rule that supplies its own floor "
+            f"restores the all-equity ordering' is a statement about "
+            f"portfolios and is supported.")
+    else:
+        recovery = (
+            f"**The all-equity portfolio does not recover its lead under "
+            f"any rule in the menu.** Across {int(found.get('rules', 0))} "
+            f"rules the Australian gap spans "
+            f"{found.get('contender_gap_range_pp', float('nan')):.1f} "
+            f"percentage points, from its worst under "
+            f"{found.get('contender_worst_rule')} to its best under "
+            f"{found.get('contender_best_rule')}, and the target-date fund "
+            f"leads throughout. This matters for how the project's second "
+            f"finding is worded. That an amortisation rule lets the "
+            f"Australian *household* overtake the American one is a "
+            f"statement about the level of consumption in two countries. It "
+            f"is not a statement that an Australian retiree should hold "
+            f"equities, and the two must not be run together.")
+
+    if found.get("sign_depends_on_the_rule"):
+        sign_line = (
+            "**The sign of the strategy gap depends on the withdrawal "
+            "rule.** Within the Australian system alone, some rules put the "
+            "all-equity portfolio ahead and others put it behind, on the "
+            "same returns and the same pension. A portfolio default cannot "
+            "be chosen without also choosing a drawdown default.")
+    else:
+        sign_line = (
+            f"The sign of the strategy gap does not depend on the "
+            f"withdrawal rule: {found.get('contender_leader', 'the same portfolio')} "
+            f"leads under every rule in the menu within the Australian "
+            f"system. The rule moves the size of the gap by "
+            f"{found.get('contender_gap_range_pp', float('nan')):.1f} "
+            f"percentage points without moving its sign, which is a weaker "
+            f"claim than the project has been making and is the one the "
+            f"evidence supports.")
+
+    if found.get("a_third_portfolio_ever_wins"):
+        third = (
+            "**And under some rules neither member of the pair is the best "
+            "portfolio available.** The last two columns of the table "
+            "report the best of the whole menu, which is not always one of "
+            "the two the headline compares -- so \"the target-date fund "
+            "wins\" would be false as well as incomplete for those rows.")
+    else:
+        third = (
+            "One of the two portfolios in the headline pair is the best of "
+            "the whole menu in every row, so nothing is hidden by "
+            "reporting the pair.")
+
+    band = frames.get("intervals")
+    precision = notes.get("precision", {})
+    if band is not None and len(band):
+        band_tbl = md_table(_compact(
+            band, ["system", "rule", "gap_pct", "standard_error", "ci_low",
+                   "ci_high", "sign_survives_every_deletion"],
+            {"system": "Pension system", "rule": "Withdrawal rule",
+             "gap_pct": "All-equity lead (%)",
+             "standard_error": "Jackknife s.e.",
+             "ci_low": "CI low", "ci_high": "CI high",
+             "sign_survives_every_deletion": "Sign holds in all 16"}),
+            floatfmt="{:.2f}")
+    else:
+        band_tbl = ""
+
+    if precision.get("measured"):
+        lo, hi = precision["reversal_ci"]
+        dlo, dhi = precision["reversal_loo"]
+        if precision["reversal_resolved"]:
+            lead = (f"**The reversal is a sign the panel can resolve.** The "
+                    f"contested cell is {precision['reversal_gap_pct']:+.2f}% "
+                    f"with a delete-one standard error of "
+                    f"{precision['reversal_se']:.2f}, so the interval is "
+                    f"[{lo:+.2f}, {hi:+.2f}] and does not contain zero.")
+        else:
+            lead = (f"**The reversal is not a sign this panel can resolve.** "
+                    f"The contested cell is "
+                    f"{precision['reversal_gap_pct']:+.2f}% with a delete-one "
+                    f"standard error of {precision['reversal_se']:.2f}. The "
+                    f"interval is [{lo:+.2f}, {hi:+.2f}] and it straddles "
+                    f"zero. On sixteen countries this gap cannot be told "
+                    f"apart from no gap at all, and any sentence that reads "
+                    f"the reversal as established has to be withdrawn.")
+        lead += (
+            f" Across the sixteen sub-panels the cell runs [{dlo:+.2f}, "
+            f"{dhi:+.2f}], and the sign "
+            f"{'holds in every one' if precision['reversal_sign_survives'] else 'does not hold in all of them'}.")
+        lead += (
+            f" For contrast the same cell under the American schedule is "
+            f"{precision['baseline_gap_pct']:+.2f}% with a standard error of "
+            f"{precision['baseline_se']:.2f}, which "
+            f"{'is resolved' if precision['baseline_resolved'] else 'is not resolved either'}.")
+        precision_line = lead
+        resolved = (f"{precision['resolved_cells']} of {precision['cells']} "
+                    f"cells have an interval excluding zero.")
+        if precision["unresolved"]:
+            resolved += (" The ones that do not: "
+                         + _join(precision["unresolved"]) + ".")
+        precision_line += " " + resolved
+    else:
+        precision_line = ""
+
+    diffs = frames.get("differences")
+    diff_found = notes.get("difference", {})
+    if diffs is not None and len(diffs):
+        diff_tbl = md_table(_compact(
+            diffs, ["rule", "difference_pp", "standard_error", "ci_low",
+                    "ci_high", "correlation", "ci_excludes_zero"],
+            {"rule": "Rule", "difference_pp": "Difference (pp)",
+             "standard_error": "Jackknife s.e.", "ci_low": "CI low",
+             "ci_high": "CI high", "correlation": "Cell correlation",
+             "ci_excludes_zero": "Excludes zero"}), floatfmt="{:.2f}")
+    else:
+        diff_tbl = ""
+    if diff_found.get("measured"):
+        lo, hi = diff_found["widest_ci"]
+        diff_line = (
+            f"**Against {diff_found['reference_rule']}, the widest rule "
+            f"effect is {diff_found['widest_rule']} at "
+            f"{diff_found['widest_pp']:+.1f} percentage points, with a "
+            f"paired jackknife standard error of "
+            f"{diff_found['widest_se']:.1f} and an interval of "
+            f"[{lo:+.1f}, {hi:+.1f}].** "
+            f"{diff_found['resolved']} of {diff_found['comparisons']} "
+            f"differences exclude zero"
+            f"{'; all of them do' if diff_found['all_resolved'] else ', and ' + _join(diff_found['unresolved']) + (' does not' if len(diff_found['unresolved']) == 1 else ' do not')}.")
+        diff_line += (
+            f" The pairing helps less than it might: the two cells "
+            f"correlate {diff_found['median_correlation']:.2f} across "
+            f"deletions at the median, so the differences are not much "
+            f"better resolved than the levels they are built from. That is "
+            f"worth stating rather than leaving to be assumed, because the "
+            f"reason to compute a difference interval at all is that it "
+            f"can be far tighter than the levels -- and here it is not.")
+    else:
+        diff_line = ""
+
+    spread = frames.get("by_gamma")
+    gamma_found = notes.get("gamma_check", {})
+    if spread is not None and len(spread):
+        gamma_tbl = md_table(
+            spread.pivot_table(index=["system", "rule"], columns="gamma",
+                               values="gap_pct").reset_index(),
+            floatfmt="{:.2f}")
+    else:
+        gamma_tbl = ""
+    if gamma_found.get("measured"):
+        pairs = ", ".join(f"{g:g}: {v:+.2f}%" for g, v
+                          in zip(gamma_found["gammas"], gamma_found["gaps"]))
+        gamma_line = (
+            f"**The contested cell keeps its sign across every risk "
+            f"aversion scored** ({pairs}), spanning "
+            f"{gamma_found['spread_pp']:.1f} percentage points."
+            if gamma_found["sign_holds"] else
+            f"**The contested cell changes sign with the risk aversion** "
+            f"({pairs}). Which portfolio wins there is a statement about "
+            f"the curvature of the objective as much as about the pension, "
+            f"and it cannot be reported without the risk aversion attached.")
+    else:
+        gamma_line = ""
+
+    figure_list = "\n".join(f"* `{f}`" for f in figures)
+    intro = _header(
+        "36 - Which Portfolio Wins, and Under What",
+        "The headline of this project is a comparison of two portfolios. "
+        "Its second finding was reported as a comparison of two countries. "
+        "This section crosses them, because they had been glossed as the "
+        "same thing.")
+
+    body = f"""
+## 1. The equivocation
+
+The claim this project leads with is about portfolios: the all-equity
+portfolio beats the target-date fund under an earnings-related pension and
+loses to it under an asset-tested one. The claim it follows with is that
+under an amortisation withdrawal rule -- one that divides the balance by the
+years remaining and so cannot deplete it -- the ordering *reverses again*.
+
+Read carefully, the second claim was supported by a different comparison
+from the first. `docs/32` establishes that under an amortisation rule the
+Australian *household* overtakes the American one on certainty-equivalent
+consumption. That is a statement about the level of consumption in two
+countries. It says nothing about which portfolio an Australian retiree
+should hold, and no table in this project reported that.
+
+This section reports it. {int(len(swept)):,} combinations: every pension
+system, crossed with every withdrawal rule, crossed with every portfolio in
+the headline menu, on common random numbers.
+
+## 2. The gap, system by system and rule by rule
+
+{gap_tbl}
+
+{headline}
+
+{recovery}
+
+{sign_line}
+
+{third}
+
+## 3. How precisely the panel resolves each sign
+
+Every claim above is a claim about a sign, and the panel is sixteen
+developed markets whose twentieth centuries were not independent. So each
+cell is recomputed sixteen times with one country's history removed, and
+the delete-one jackknife gives the sampling error the *panel* carries.
+That is the error to weigh a sign against. Monte Carlo error is not: a
+hundred thousand paths drive it close to zero without adding a single
+country of evidence.
+
+{band_tbl}
+
+{precision_line}
+
+## 4. The interval on the difference, which is the claim
+
+An interval on two levels is not an interval on their difference, and the
+difference is what this section's surviving claim is about: that changing
+the withdrawal rule moves the lead by tens of points. The sixteen sub-panels
+are shared between cells, so the differences are paired and get their own
+jackknife rather than one assembled out of two marginal standard errors.
+
+{diff_tbl}
+
+{diff_line}
+
+## 5. And the same gaps at other risk aversions
+
+The balance dial in `docs/35` is defended against the preference
+specification and the sweep above against the panel. Each was checked
+against the objection the other one answers, which is half a defence twice
+over. Scoring an outcome again costs nothing next to producing it, so the
+gaps are re-read at other risk aversions here.
+
+{gamma_tbl}
+
+{gamma_line}
+
+## 6. What this changes
+
+* The second finding has to be stated with its condition attached, because
+  the condition is what the grid is about. "The ordering reverses again"
+  reads as a fact about the pension; what this section measures is that
+  {"the reversal is confined to one withdrawal rule, and that under every other rule in the menu the all-equity portfolio leads" if found.get("recovers") else "the reversal survives every withdrawal rule in the menu"}.
+* The withdrawal rule belongs in the statement of the result either way,
+  because it moves the Australian gap by
+  {found.get('contender_gap_range_pp', float('nan')):.1f} percentage points.
+* This section re-derives the first finding on its own grid rather than
+  quoting it, so the two cannot drift.
+
+## 7. What is still not modelled
+
+* The rules here are fixed policies, not solved ones. A retiree who
+  re-optimised the withdrawal each year against the means test would do
+  better than any of them, and the gap between the best fixed rule and that
+  is not measured here.
+* The strategy menu is the project's own five. A free-form allocation would
+  find something better than all five in every cell; what this section
+  compares is the defaults a plan sponsor actually chooses between.
+* Every row holds the retirement date fixed, so nothing here prices the
+  interaction between the drawdown rule and when work stops.
+
+## 8. Figures
+
+{figure_list}
+
+## 9. Reproduction
+
+```bash
+python main.py --steps 36
+```
+
+Runtime {float(notes['elapsed_seconds']):.0f}s at {int(notes['n_paths']):,}
+paths, gamma = {gamma:g}. Tables in `results/tables/ordering_*.csv`.
+"""
+    return _write(path, [intro, body])
