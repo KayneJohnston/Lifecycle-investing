@@ -1389,6 +1389,60 @@ class TestNoFloatIsCitedByANumber:
         assert named <= declared, sorted(named - declared)
 
 
+class TestTheProseUsesOneDash:
+    """Both documents set an em dash 190-odd times and set `--` thirteen
+    times, all of them in prose written as a docstring-style ASCII dash and
+    never converted. It is the same mark doing the same job, printed two
+    ways on facing pages.
+
+    Source comments and docstrings keep `--`; only what reaches a page is
+    checked, so this reads the built documents.
+    """
+
+    def test_neither_document_prints_a_double_hyphen_dash(self) -> None:
+        import re
+
+        from pypdf import PdfReader
+
+        pattern = re.compile(r"\s--\s")
+        for name in ("floor_beneath_the_portfolio.pdf",
+                     "lifecycle_asset_allocation.pdf"):
+            path = PAPER / name
+            if not path.exists():
+                continue
+            text = "\n".join((page.extract_text() or "")
+                              for page in PdfReader(str(path)).pages)
+            flat = re.sub(r"\s+", " ", text)
+            found = [flat[max(0, m.start() - 60):m.end() + 40]
+                     for m in pattern.finditer(flat)]
+            assert not found, f"{name}: " + "\n".join(found)
+
+
+class TestAStrategyIsNamedForProse:
+    """A table label is a heading -- it opens with a capital and takes no
+    article -- and three sentences in Section 6 dropped one into running
+    text: "the best strategy becomes Target-date fund", "with 100% bills
+    (cash) taking first place"."""
+
+    def test_a_label_becomes_a_noun_phrase(self) -> None:
+        assert content.strategy_in_prose("target_date_fund") \
+            == "the target-date fund"
+
+    def test_a_label_that_reads_badly_with_an_article_is_given_a_name(
+            self) -> None:
+        assert content.strategy_in_prose("bills_only") == "cash"
+
+    def test_an_unmapped_strategy_still_gets_an_article(self) -> None:
+        assert content.strategy_in_prose("some_new_strategy") \
+            == "the some new strategy"
+
+    def test_the_table_label_is_left_alone(self) -> None:
+        """The prose form is additional to the heading form, not a
+        replacement: a column still wants the capital and no article."""
+        assert content._pretty_strategy("target_date_fund") \
+            == "Target-date fund"
+
+
 class TestNoSentenceOpensInLowerCase:
     """Rule labels, country names and spelled counts are common nouns and
     numbers, so they are right in lower case inside a table and wrong at

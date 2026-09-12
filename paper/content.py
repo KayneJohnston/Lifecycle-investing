@@ -761,6 +761,32 @@ def _pretty_strategy(key: str) -> str:
     return plots.STRATEGY_LABEL.get(key, key.replace("_", " "))
 
 
+#: Prose forms of the strategy names. A table label is a heading -- it opens
+#: with a capital and takes no article -- and three sentences in Section
+#: #pension dropped one straight into running text: "the best strategy
+#: becomes Target-date fund". Only the labels that actually appear in prose
+#: need an entry; anything else falls back to the table label with its first
+#: letter lowered and an article in front.
+#: Keyed on the strategy key the results tables carry, not on the display
+#: label: `_pretty_strategy` resolves either, and the tables are written
+#: with the config key.
+PROSE_STRATEGY: Dict[str, str] = {
+    "bills_only": "cash",
+    "international_equity": "the all-international portfolio",
+    "domestic_equity": "the all-domestic portfolio",
+    "balanced_all_equity": "the 50/50 all-equity portfolio",
+    "sixty_forty": "the 60/40 portfolio",
+}
+
+
+def strategy_in_prose(key: str) -> str:
+    """A strategy named the way a sentence names one, not the way a column does."""
+    if key in PROSE_STRATEGY:
+        return PROSE_STRATEGY[key]
+    shown = _pretty_strategy(key)
+    return "the " + shown[:1].lower() + shown[1:]
+
+
 #: Column-header forms of the strategy names, for the one table wide enough
 #: that the configured labels wrap mid-word. Section #franking scores four
 #: strategies against three descriptive columns, which is two columns more
@@ -1383,7 +1409,7 @@ def section_data(ctx: Any) -> List[Flowable]:
         f"evidence, and Section #data.6.1 reports what the excluded countries do "
         f"carry."))
     out.append(ctx.p(
-        f"That breadth is the paper's principal limitation and Section #limitations.1 "
+        f"That breadth is the paper's principal limitation, and Section #limitations.1 "
         f"develops it. Its most direct consequence is on the international "
         f"leg, which is a leave-one-out average and therefore spans "
         f"{p['n_tier_a'] - 1} foreign markets, all advanced economies with "
@@ -1828,10 +1854,9 @@ def section_methods(ctx: Any) -> List[Flowable]:
         f"constraint both bite from above, so the effective block length is "
         f"always slightly below the nominal one."))
     out.append(ctx.p(
-        f"The country for a lifetime is drawn once "
-        f"(<i>{cfg['bootstrap']['country_draw']}</i>) with probability "
-        f"proportional to the length of that country's usable history "
-        f"(<i>{cfg['bootstrap']['country_weighting']}</i>). Both choices are "
+        f"The country for a lifetime is drawn once, with probability "
+        f"proportional to the length of that country's usable history. "
+        f"Both choices are "
         f"varied in {appendix('C')}: redrawing the country at every block, and "
         f"weighting countries uniformly, both leave the ranking unchanged. "
         f"The weighting choice has little room to bite here, because every "
@@ -2056,8 +2081,8 @@ def section_methods(ctx: Any) -> List[Flowable]:
         f"{section_span('valuation', 'retirement')} — we switch to the "
         f"whole-lifetime window and say so explicitly."))
     out.append(ctx.note(
-        "Which is also the answer to a question a reader comparing tables "
-        "will reach: certainty equivalents in this paper are not all on one "
+        "That is also the answer to a question a reader comparing tables "
+        "will ask: certainty equivalents in this paper are not all on one "
         "scale, and they are not meant to be. Three things vary between "
         "sections and each is stated where it applies — the window "
         "(retirement-only for the allocation comparisons, whole-lifetime "
@@ -3176,7 +3201,7 @@ def section_glide(ctx: Any) -> List[Flowable]:
         "<b>The solved schedule is not quite flat: under the baseline 4% rule it "
         "dips at the retirement date and recovers afterwards.</b> That is worth "
         "explaining rather than smoothing away, because the obvious reading "
-        "-- that the model has rediscovered the glide path after all -- is "
+        "— that the model has rediscovered the glide path after all — is "
         "the wrong one."))
     out.append(ctx.p(
         f"A 4% rule sets the whole of retirement spending as a fixed fraction "
@@ -3186,7 +3211,7 @@ def section_glide(ctx: Any) -> List[Flowable]:
         f"around a date like that is rational for the same reason nobody "
         f"holds their house deposit in equities the month before completion. "
         f"If that is the explanation, the dip should vanish under a rule that "
-        f"anchors on no single date -- so the schedule is re-solved under two "
+        f"anchors on no single date — so the schedule is re-solved under two "
         f"that do not."))
     if len(anchor_summary):
         out.extend(ctx.table(
@@ -3219,8 +3244,8 @@ def section_glide(ctx: Any) -> List[Flowable]:
          f"{float(dipped['dip_size_pp'].iloc[0]):.0f} percentage points. "
          f"Under the {'other ' if len(flat) > 1 else ''}"
          f"{'rules' if len(flat) > 1 else 'rule'} that condition on the "
-         f"portfolio as it stands -- a percentage of the balance, and a "
-         f"life-expectancy divisor -- the schedule is flat at 100% equity "
+         f"portfolio as it stands — a percentage of the balance, and a "
+         f"life-expectancy divisor — the schedule is flat at 100% equity "
          f"from twenty-five to death and the dip does not appear at all."
          if len(dipped) == 1 and len(flat) else
          f"The dip appears under {len(dipped)} of the "
@@ -10652,9 +10677,10 @@ def section_pension(ctx: Any) -> List[Flowable]:
            for _, r in gaps.iterrows()],
         f"Retirement consumption relative to the US baseline, γ = {gamma:g}, "
         f"{n_paths:,} lifetimes per regime.",
-        note="The first three columns are levels — how much retirement "
-             "consumption a system delivers. The fifth is the ranking "
-             "question — which portfolio it leads its investor to hold. They "
+        note="The certainty-equivalent, mean and fifth-percentile columns "
+             "are levels — how much retirement consumption a system "
+             "delivers. The last two are the ranking question — which "
+             "portfolio it leads its investor to hold. They "
              "are different questions and here they have different answers."))
     out.append(ctx.p(
         (f"<b>The Australian system raises the average and lowers the "
@@ -10722,7 +10748,7 @@ def section_pension(ctx: Any) -> List[Flowable]:
          f"All-international leads the 50/50 split by {base_gap:.2f}% under "
          f"the American schedule and by {au_gap:.2f}% under the Australian "
          f"one, where the best strategy becomes "
-         f"<i>{_pretty_strategy(str(rows.loc['australia_as_legislated', 'winner']))}</i>. "
+         f"{strategy_in_prose(str(rows.loc['australia_as_legislated', 'winner']))}. "
          f"The headline ordering fails here and in one other cell of "
          f"Section #ordering's grid, and it fails for a reason that has "
          f"nothing to do with the return panel. How precisely sixteen "
@@ -10771,21 +10797,21 @@ def section_pension(ctx: Any) -> List[Flowable]:
             f"Run the same means test on a saver with no guarantee behind "
             f"them — {saving:.0%} voluntary saving and nothing else — and the "
             f"lead falls further, to {poor_gap:.2f}%, with "
-            f"<i>{_pretty_strategy(poor_winner)}</i> taking first place "
+            f"{strategy_in_prose(poor_winner)} taking first place "
             f"rather than "
-            f"<i>{_pretty_strategy(str(rows.loc['australia_as_legislated', 'winner']))}</i>. "
+            f"{strategy_in_prose(str(rows.loc['australia_as_legislated', 'winner']))}. "
             f"The poorer the saver, the deeper into the taper they sit and "
             f"the further the distortion goes: at {total:.1%} of income the "
             f"answer is a de-risking schedule, at {saving:.0%} it is cash. "
-            f"The compulsory contribution does not remove the distortion, it "
-            f"softens it."))
+            f"The compulsory contribution does not remove the "
+            f"distortion; it softens it."))
     elif poor_reorders:
         out.append(ctx.p(
             f"<b>The reversal is real, but it belongs to a poorer saver.</b> "
             f"Run the means test at this paper’s own {saving:.0%} savings "
             f"rate — an Australian with no guarantee behind them — and the "
             f"lead goes to {poor_gap:.2f}% and the best strategy becomes "
-            f"<i>{_pretty_strategy(poor_winner)}</i>. That row is where the "
+            f"{strategy_in_prose(poor_winner)}. That row is where the "
             f"taper actually binds."))
     out.append(ctx.p(
         f"Two things follow, and they should be kept apart. The first is "
@@ -10861,8 +10887,8 @@ def section_pension(ctx: Any) -> List[Flowable]:
          f"paper is conditional on the American schedule."),
         (f"<b>The average and the certainty equivalent disagree, and both "
          f"are true.</b> Compulsory saving raises mean retirement "
-         f"consumption {au_mean:+.0f}% and lowers the fifth percentile "
-         f"{au_p5:+.0f}%. A reader who cares about expected consumption "
+         f"consumption by {abs(au_mean):.0f}% and lowers the fifth "
+         f"percentile by {abs(au_p5):.0f}%. A reader who cares about expected consumption "
          f"should read the first; one who cares about the bad case should "
          f"read the second. The paper's own criterion reads the second."
          if found["mean_and_cec_disagree"] else
@@ -10876,7 +10902,7 @@ def section_pension(ctx: Any) -> List[Flowable]:
          f"is the one whose sign this cross-section cannot resolve. Under "
          f"the means "
          f"test the best strategy becomes "
-         f"<i>{_pretty_strategy(str(rows.loc['australia_as_legislated', 'winner']))}</i>, "
+         f"{strategy_in_prose(str(rows.loc['australia_as_legislated', 'winner']))}, "
          f"and for a saver poorer than this one it goes further still. Every "
          f"other section models a retiree whose public income arrives "
          f"regardless of what they own; that is the assumption the ranking "
