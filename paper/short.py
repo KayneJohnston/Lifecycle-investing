@@ -1191,8 +1191,9 @@ def ordering(ctx: Any) -> List[Flowable]:
         f"under the one the literature assumes."))
     out.append(ctx.p(
         f"Two things about the grid before the numbers. The menu is "
-        f"{len(set(swept_all['strategy']))} strategies rather than the six "
-        f"of Section {SHORT_ORDER.index('baseline') + 1}: cash is dropped, "
+        f"{_spelled(len(set(swept_all['strategy'])))} strategies rather "
+        f"than the six of Section {SHORT_ORDER.index('baseline') + 1}: "
+        f"cash is dropped, "
         f"because nothing here turns on it and a portfolio that no reader "
         f"is choosing between costs a column in every table. And every "
         f"cell is scored twice \u2014 once over the fixed horizon the rest "
@@ -1292,28 +1293,56 @@ def ordering(ctx: Any) -> List[Flowable]:
         f"spend by. Section {SHORT_ORDER.index('longevity') + 1} has "
         f"already found that rule is not the one a retiree should use. This "
         f"table says what it costs the household that does."))
-    rows = [["Withdrawal rule", "CEC", "Probability of ruin"]]
+    lived = "prob_ruin_survival" in au_eq
+    rows = [["Withdrawal rule", "CEC", "Ruin, fixed horizon"]
+            + (["Ruin, real lifespan"] if lived else [])]
     for _, row in au_eq.iterrows():
         rows.append([rule_label(str(row["rule"])),
                      f"{float(row['cec']):.4f}",
-                     f"{float(row['prob_ruin']):.1%}"])
+                     f"{float(row['prob_ruin']):.1%}"]
+                    + ([f"{float(row['prob_ruin_survival']):.1%}"]
+                       if lived else []))
     out += ctx.table(
         rows,
         "The all-equity portfolio under each withdrawal rule, in the "
         "Australian system. The first row is the rule under which the "
         "pension reverses the portfolio ordering.",
-        note="Same simulated lifetimes as the table above. Ruin is the "
-             "share of paths whose portfolio is exhausted before the "
-             "terminal age.")
-    out.append(ctx.p(
+        note="Same simulated lifetimes as the table above. Ruin under a "
+             "fixed horizon is the share of paths whose portfolio is "
+             "exhausted before the terminal age; under a real lifespan it "
+             "is the share exhausted before the retiree dies, integrated "
+             "over the survival curve, which is the measure Section "
+             f"#longevity argues for and the smaller of the two by "
+             f"construction.")
+    ruin_gap_fixed = (float(au_eq_base['prob_ruin'])
+                      - float(au_eq_best['prob_ruin']))
+    line = (
         f"The fixed real rule leaves this household on "
         f"{float(au_eq_base['cec']):.4f} against "
-        f"{float(au_eq_best['cec']):.4f} under {au_eq_best['rule']} — a "
+        f"{float(au_eq_best['cec']):.4f} under "
+        f"{rule_label(str(au_eq_best['rule']))} \u2014 a "
         f"reduction of {100 * (1 - 1 / cec_ratio):.0f}% in "
-        f"certainty-equivalent consumption — and exhausts the portfolio on "
-        f"{float(au_eq_base['prob_ruin']):.1%} of paths against "
-        f"{float(au_eq_best['prob_ruin']):.1%}. It is dominated on both "
-        f"margins by every other rule in the menu."))
+        f"certainty-equivalent consumption \u2014 and exhausts the "
+        f"portfolio on {float(au_eq_base['prob_ruin']):.1%} of paths "
+        f"against {float(au_eq_best['prob_ruin']):.1%}. It is dominated on "
+        f"both margins by every other rule in the menu.")
+    if lived:
+        ruin_gap_lived = (float(au_eq_base['prob_ruin_survival'])
+                          - float(au_eq_best['prob_ruin_survival']))
+        line += (
+            f" The ruin margin is the one to state carefully, because "
+            f"Section {SHORT_ORDER.index('longevity') + 1} objects to the "
+            f"measure it is stated in: counting a portfolio exhausted at "
+            f"ninety-one as a failed retirement for a household that most "
+            f"likely died before then overstates what went wrong. "
+            f"Integrated over the survival curve instead, the rule ruins "
+            f"{float(au_eq_base['prob_ruin_survival']):.1%} of the time "
+            f"against {float(au_eq_best['prob_ruin_survival']):.1%} \u2014 "
+            f"a gap of {100 * ruin_gap_lived:.1f} points rather than "
+            f"{100 * ruin_gap_fixed:.1f}. The dominance holds on either "
+            f"measure and is worth about half as much on the better one, "
+            f"which is the honest way to carry it.")
+    out.append(ctx.p(line))
     out.append(ctx.p(
         "That is not a reason to discard the reversal, and we are not "
         "discarding it. A fixed real withdrawal is what the withdrawal-rate "
@@ -1594,7 +1623,10 @@ def ordering(ctx: Any) -> List[Flowable]:
                 f"{len(wide)} cells the all-equity lead moves by "
                 f"{float(moved.median()):.2f} percentage points at the "
                 f"median and {float(moved.max()):.2f} at the worst, and "
-                f"{'no sign changes' if not flips else f'{flips} signs change'}. "
+                f"{'no sign changes' if not flips else f'{flips} signs change'} "
+                f"\u2014 the dial here is the horizon, and the one that "
+                f"does move a sign is the risk aversion of Section "
+                f"{SHORT_ORDER.index('ordering') + 1}.4. "
                 + (f"The contested cell goes "
                    f"{float(wide.loc[key, 'cec']):+.2f}% to "
                    f"{float(wide.loc[key, 'cec_survival']):+.2f}%. "
@@ -1781,6 +1813,13 @@ def conclusion(ctx: Any) -> List[Flowable]:
     au_eq_base = au_eq[au_eq["rule"] == baseline_rule].iloc[0]
     au_eq_best = au_eq.loc[au_eq["cec"].idxmax()]
     ruin_gap = float(au_eq_base["prob_ruin"]) - float(au_eq_best["prob_ruin"])
+    # The same margin on the measure Section #longevity argues for. Quoting
+    # only the fixed-horizon one would state this paper's case for
+    # abandoning the rule in the units this paper says are wrong.
+    ruin_gap_lived = (
+        float(au_eq_base["prob_ruin_survival"])
+        - float(au_eq_best["prob_ruin_survival"])
+        if "prob_ruin_survival" in au_eq else float("nan"))
     cec_ratio = float(au_eq_best["cec"]) / float(au_eq_base["cec"])
     iv = f.table("ordering_intervals") \
         if _has(f, "ordering_intervals") else None
@@ -1841,8 +1880,13 @@ def conclusion(ctx: Any) -> List[Flowable]:
         f"holds under is the fixed real withdrawal — which costs the same "
         f"Australian household {100 * (1 - 1 / cec_ratio):.0f}% of its "
         f"certainty-equivalent consumption against the best rule in the "
-        f"same menu and runs out {100 * ruin_gap:.0f} percentage points "
-        f"more often. A retiree who follows Section "
+        f"same menu and runs out "
+        + (f"{100 * ruin_gap_lived:.1f} percentage points more often over "
+           f"a real lifespan \u2014 {100 * ruin_gap:.0f} if ruin is "
+           f"counted to a terminal age nobody is promised. "
+           if ruin_gap_lived == ruin_gap_lived else
+           f"{100 * ruin_gap:.0f} percentage points more often. ")
+        + f"A retiree who follows Section "
         f"{SHORT_ORDER.index('longevity') + 1}'s advice never meets the "
         f"reversal. We report it because it is what the literature's "
         f"standard assumption produces, not because we think a retiree "
@@ -2112,6 +2156,21 @@ def _gamma_walk(f: Any, rule: str,
     return (_join([f"{g:g}" for g in walked["gamma"]]),
             _join([f"{v:+.2f}% at \u03b3 = {g:g}"
                    for g, v in zip(walked["gamma"], walked["gap_pct"])]))
+
+
+#: Small counts are spelled in this paper's prose, and a sentence that
+#: sets a numeral beside a spelled number for the same kind of quantity
+#: reads as a typographical accident rather than a choice.
+_NUMBER_WORDS: Dict[int, str] = {
+    0: "no", 1: "one", 2: "two", 3: "three", 4: "four", 5: "five",
+    6: "six", 7: "seven", 8: "eight", 9: "nine", 10: "ten",
+    11: "eleven", 12: "twelve",
+}
+
+
+def _spelled(n: int) -> str:
+    """``five`` for 5, ``24`` for 24 -- spelled up to twelve, then digits."""
+    return _NUMBER_WORDS.get(int(n), str(int(n)))
 
 
 def _has(f: Any, name: str) -> bool:

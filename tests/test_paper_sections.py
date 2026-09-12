@@ -996,6 +996,45 @@ class TestTheObjectiveIsNotSwitchedSilently:
         assert found["measured"] and not found["insulated"]
 
 
+class TestRuinIsReportedOnBothMeasures:
+    """Section 9 objects to counting a portfolio exhausted at ninety-one as
+    a failed retirement for a household that most likely died before then.
+    Section 10 then established dominance in exactly that measure, and the
+    corrected one sat unread in a published table."""
+
+    def test_the_paper_reads_the_survival_weighted_ruin(self) -> None:
+        assert "prob_ruin_survival" in (PAPER / "short.py").read_text()
+
+    def test_the_pipeline_computes_it(self) -> None:
+        source = open("main.py").read()
+        step = source[source.index("def step36_ordering"):
+                      source.index("def step37_ceiling")]
+        assert "mrt.probability_of_ruin(" in step
+
+    def test_no_results_column_goes_unread(self) -> None:
+        """The wart this fixed: a column shipped in the archive that
+        nothing explains. Every column the ordering sweep writes should be
+        read by the paper, a verdict, or a generated document."""
+        import pandas as pd
+
+        path = (PAPER.parent / "results" / "tables" / "ordering_sweep.csv")
+        if not path.exists():
+            pytest.skip("the ordering sweep has not been run")
+        readers = ((PAPER / "short.py").read_text()
+                   + (PAPER / "content.py").read_text()
+                   + open("main.py").read()
+                   + (PAPER.parent / "src" / "report.py").read_text()
+                   + (PAPER.parent / "src" / "ordering.py").read_text())
+        columns = list(pd.read_csv(path, nrows=1).columns)
+        # A column whose name is built rather than typed -- `cec_gamma2`
+        # comes from an f-string over the risk-aversion grid -- never
+        # appears literally in the source, so the stem is what to look for.
+        unread = [c for c in columns
+                  if c not in readers
+                  and re.sub(r"[\d.]+$", "", c) not in readers]
+        assert not unread, unread
+
+
 class TestFloatNumbering:
     """Figure and table numbers are issued by a counter on the context and
     the short paper trims whole subsections *after* that counter has run, so

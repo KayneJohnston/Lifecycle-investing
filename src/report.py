@@ -12107,6 +12107,25 @@ def write_doc_36(
             " treatment attached.")
     else:
         obj_line = ""
+    # The ruin column moves too, and by more than the gaps do. Section 9
+    # of the paper objects to counting a portfolio exhausted at ninety-one
+    # as a failed retirement for a household that most likely died before
+    # then; this is that objection priced.
+    if {"prob_ruin", "prob_ruin_survival"} <= set(swept.columns):
+        risky = swept[swept["prob_ruin"] > 0]
+        if len(risky):
+            obj_line += (
+                f" The ruin column moves further than either. Across the "
+                f"{len(risky)} cells that ruin at all, the probability "
+                f"falls from {risky['prob_ruin'].median():.1%} to "
+                f"{risky['prob_ruin_survival'].median():.1%} at the median "
+                f"once failure is counted against the retiree's own "
+                f"lifespan rather than a terminal age nobody is promised. "
+                f"That is the measure `docs/34` argues for, and it roughly "
+                f"halves the margin by which the fixed real rule is "
+                f"dominated on this dimension \u2014 the dominance holds, "
+                f"and is worth about half what the fixed-horizon column "
+                f"says.")
 
     spread = frames.get("by_gamma")
     gamma_found = notes.get("gamma_check", {})
