@@ -810,6 +810,13 @@ RULE_LABELS: Dict[str, str] = {
     "constant_real": "fixed real",
     "constant_percent": "percentage of balance",
     "amortisation": "amortisation",
+    # Proper names, and the prose spells them as such -- "the Gompertz
+    # survival curve", "Guyton-Klinger style". The registry keys are lower
+    # case, and the tables were printing the keys beside prose that used
+    # the names, so one rule read as two.
+    "gompertz": "Gompertz",
+    "guyton_klinger": "Guyton\u2013Klinger",
+    "vanguard_dynamic": "Vanguard dynamic",
 }
 
 
@@ -7253,7 +7260,7 @@ def section_plan(ctx: Any) -> List[Flowable]:
         out.extend(ctx.table(
             [["Withdrawal rule", "Optimal domestic share",
               "CEC at the optimum", "Margin over runner-up (%)"]]
-            + [[str(r["rule"]).replace("_", " "),
+            + [[rule_label(str(r["rule"])),
                 f"{float(r['optimal_domestic_share']):.0%}",
                 f"{float(r['cec_at_optimum']):.4f}",
                 f"{float(r['margin_over_runner_up_pct']):.2f}"]
@@ -7284,7 +7291,7 @@ def section_plan(ctx: Any) -> List[Flowable]:
         out.extend(ctx.table(
             [["Withdrawal rule", "Ruin observed", "Maximises CEC at",
               "Minimises ruin at", "Agree", "Lowest ruin reachable"]]
-            + [[str(r["rule"]).replace("_", " "),
+            + [[rule_label(str(r["rule"])),
                 "yes" if bool(r["ruin_is_possible"]) else "no",
                 f"{float(r['cec_optimal_domestic_share']):.0%}",
                 (f"{float(r['ruin_optimal_domestic_share']):.0%}"
@@ -8793,7 +8800,9 @@ def section_longevity(ctx: Any) -> List[Flowable]:
         if found["best_return_at_edge"]:
             body = (
                 f"<b>The assumed-return optimum is a corner, not a "
-                f"peak.</b> {found['best_return_rule']} is the best of the "
+                f"peak.</b> "
+                f"{opens(rule_label(str(found['best_return_rule'])))} is "
+                f"the best of the "
                 f"rules dialled by an assumed real return, and it wants the "
                 f"edge of the grid offered ({span}). It was still improving "
                 f"where the grid ran out, so the number is a truncation.")
@@ -8872,7 +8881,7 @@ def section_longevity(ctx: Any) -> List[Flowable]:
                           "promotes"))
         out.extend(ctx.table(
             [["Rule", "Fixed horizon", "Real lifespan", "Places gained"]]
-            + [[str(r["rule_label"]).replace("_", " "),
+            + [[rule_label(str(r["rule_label"])),
                 f"{int(r['rank_fixed'])}", f"{int(r['rank_mortality'])}",
                 f"{int(r['rank_change']):+d}"]
                for _, r in ranking.iterrows()],
@@ -8917,7 +8926,9 @@ def section_longevity(ctx: Any) -> List[Flowable]:
         out.append(ctx.h2("#longevity.2 The ruin number everyone quotes"))
         out.append(ctx.p(
             f"<b>Ruin roughly halves.</b> On the best rule that can actually "
-            f"run out — {found['best_depleting_rule']} — the fixed horizon "
+            f"run out \u2014 "
+            f"{rule_label(str(found['best_depleting_rule']))} \u2014 the "
+            f"fixed horizon "
             f"reports {found['best_depleting_ruin_fixed']:.1%} against the "
             f"real lifespan's {found['best_depleting_ruin_mortality']:.1%}, "
             f"and across all "
