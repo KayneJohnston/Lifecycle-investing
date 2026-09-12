@@ -833,6 +833,7 @@ def incidence(ctx: Any) -> List[Flowable]:
         f"area is {float(profile['free_area'].iloc[0]):.2f} and the "
         f"cut-off {cut:.2f}. The pension begins the day work stops in both "
         "columns, so every retirement year is under the test.",
+        anchor="band_profile",
         note="Each row is the best of twenty-one equity shares at that "
              "balance, scored on certainty-equivalent retirement "
              "consumption over the same simulated lifetimes.")
@@ -966,7 +967,15 @@ def incidence(ctx: Any) -> List[Flowable]:
                 f"spread, in retirement only, so the balance they arrive "
                 f"with is the balance this section scaled rather than one "
                 f"borrowing helped build. The sleeve stays all-equity; the "
-                f"dial is how much of it they hold."))
+                f"dial is how much of it they hold. The household is the "
+                f"one in the right-hand column of "
+                f"@table:band_profile and not a household built to "
+                f"resemble it \u2014 the same specification, the "
+                f"same pension starting the day work stops, the same "
+                f"fourteen balances, differing from the left-hand column "
+                f"in the withdrawal rule and in nothing else. That is what "
+                f"licenses reading the two columns against each other "
+                f"below."))
             rows = [["Position against the test", "Balances",
                      "Wanted holding, median", "Lowest", "Highest"]]
             if bands is not None and len(bands):
@@ -1559,6 +1568,12 @@ def limitations(ctx: Any) -> List[Flowable]:
     band = f.table("ordering_intervals") \
         if _has(f, "ordering_intervals") else None
     contested = resolved = None
+    seat = None
+    if _has(f, "ordering_pseudo"):
+        pseudo = f.table("ordering_pseudo")
+        hit = pseudo[(pseudo["system"] == "australia_as_legislated")
+                     & (pseudo["rule"] == baseline_rule)]
+        seat = hit.iloc[0] if len(hit) else None
     if band is not None and len(band):
         hit = band[(band["system"] == "australia_as_legislated")
                    & (band["rule"] == baseline_rule)]
@@ -1601,6 +1616,17 @@ def limitations(ctx: Any) -> List[Flowable]:
             f"zero. So the cross-section is small enough to leave one "
             f"sign undetermined and large enough to settle the rest, and "
             f"the two should not be reported in the same voice.")
+    if seat is not None:
+        line += (
+            f" And the interval is the weaker half of that. Only "
+            f"{int(seat['below_point'])} of {int(seat['deletions'])} "
+            f"deletions fall below the contested estimate and the mean "
+            f"deletion is {float(seat['loo_mean']):+.2f}%, so the average "
+            f"fifteen-country panel does not reverse the ordering at all. "
+            f"Section #ordering.2 gives the arithmetic; the short form is "
+            f"that the reversal is a property of these sixteen countries "
+            f"taken together rather than a quantity measured imprecisely, "
+            f"and no wider panel is available to say which.")
     line += (
         " Nothing in this paper should be read as a point estimate, and "
         "every claim it makes is a claim about a sign.")

@@ -1027,6 +1027,33 @@ class TestFloatNumbering:
         bp.renumber_floats(story, {"fidelity": ("Table", 8)})
         assert story[-1].getPlainText() == "see Table 2 for the check"
 
+    def test_a_resolved_anchor_is_not_remapped_a_second_time(self) -> None:
+        """An anchor resolves to the number the document will print. If
+        the literal-number pass runs afterwards it sees that final number
+        as an old one and remaps it again -- which moved a reference from
+        Table 16 to Table 11, two unrelated tables, and did so silently
+        because both numbers exist."""
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import Paragraph
+
+        # Old 30 prints as 2; old 2 prints as 1. An anchor on old 30 must
+        # come out as "Table 2" and must not then be remapped to "Table 1".
+        story, bp = self._story([("Table", 2), ("Table", 30)])
+        story.append(Paragraph("see @table:late", ParagraphStyle("body")))
+        bp.renumber_floats(story, {"late": ("Table", 30)})
+        assert story[-1].getPlainText() == "see Table 2"
+
+    def test_a_literal_number_beside_an_anchor_still_remaps(self) -> None:
+        """The two passes must both still happen, in the right order."""
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import Paragraph
+
+        story, bp = self._story([("Table", 2), ("Table", 30)])
+        story.append(Paragraph("Table 30 and @table:early",
+                               ParagraphStyle("body")))
+        bp.renumber_floats(story, {"early": ("Table", 2)})
+        assert story[-1].getPlainText() == "Table 2 and Table 1"
+
     def test_a_name_no_float_claims_stops_the_build(self) -> None:
         from reportlab.lib.styles import ParagraphStyle
         from reportlab.platypus import Paragraph

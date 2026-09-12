@@ -10227,12 +10227,11 @@ def section_pension(ctx: Any) -> List[Flowable]:
          f"reverses, and most real Australians are inside it."
          if poor_reorders else
          "The allocation ranking is the same under every regime tested."),
-        "<b>What is not modelled</b>: the income test, the family home’s "
-        "exemption from the assets test — the largest single feature of the "
-        "real system — the tax on fund earnings in accumulation, and every "
-        "other tax in this paper. Nor is an annuity, which is what the "
-        "American schedule is and what an Australian retiree would have to "
-        "buy to match it.",
+        "<b>What is not modelled</b> is set out in Section #limitations.2 "
+        "and Section #limitations.4 rather than repeated here: the income "
+        "test, the family home’s exemption — the largest single feature of "
+        "the real system — every tax, and the annuity an Australian would "
+        "have to buy to match the American schedule.",
     ]))
     return out
 

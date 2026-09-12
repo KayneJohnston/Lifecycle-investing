@@ -4783,12 +4783,8 @@ def step35_incidence(cfg: Dict[str, Any],
     # on a household whose pension starts the day work does, and the early
     # retirement date is kept as the comparison.
     scales = [float(x) for x in block.get("balance_grid", (1.0,))]
-    pension_age = int(base.benefit_start_age or base.age_retire)
-    aligned = dataclasses.replace(base, age_retire=pension_age)
-    arms = {inc.ARMS[0]: aligned,
-            inc.ARMS[1]: base,
-            inc.ARMS[2]: dataclasses.replace(
-                aligned, retirement_rule="fixed_percentage")}
+    arms = inc.balance_arms(base)
+    pension_age = int(arms[inc.ARMS[0]].age_retire)
     balance_frames: List[pd.DataFrame] = []
     profiles: Dict[str, pd.DataFrame] = {}
     shapes: Dict[str, Dict[str, Any]] = {}
@@ -5217,14 +5213,16 @@ def step37_ceiling(cfg: Dict[str, Any],
         paths = chunk
 
     over, _ = le.system_overrides("au_as_legislated", cfg)
-    base = dataclasses.replace(spec, **over)
-    # The rule whose answer was censored. The fixed real rule's corner is at
-    # zero, where there is nothing below to want, so it is not in question
-    # here and is not swept.
-    rule = spg.build(str(block.get("rule", "constant_percent")),
-                     rate=float(block.get("rule_rate",
-                                          cfg["lifecycle"]["retirement"]
-                                          ["rule_rate"])))
+    # The very arm whose corner is in question -- `incidence.ARMS[2]`, the
+    # household spending a share of the balance with the pension starting
+    # the day work stops -- and not a specification rebuilt to look like
+    # it. Rebuilding it here is how this study came to retire its household
+    # four years early and spend four retirement years outside the test.
+    arm = str(block.get("arm", inc.ARMS[2]))
+    base = inc.balance_arms(dataclasses.replace(spec, **over))[arm]
+    # The rule the arm carries, so the sweep cannot spend by one rule while
+    # the specification it is scored against names another.
+    rule = spg.from_spec(base.retirement_rule, base.rule_rate)
     domestic = float(inc_block.get("domestic_share", 0.1))
     bond_share = float(cfg.get("glide", {}).get("bond_share", 0.7))
     accumulation_equity = float(inc_block.get("accumulation_equity", 1.0))
@@ -5281,9 +5279,16 @@ def step37_ceiling(cfg: Dict[str, Any],
     profile_path = Path(cfg["run"]["table_dir"]) / "incidence_band_profile.csv"
     if profile_path.exists():
         profile = pd.read_csv(profile_path)
+        # This arm's own rows. Reading the first arm in the file happened to
+        # give the same positions here -- the balance at the pension age
+        # does not depend on the withdrawal rule -- but it would not have
+        # if the arm had differed in anything that moves the balance, and
+        # a classification borrowed from another household is exactly the
+        # error this study already made once.
         if "arm" in profile:
-            profile = profile[profile["arm"] == profile["arm"].iloc[0]]
-        if {"scale", "position"} <= set(profile.columns):
+            mine = profile[profile["arm"] == arm]
+            profile = mine if len(mine) else profile.iloc[0:0]
+        if len(profile) and {"scale", "position"} <= set(profile.columns):
             positions = {float(r["scale"]): str(r["position"])
                          for _, r in profile.iterrows()}
     # Read at the cheapest spread only. Pooling the five prices into one

@@ -461,8 +461,14 @@ def renumber_floats(story: List[Flowable],
         text = getattr(flowable, "text", None)
         if not isinstance(text, str):
             continue
-        fixed = _FLOAT_ANCHOR_REFERENCE.sub(rewrite_anchor, text)
-        fixed = _FLOAT_REFERENCE.sub(rewrite_number, fixed)
+        # Numbers first, then anchors. An anchor resolves straight to the
+        # number the document will print, so substituting it before the
+        # remap hands that final number to the remap as though it were an
+        # old one -- which silently moved a reference from Table 16 to
+        # Table 11, the two being unrelated tables. Anchors carry no
+        # "Table N" of their own, so the first pass cannot see them.
+        fixed = _FLOAT_REFERENCE.sub(rewrite_number, text)
+        fixed = _FLOAT_ANCHOR_REFERENCE.sub(rewrite_anchor, fixed)
         if fixed != text:
             items[i] = Paragraph(fixed, flowable.style,
                                  bulletText=flowable.bulletText)

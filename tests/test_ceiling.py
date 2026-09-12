@@ -145,3 +145,89 @@ class TestTheShapeOnceThereIsRoomForIt:
 
     def test_nothing_measured_is_said_so(self) -> None:
         assert cl.shape_verdict(pd.DataFrame()) == {"measured": False}
+
+
+class TestItStudiesTheArmItSaysItDoes:
+    """The levered sweep exists to reopen one corner reported in `docs/35`,
+    so it has to be the same household. It was not: it rebuilt the
+    specification from the raw config and kept the model's own retirement
+    age, so its retiree stopped work four years before the pension began
+    and spent four retirement years outside the assets test -- the arm
+    `docs/35` deliberately excludes, and the one whose caption promises
+    that 'the pension begins the day work stops'."""
+
+    @staticmethod
+    def _base():
+        import dataclasses
+        import yaml
+
+        from src import leisure as le
+        from src import lifecycle as lc
+
+        cfg = yaml.safe_load(open("config.yaml"))
+        over, _ = le.system_overrides("au_as_legislated", cfg)
+        return dataclasses.replace(lc.spec_from_config(cfg), **over), cfg
+
+    def test_the_arms_differ_only_in_the_rule(self) -> None:
+        """`ARMS[2]` is `ARMS[0]` with the withdrawal rule changed, so a
+        difference between the two is the rule and nothing else."""
+        import dataclasses
+
+        from src import incidence as inc
+
+        base, _ = self._base()
+        arms = inc.balance_arms(base)
+        a, b = arms[inc.ARMS[0]], arms[inc.ARMS[2]]
+        differ = {f.name for f in dataclasses.fields(a)
+                  if getattr(a, f.name) != getattr(b, f.name)}
+        assert differ == {"retirement_rule"}, differ
+
+    def test_the_pension_starts_the_day_work_stops_in_both(self) -> None:
+        from src import incidence as inc
+
+        base, _ = self._base()
+        arms = inc.balance_arms(base)
+        for key in (inc.ARMS[0], inc.ARMS[2]):
+            spec = arms[key]
+            assert spec.age_retire == spec.benefit_start_age, key
+
+    def test_the_comparison_arm_keeps_the_early_date(self) -> None:
+        """`ARMS[1]` is the hole in the floor, and has to keep it."""
+        from src import incidence as inc
+
+        base, _ = self._base()
+        arms = inc.balance_arms(base)
+        assert arms[inc.ARMS[1]].age_retire == base.age_retire
+        assert arms[inc.ARMS[1]].age_retire < base.benefit_start_age
+
+    def test_the_levered_sweep_takes_that_arm_and_does_not_rebuild_it(self
+                                                                      ) -> None:
+        """The guard that matters: the specification step 37 scores is the
+        one step 35 swept, field for field."""
+        import dataclasses
+
+        from src import incidence as inc
+
+        base, cfg = self._base()
+        wanted = inc.balance_arms(base)[
+            str(cfg.get("ceiling", {}).get("arm", inc.ARMS[2]))]
+        source = open("main.py").read()
+        step = source[source.index("def step37_ceiling"):
+                      source.index("STEPS = {1: step1_dataset")]
+        assert "inc.balance_arms(" in step, \
+            "step 37 rebuilds the specification instead of taking the arm"
+        assert wanted.age_retire == wanted.benefit_start_age
+        assert dataclasses.replace(wanted) == wanted
+
+    def test_the_sweep_spends_by_the_rule_its_arm_names(self) -> None:
+        """Scoring one rule against a specification that names another is
+        the same class of error a step lower down."""
+        from src import incidence as inc
+        from src import spending as spg
+
+        base, cfg = self._base()
+        arm = inc.balance_arms(base)[
+            str(cfg.get("ceiling", {}).get("arm", inc.ARMS[2]))]
+        rule = spg.from_spec(arm.retirement_rule, arm.rule_rate)
+        assert isinstance(rule, spg.ConstantPercentRule)
+        assert rule.rate == pytest.approx(arm.rule_rate)
