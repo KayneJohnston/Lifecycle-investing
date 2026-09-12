@@ -1329,8 +1329,8 @@ def section_data(ctx: Any) -> List[Flowable]:
         f"collapsed price index. We winsorise the international leg at the "
         f"{float(cfg['data']['international_winsor_pct']):.1f}th percentile "
         f"of its own distribution; the affected observations are listed in "
-        f"full in Table {ctx._table_no + 2} so that the reader can judge the "
-        f"intervention rather than take it on trust."))
+        f"full in @table:winsorised_observations so that the reader can "
+        f"judge the intervention rather than take it on trust."))
 
     out.extend(ctx.table(
         rows_from(equity,
@@ -1387,6 +1387,7 @@ def section_data(ctx: Any) -> List[Flowable]:
                    "raw_intl_eq": lambda v: pc(v, 0),
                    "winsorised_intl_eq": lambda v: pc(v, 0)}),
         "Every winsorised observation in the international leg",
+        anchor="winsorised_observations",
         note="All three are markets reopening after wartime closure against a "
              "collapsed price index. Left unwinsorised, a single one of these "
              "draws would dominate the terminal wealth of any lifetime that "
@@ -7544,11 +7545,17 @@ def section_leisure(ctx: Any) -> List[Flowable]:
         out.append(ctx.p(body))
         if not feat.get("separable", True):
             out.append(ctx.p(
-                f"The two do not add. The interaction is "
+                f"The two do not add, and the clearest place to see it "
+                f"is the retirement date the household chooses. The "
+                f"interaction there is "
                 f"{feat['interaction_years']:+.0f} years against a joint "
                 f"{feat['both_years']:+.0f}, or "
-                f"{feat.get('interaction_share', float('nan')):.0%} of it — "
-                f"which is what one feature disarming the other looks like. "
+                f"{feat.get('interaction_share', float('nan')):.0%} of it "
+                f"— which is what one feature disarming the other looks "
+                f"like. (The table's interaction row is the same "
+                f"calculation on certainty equivalents rather than on "
+                f"years; the two are different units of the same "
+                f"non-additivity.) "
                 f"Once the means test has taken the pension away, the "
                 f"birthday it would have arrived on stops mattering."))
         if bite:
@@ -8134,17 +8141,21 @@ def section_longevity(ctx: Any) -> List[Flowable]:
         out.append(ctx.p(
             f"<b>The horizon changes the rule and nothing else.</b> Freeing "
             f"the allocation to be re-chosen for a real lifespan is worth "
-            f"{found.get('single_gains_pct', {}).get('allocation', 0.0):+.2f}%"
+            f"{found.get('single_gains_pct', {}).get('allocation', 0.0):+.4f}%"
             f" and freeing the rate "
-            f"{found.get('single_gains_pct', {}).get('rate', 0.0):+.2f}%; "
+            f"{found.get('single_gains_pct', {}).get('rate', 0.0):+.4f}%; "
             f"freeing the rule is worth "
             f"{found.get('single_gains_pct', {}).get('rule', 0.0):+.2f}%, "
             f"which is the whole of the "
             f"{found.get('joint_gain_pct', 0.0):+.2f}% available from "
             f"re-choosing all three, with an interaction of "
-            f"{found.get('interaction_pct', 0.0):+.2f}%. The three decisions "
-            f"do not interact here, and that is worth stating as plainly as "
-            f"an interaction would have been."))
+            f"{found.get('interaction_pct', 0.0):+.4f}%. The first, second "
+            f"and fourth of those are not rounded zeros: the allocation "
+            f"and the rate that win over a fixed horizon are the same ones "
+            f"that win over a real lifespan, so freeing them changes "
+            f"nothing at all. The three decisions do not interact here, "
+            f"and that is worth stating as plainly as an interaction "
+            f"would have been."))
 
     if "best_rated_at_edge" in found:
         if found["best_rated_at_edge"]:

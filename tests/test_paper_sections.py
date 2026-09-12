@@ -1028,6 +1028,19 @@ class TestNoFloatIsCitedByANumber:
     #: and they are built from the counter rather than typed.
     CITATION = re.compile(r'"[^"]*\b(?:Figure|Table) \d+\b')
 
+    #: A float number built by arithmetic on the live counter, which is how
+    #: one wrong reference survived the switch to named anchors: the number
+    #: never appears as a digit in the source, so a scan for digits cannot
+    #: see it. ``ctx._table_no + 2`` was off by one, in both papers.
+    COMPUTED = re.compile(r"(?:Figure|Table) \{[^}]*_(?:table|figure)_no")
+
+    def test_no_float_number_is_computed_from_the_counter(self) -> None:
+        for name in ("content.py", "short.py"):
+            source = (PAPER / name).read_text()
+            found = self.COMPUTED.findall(re.sub(r'"\s*\n\s*(f?)"', "",
+                                                 source))
+            assert not found, (name, found)
+
     def test_the_shared_sections_cite_no_float_by_number(self) -> None:
         found = self.CITATION.findall(FLAT)
         assert not found, found

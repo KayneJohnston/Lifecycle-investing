@@ -32,6 +32,7 @@ from src import franking as fk
 from src import glidepath as gp
 from src import hedging as hg
 from src import housing as hsg
+from src import ceiling as cl
 from src import incidence as inc
 from src import inflation as inf
 from src import leisure as le
@@ -5174,6 +5175,128 @@ def step36_ordering(cfg: Dict[str, Any],
     return state
 
 
+def step37_ceiling(cfg: Dict[str, Any],
+                   state: Dict[str, Any]) -> Dict[str, Any]:
+    """Lift the ceiling off the retiree's grid and ask the corner again."""
+    block = cfg.get("ceiling", {})
+    if not block.get("enabled", False):
+        LOGGER.info("ceiling study disabled; skipping step 37")
+        return state
+    LOGGER.info("=== STEP 37: is the corner the household's or the grid's ===")
+    started = time.perf_counter()
+
+    panel = state.get("panel") or dl.build_panel(cfg)
+    spec = state.get("spec") or lc.spec_from_config(cfg)
+    gamma = float(cfg["utility"]["baseline_risk_aversion"])
+    inc_block = cfg.get("incidence", {})
+    n_paths = int(block.get("n_paths", inc_block.get("n_paths", 25000)))
+    for chunk in bs.from_config(panel, cfg).chunks(n_paths, n_paths):
+        paths = chunk
+
+    over, _ = le.system_overrides("au_as_legislated", cfg)
+    base = dataclasses.replace(spec, **over)
+    # The rule whose answer was censored. The fixed real rule's corner is at
+    # zero, where there is nothing below to want, so it is not in question
+    # here and is not swept.
+    rule = spg.build(str(block.get("rule", "constant_percent")),
+                     rate=float(block.get("rule_rate",
+                                          cfg["lifecycle"]["retirement"]
+                                          ["rule_rate"])))
+    domestic = float(inc_block.get("domestic_share", 0.1))
+    bond_share = float(cfg.get("glide", {}).get("bond_share", 0.7))
+    accumulation_equity = float(inc_block.get("accumulation_equity", 1.0))
+    scales = [float(x) for x in block.get(
+        "balance_grid", inc_block.get("balance_grid", (1.0,)))]
+    leverages = [float(x) for x in block.get("leverage_grid", (1.0,))]
+    spreads = [float(x) for x in block.get("spread_grid", (0.0,))]
+
+    income = lc.simulate_income(
+        base, n_paths, np.random.default_rng(int(cfg["run"]["seed"])),
+        dom_eq=paths.dom_eq, intl_eq=paths.intl_eq)
+    # All-equity through retirement: leverage, not the equity share, is the
+    # dial. Holding the sleeve fixed is what makes a levered optimum mean
+    # "more than the whole portfolio" rather than "a different mix of it".
+    shares = np.full(base.horizon, 1.0)
+    shares[:base.n_working] = accumulation_equity
+    weights = gp.weights_from_shares(shares,
+                                     np.full(base.horizon, domestic),
+                                     bond_share)[None]
+    cache: Dict[float, Any] = {}
+
+    def _evaluator(scale: float) -> Any:
+        hit = cache.get(scale)
+        if hit is None:
+            aged = dataclasses.replace(base,
+                                       retirement_balance_scale=float(scale))
+            hit = lev.LeveredEvaluator(paths, aged, income, cfg,
+                                       spending=rule)
+            cache[scale] = hit
+        return hit
+
+    def _score(scale: float, leverage: float,
+               spread: float) -> Dict[str, Any]:
+        evaluator = _evaluator(scale)
+        # Borrowing is a retiree's decision here, so the working years are
+        # unlevered and the balance the household arrives with is the one
+        # the incidence study scaled -- not one leverage helped build.
+        ladder = np.ones(base.horizon)
+        ladder[base.n_working:] = float(leverage)
+        evaluator.set_leverage(ladder)
+        evaluator.spread = float(spread)
+        return {"cec": float(evaluator.cec(weights, gamma)[0]),
+                "wipeout": float(evaluator.wipeout_frequency(weights)[0])}
+
+    LOGGER.info("levered ceiling: %d balances x %d leverages x %d spreads",
+                len(scales), len(leverages), len(spreads))
+    swept = cl.sweep(_score, scales, leverages, spreads)
+    optima = cl.optimum(swept)
+    found = cl.verdict(optima, swept)
+
+    # Where each balance lands against the assets test, taken from the
+    # incidence study's own classification rather than recomputed.
+    positions: Dict[float, str] = {}
+    profile_path = Path(cfg["run"]["table_dir"]) / "incidence_band_profile.csv"
+    if profile_path.exists():
+        profile = pd.read_csv(profile_path)
+        if "arm" in profile:
+            profile = profile[profile["arm"] == profile["arm"].iloc[0]]
+        if {"scale", "position"} <= set(profile.columns):
+            positions = {float(r["scale"]): str(r["position"])
+                         for _, r in profile.iterrows()}
+    # Read at the cheapest spread only. Pooling the five prices into one
+    # median would mix a household that borrows freely with one that has
+    # been priced out of borrowing, and report the average as a shape.
+    bands = cl.by_band(optima, positions,
+                       spread=found.get("cheapest_spread")) \
+        if positions and found.get("measured") else pd.DataFrame()
+    shape = cl.shape_verdict(bands) if len(bands) else {"measured": False}
+
+    if found.get("measured"):
+        LOGGER.info("at a spread of %.2f%% the corner is %s; median leverage "
+                    "%.2f, break-even spread %s",
+                    100 * found["cheapest_spread"],
+                    "the grid's" if found["censored"] else "the household's",
+                    found["median_leverage"],
+                    "not reached" if not np.isfinite(
+                        found["break_even_spread"])
+                    else f"{100 * found['break_even_spread']:.2f}%")
+
+    tables = Path(cfg["run"]["table_dir"])
+    _save_table(swept, tables, "ceiling_sweep")
+    _save_table(optima, tables, "ceiling_optimum")
+    if len(bands):
+        _save_table(bands, tables, "ceiling_by_band")
+    elapsed = time.perf_counter() - started
+    rp.write_doc_37(
+        Path("docs") / "37_ceiling.md", cfg,
+        {"sweep": swept, "optimum": optima, "bands": bands}, [],
+        {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
+         "verdict": found, "shape": shape,
+         "rule": str(block.get("rule", "constant_percent"))})
+    LOGGER.info("docs/37 written (%.0fs)", elapsed)
+    return state
+
+
 STEPS = {1: step1_dataset, 2: step2_bootstrap, 3: step3_lifecycle,
          4: step4_report, 5: step5_sensitivity, 6: step6_spending,
          7: step7_glide_path, 8: step8_hedging, 9: step9_retirement_timing,
@@ -5191,11 +5314,11 @@ STEPS = {1: step1_dataset, 2: step2_bootstrap, 3: step3_lifecycle,
          32: step32_leisure, 33: step33_tax,
          34: step34_longevity,
          35: step35_incidence,
-         36: step36_ordering}
+         36: step36_ordering, 37: step37_ceiling}
 
 
 def run(config_path: str = "config.yaml",
-        steps: Sequence[int] = tuple(range(1, 37)),
+        steps: Sequence[int] = tuple(range(1, 38)),
         quick: bool = False) -> Dict[str, Any]:
     """Execute the pipeline and return the accumulated state."""
     cfg = dl.load_config(config_path)
@@ -5225,8 +5348,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--steps", nargs="+", type=int,
-                        default=list(range(1, 37)),
-                        choices=list(range(1, 37)))
+                        default=list(range(1, 38)),
+                        choices=list(range(1, 38)))
     parser.add_argument("--quick", action="store_true",
                         help="small N for smoke tests")
     parser.add_argument("--verbose", action="store_true")

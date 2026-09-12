@@ -12150,3 +12150,193 @@ Runtime {float(notes['elapsed_seconds']):.0f}s at {int(notes['n_paths']):,}
 paths, gamma = {gamma:g}. Tables in `results/tables/ordering_*.csv`.
 """
     return _write(path, [intro, body])
+
+
+def write_doc_37(
+    path: str | Path,
+    cfg: Mapping[str, Any],
+    frames: Mapping[str, pd.DataFrame],
+    figures: Sequence[str],
+    notes: Mapping[str, Any],
+) -> Path:
+    """Whether the retiree's 100% is a corner or a ceiling.
+
+    `docs/35` reports that a means-tested retiree spending a share of the
+    balance wants the whole portfolio in equity at every position against
+    the assets test. That is the top of the grid, so it is two findings at
+    once and the document has to say which: a household that wants exactly
+    that, or a household that wants more and was not asked.
+    """
+    found = notes["verdict"]
+    shape = notes.get("shape", {})
+    gamma = float(notes["gamma"])
+    rule = str(notes.get("rule", "constant_percent"))
+
+    intro = _header(
+        "37 - Is the Corner the Household's, or the Grid's?",
+        "`docs/35` sweeps the equity share a means-tested retiree wants and "
+        "finds two corners: nothing in equity under a fixed real withdrawal, "
+        "everything in equity under a percentage-of-balance rule. Only one "
+        "of them is a finding.") + """
+## 1. Why the second corner is not a finding yet
+
+The first corner is at zero, and there is nothing below zero to want: the
+grid cannot be hiding a better answer underneath it. The second sits at the
+top of the grid, and a grid that stops at the whole portfolio cannot report
+an optimum above it. So "100% at every balance" is consistent with a
+household that wants exactly the whole portfolio and with one that wants half
+as much again.
+
+That matters more than a truncated number usually would, because the claim
+`docs/35` is testing is about a *shape* -- wanted equity highest inside the
+taper band, lower below the free area, lowest past the cut-off. Three regions
+pinned against a shared ceiling cannot be ranked against each other at all.
+The flat 100% is not evidence for the prediction and not evidence against it.
+It is the absence of evidence, and reporting it as either would be wrong.
+
+## 2. Lifting the ceiling
+
+The retiree may borrow against the equity sleeve at the realised bill return
+plus a spread, which is the arithmetic `src.leverage` already implements,
+applied to the retirement window alone. Leverage is one through the working
+years, so the balance the household arrives with is the balance `docs/35`
+scaled and not one that borrowing helped build. The sleeve stays all-equity
+and the only dial is how much of it the retiree holds.
+"""
+
+    if not found.get("measured"):
+        return _write(path, [intro, "\nThe sweep produced nothing to read.\n"])
+
+    optima = frames.get("optimum")
+    opt_tbl = md_table(_compact(
+        optima[optima["spread"] == found["cheapest_spread"]],
+        ["scale", "leverage", "cec", "at_ceiling"],
+        {"scale": "Balance (x the model's own)", "leverage": "Wanted leverage",
+         "cec": "CEC", "at_ceiling": "At the top of the grid"}),
+        floatfmt="{:.4f}") if optima is not None and len(optima) else ""
+
+    censored = found["censored"]
+    rule_line = (
+        f"The withdrawal rule throughout is `{rule}` -- the one whose answer "
+        f"was censored. The fixed real rule's corner is at zero and is not "
+        f"in question here.")
+    grid_hi = found["leverage_grid_high"]
+    verdict_line = (
+        f"**At a borrowing spread of {100 * found['cheapest_spread']:.0f}% "
+        f"the retiree wants leverage of {found['median_leverage']:.2f} at the "
+        f"median balance and {found['max_leverage']:.2f} at the most, so the "
+        f"100% reported in `docs/35` is the grid's answer and not the "
+        f"household's.**" if censored else
+        f"**At a borrowing spread of {100 * found['cheapest_spread']:.0f}% -- "
+        f"the cheapest price there is -- the retiree still wants exactly the "
+        f"unlevered portfolio at every balance. The corner is the "
+        f"household's.**")
+    if censored:
+        verdict_line += (
+            f" Borrowing is worth {found.get('median_gain_pct', float('nan')):.2f}% "
+            f"of certainty-equivalent consumption at the median balance and "
+            f"{found.get('max_gain_pct', float('nan')):.2f}% at the most, "
+            f"against the unlevered portfolio on the same paths.")
+        if found["all_at_ceiling"]:
+            verdict_line += (
+                f" Every balance wants the top of *this* grid too "
+                f"({grid_hi:.2f}), so the number to carry is the direction "
+                f"and not the level: what has been established is that the "
+                f"optimum is above the whole portfolio, not how far above.")
+
+    spread_line = (
+        f"The unlevered corner comes back at a borrowing spread of "
+        f"{100 * found['break_even_spread']:.0f}%, which is the number to "
+        f"weigh against a real margin loan."
+        if np.isfinite(found["break_even_spread"]) else
+        f"No spread in the sweep -- up to "
+        f"{100 * max(found['spreads']):.0f}% -- brings the unlevered corner "
+        f"back, so the price at which borrowing stops being worth having is "
+        f"above the range priced here.")
+
+    shape_tbl = ""
+    shape_line = ("The balances were not classified against the assets test, "
+                  "so the shape cannot be read here.")
+    bands = frames.get("bands")
+    if bands is not None and len(bands):
+        shape_tbl = md_table(_compact(
+            bands, ["position", "balances", "median_leverage", "low", "high"],
+            {"position": "Position against the test", "balances": "Balances",
+             "median_leverage": "Median wanted leverage", "low": "Lowest",
+             "high": "Highest"}), floatfmt="{:.2f}")
+    if shape.get("measured"):
+        if not shape["differentiated"]:
+            shape_line = (
+                f"**The three regions still want the same thing.** The spread "
+                f"across them is {shape['spread']:.2f} in leverage, which is "
+                f"inside the tolerance this check uses. Lifting the ceiling "
+                f"moved the level and not the shape, so the prediction in "
+                f"Section 2 of the paper is no better supported with room "
+                f"above the grid than it was without -- and that is the "
+                f"honest way to report it.")
+        elif shape.get("prediction_holds"):
+            shape_line = (
+                f"**The predicted ordering appears once there is room for "
+                f"it.** Wanted leverage is highest inside the taper band, "
+                f"lower below the free area and lowest past the cut-off, "
+                f"spanning {shape['spread']:.2f}. The shape was there; the "
+                f"ceiling was hiding it.")
+        else:
+            shape_line = (
+                f"**The regions differ, but not in the predicted order.** "
+                f"Wanted leverage spans {shape['spread']:.2f} across the "
+                f"three, and the ranking is not the one Section 2 of the "
+                f"paper derives. The ceiling was hiding a shape, and it is "
+                f"not the shape that was predicted.")
+
+    body = f"""
+## 3. What the retiree wants with room above the grid
+
+{rule_line}
+
+{opt_tbl}
+
+{verdict_line}
+
+{spread_line}
+
+## 4. And whether the shape appears
+
+{shape_tbl}
+
+{shape_line}
+
+## 5. What this changes in `docs/35`
+
+* The zero corner stands unchanged. It is not at a grid edge in any
+  meaningful sense and the leave-one-out there resolves it exactly.
+* The 100% corner should be stated as a bound rather than an optimum:
+  {"at least the whole portfolio, and more than that where borrowing is available"
+   if censored else "the whole portfolio and no more, which the levered grid confirms"}.
+* Any sentence reading a *shape* off the proportional-rule row is
+  {"still not supported" if not shape.get("differentiated") else "now supported by this sweep rather than by that row"}.
+
+## 6. What is still not modelled
+
+* Borrowing is priced as a spread over the realised bill return and is
+  available in unlimited size at that price. There is no margin call, no
+  position limit, and no counterparty who withdraws the facility in the
+  states where it matters most -- which are exactly the states a levered
+  retiree needs it in.
+* Limited liability is imposed by clipping the levered return at total
+  loss, which is the assumption most favourable to leverage. The share of
+  path-years in which that clip binds is recorded in `ceiling_sweep.csv`
+  rather than assumed away.
+* The sleeve stays all-equity, so this measures how *much* portfolio the
+  retiree wants and not what is in it.
+
+## 7. Reproduction
+
+```bash
+python main.py --steps 37
+```
+
+Runtime {float(notes['elapsed_seconds']):.0f}s at {int(notes['n_paths']):,}
+paths, gamma = {gamma:g}. Tables in `results/tables/ceiling_*.csv`.
+"""
+    return _write(path, [intro, body])
