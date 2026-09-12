@@ -165,6 +165,10 @@ def front(ctx: Any) -> List[Flowable]:
     # #limitations.1, so the list is kept to what is used.
     bite = f.table("leisure_means_test_bite")
     legis = bite[bite["household"] == "as legislated"].iloc[0]
+    # The household the abstract's own comparisons are made on. It is not
+    # the legislated one, and a draft quoted the legislated one's share
+    # past the cut-off beside the matched one's pair of leads.
+    sched = bite[bite["household"] == "pension schedule only"].iloc[0]
     optimum = f.table("incidence_optimum")
     cost = 100.0 * (float(optimum["cec_lifetime"].iloc[-1])
                     / float(optimum["cec_lifetime"].iloc[0]) - 1.0)
@@ -239,7 +243,7 @@ def front(ctx: Any) -> List[Flowable]:
         f"institutions a country can change \u2014 a compulsory "
         f"contribution, worth "
         f"{matched['contribution_effect_means_tested']:+.1f} points here, "
-        f"or a withdrawal rule that cannot deplete, worth "
+        f"or a withdrawal rule that cannot deplete, worth up to "
         f"{abs(widest_pp):.0f} points \u2014 offsets most of it. Near the test, "
         f"the drawdown default and the portfolio default are one decision."
         if matched.get("measured") else
@@ -263,13 +267,13 @@ def front(ctx: Any) -> List[Flowable]:
         f"{matched['cells']['means_tested/voluntary']:+.2f}% with the test "
         f"applied \u2014 the rate, the contributions and the panel all held "
         f"\u2014 and "
-        f"{float(legis['share_above_cutoff']):.0%} of these households are "
+        f"{float(sched['share_above_cutoff']):.0%} of that household is "
         f"past the cut-off before the test applies, so the taper reaches "
-        f"them only in the left tail. (iii) A withdrawal "
+        f"it only in the left tail. (iii) A withdrawal "
         f"rule that cannot deplete restores the ordering: under the rule "
-        f"Section {SHORT_ORDER.index('longevity') + 1} selects the "
-        f"Australian lead is {rec_gap}, and every rate in the family "
-        f"restores it. (iv) "
+        f"Section {SHORT_ORDER.index('longevity') + 1} selects, the lead "
+        f"under the Australian system as legislated is {rec_gap}, and "
+        f"every rate in the family restores it. (iv) "
         f"Sixteen delete-one-country sub-panels sign the reversal at "
         f"matched contributions and sign the rule effect under both "
         f"pensions; what they cannot sign is the net of the two "
@@ -2181,7 +2185,7 @@ def conclusion(ctx: Any) -> List[Flowable]:
             f"remainder — the sign changes when "
             f"{_spelled(int(split['sign_flips'])) if split.get('measured') else 'half'} "
             f"of the "
-            f"{int(split['deletions']) if split.get('measured') else 'sixteen'} "
+            f"{_spelled(int(split['deletions'])) if split.get('measured') else 'sixteen'} "
             f"markets are removed one at a time. A cross-section of "
             f"sixteen can sign an institution and cannot sign the "
             f"difference between two of them that happen to offset."))
@@ -2192,13 +2196,21 @@ def conclusion(ctx: Any) -> List[Flowable]:
             f"standard error of "
             f"{float(contested['standard_error']):.1f} points on a gap of "
             f"{float(contested['gap_pct']):+.2f}%."))
+    _mt_rows = (gapped[gapped["system"]
+                       == matched["systems"]["means_tested/voluntary"]]
+                if matched.get("measured") else au_rows)
     out.append(ctx.p(
         f"The other thing the panel resolves comfortably, and in every "
-        f"cell, is the withdrawal rule's effect: within the Australian "
-        f"system alone the rule moves the all-equity lead by "
+        f"cell, is the withdrawal rule's effect. Under the system as "
+        f"legislated the rule moves the all-equity lead by "
         f"{float(au_rows['gap_pct'].max() - au_rows['gap_pct'].min()):.0f} "
-        f"percentage points, larger than either institutional effect and "
-        f"an order of magnitude larger than the remainder in dispute."))
+        f"percentage points across the menu, and at matched contributions "
+        f"by "
+        f"{float(_mt_rows['gap_pct'].max() - _mt_rows['gap_pct'].min()):.0f} "
+        f"— larger than either institutional effect under either "
+        f"pension, and an order of magnitude larger than the remainder in "
+        f"dispute. It is the one quantity in this paper that no choice "
+        f"among the arms makes small."))
     if gamma_walk:
         out.append(ctx.p(
             f"A second check points the same way from a different "
@@ -2350,13 +2362,18 @@ REOPENING: Dict[str, str] = {
         "the ordering the previous section established reverses. Two "
         "things qualify that, both established later and both worth "
         "carrying through this section: the reversal appears under one of "
-        "the eight withdrawal rules this paper runs, and it is the one "
-        "cell of that table whose sign sixteen countries cannot resolve. "
-        "Neither is a reason to skip the section -- the reversal is what "
-        "the literature's standard assumption produces, and understanding "
-        "why it happens is what the rest of the paper is built on -- but "
-        "every number below should be read as a point estimate with the "
-        "interval reported in the ordering section attached."),
+        "the eight withdrawal rules this paper runs, and the cell reported "
+        "here -- Australia as legislated, which pairs the means test with "
+        "a compulsory contribution -- is the one cell of that table whose "
+        "sign sixteen countries cannot resolve. Holding the contribution "
+        "rate still instead gives a reversal the panel does sign, and that "
+        "is the version the ordering section leads with; this section "
+        "reports the country as it is. Neither qualification is a reason "
+        "to skip the section -- the reversal is what the literature's "
+        "standard assumption produces, and understanding why it happens is "
+        "what the rest of the paper is built on -- but every number below "
+        "should be read as a point estimate with the interval reported in "
+        "the ordering section attached."),
     "leisure": (
         "The point estimate has to be attributed to something, and there "
         "are two candidates: the means test's taper, and the loss of the "
@@ -2933,10 +2950,13 @@ def _sign_split(ctx: Any, f: Any, rule: str,
     n = int(found["deletions"])
 
     out = [ctx.p(
-        f"<b>That is a statement about where the deletions sit relative to "
-        f"the point estimate, and it is not the same as how many of them "
-        f"reverse.</b> The two are easy to run together and they part "
-        f"company here. Of the {n} fifteen-country panels, {_spelled(holds)} "
+        f"<b>Which fifteen-country panels reverse, in the cell where that "
+        f"is in doubt.</b> The question is only live for the system as "
+        f"legislated — at matched contributions every sub-panel "
+        f"reverses and there is nothing to enumerate. Of the "
+        f"{_spelled(n)} fifteen-country panels built on the legislated "
+        f"arm, "
+        f"{_spelled(holds)} "
         f"still put the target-date fund ahead and {_spelled(flips)} do not: "
         f"the reversal is reproduced by half the subsamples of the panel it "
         f"was found in, not by none of them and not by all. The skew the "
