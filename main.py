@@ -5011,6 +5011,20 @@ def step36_ordering(cfg: Dict[str, Any],
     # each result is now checked against both objections.
     robust_gammas = [float(x) for x in block.get("robust_gammas", ())]
 
+    # The second objective. Section #longevity rejects the fixed horizon as
+    # not neutral between rules and re-solves the rule against a survival
+    # curve; scoring this grid only on the horizon it rejected would
+    # evaluate that section's choice under the objective it argued away
+    # from, and would leave the reader to take on trust that the *gap*
+    # between two portfolios inside one cell is insulated from the
+    # treatment of the horizon. Re-scoring an outcome costs nothing beside
+    # producing it, so both objectives are carried and the claim is
+    # measured rather than asserted.
+    survive = (mrt.survival(spec,
+                            float(block.get("mortality_modal_age", 88.0)),
+                            float(block.get("mortality_dispersion", 10.0)))
+               if bool(block.get("survival_enabled", True)) else None)
+
     def _score(outcome: Any) -> Dict[str, Any]:
         # The estate is carried, because an amortisation rule spends the
         # portfolio to zero by construction and a fixed real rule leaves a
@@ -5018,7 +5032,7 @@ def step36_ordering(cfg: Dict[str, Any],
         # win on a margin the config prices.
         window = outcome.consumption[:, spec.n_working:]
         bundle = ut.bundle_from_outcome(outcome, cfg, spec)
-        return {
+        scored = {
             "cec": float(ut.crra_certainty_equivalent(
                 bundle, gamma, beta, float(util["bequest_weight"]),
                 bool(util["bequest_enabled"]))),
@@ -5029,6 +5043,12 @@ def step36_ordering(cfg: Dict[str, Any],
             "mean_consumption": float(window.mean()),
             "p5_consumption": float(np.percentile(window, 5)),
         }
+        if survive is not None:
+            scored["cec_survival"] = float(mrt.certainty_equivalent(
+                outcome, spec, cfg, gamma, survive))
+            scored["prob_ruin_survival"] = float(mrt.probability_of_ruin(
+                outcome, spec, survive, cfg))
+        return scored
 
     _rule_key = {id(rule): key for key, rule in rules}
     LOGGER.info("%d systems x %d rules x %d strategies", len(systems),
@@ -5144,6 +5164,27 @@ def step36_ordering(cfg: Dict[str, Any],
                         difference_found["resolved"],
                         difference_found["comparisons"])
 
+    # -- and the same gaps on a real lifespan -----------------------------
+    objectives = pd.DataFrame()
+    objective_found: Dict[str, Any] = {"measured": False}
+    level_found: Dict[str, Any] = {"measured": False}
+    if "cec_survival" in swept:
+        objectives = odr.by_objective(swept)
+        objective_found = odr.objective_verdict(
+            objectives, baseline_rule,
+            str(found.get("contender_system", "")))
+        level_found = odr.level_shift(swept)
+        if objective_found.get("measured"):
+            LOGGER.info("survival weighting moves the levels by %+.1f%% at "
+                        "the median and the gaps by %.2f pp at the worst "
+                        "(%s); signs flipped: %d; insulated: %s",
+                        level_found.get("median_level_shift_pct",
+                                        float("nan")),
+                        objective_found["worst_move_pp"],
+                        " / ".join(objective_found["worst_cell"]),
+                        objective_found["signs_flipped"],
+                        objective_found["insulated"])
+
     # -- and the same gaps at other risk aversions ------------------------
     by_gamma = pd.DataFrame()
     gamma_found: Dict[str, Any] = {"measured": False}
@@ -5176,6 +5217,8 @@ def step36_ordering(cfg: Dict[str, Any],
         _save_table(differences, tables, "ordering_differences")
     if len(by_gamma):
         _save_table(by_gamma, tables, "ordering_by_gamma")
+    if len(objectives):
+        _save_table(objectives, tables, "ordering_by_objective")
     figures = [str(plots.plot_ordering(swept, gapped, found, intervals,
                                        Path(cfg["run"]["figure_dir"])))]
     elapsed = time.perf_counter() - started
@@ -5183,12 +5226,13 @@ def step36_ordering(cfg: Dict[str, Any],
         Path("docs") / "36_ordering.md", cfg,
         {"swept": swept, "gaps": gapped, "intervals": intervals,
          "differences": differences, "by_gamma": by_gamma,
-         "pseudo": pseudo},
+         "pseudo": pseudo, "objectives": objectives},
         figures,
         {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
          "verdict": found, "baseline_rule": baseline_rule,
          "precision": precision, "difference": difference_found,
-         "gamma_check": gamma_found, "bias": bias_found})
+         "gamma_check": gamma_found, "bias": bias_found,
+         "objective": objective_found, "levels": level_found})
     LOGGER.info("docs/36 written (%.0fs)", elapsed)
     state["ordering_gaps"] = gapped
     return state

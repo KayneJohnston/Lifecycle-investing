@@ -537,3 +537,100 @@ class TestWhetherTheBiasIsIsolated:
     def test_empty_in_not_measured_out(self) -> None:
         assert odr.bias_verdict(pd.DataFrame(), "fixed", "au") == {
             "measured": False}
+
+
+class TestTheSecondObjective:
+    """Section 9 rejects a fixed retirement horizon as not neutral between
+    rules; Section 10 compares portfolios within a rule. Whether the gap
+    survives the change of objective is a fact about the grid, and these
+    tests hold the machinery that measures it to cases whose answer is
+    known by construction."""
+
+    @staticmethod
+    def _swept(rows):
+        """``rows`` is ``(system, rule, strategy, cec, cec_survival)``."""
+        return pd.DataFrame.from_records([
+            {"system": s, "rule": r, "strategy": t,
+             "cec": c, "cec_survival": v}
+            for s, r, t, c, v in rows])
+
+    def test_it_returns_a_gap_under_each_objective(self) -> None:
+        swept = self._swept([
+            ("au", "fixed", "balanced_all_equity", 1.0, 2.0),
+            ("au", "fixed", "target_date_fund", 0.8, 1.6),
+        ])
+        table = odr.by_objective(swept)
+        assert set(table["objective"]) == {"cec", "cec_survival"}
+        # 1.0/0.8 and 2.0/1.6 are the same ratio, so the same gap.
+        assert table["gap_pct"].nunique() == 1
+
+    def test_an_objective_the_grid_lacks_is_skipped(self) -> None:
+        swept = self._swept([
+            ("au", "fixed", "balanced_all_equity", 1.0, 2.0),
+            ("au", "fixed", "target_date_fund", 0.8, 1.6),
+        ]).drop(columns=["cec_survival"])
+        table = odr.by_objective(swept)
+        assert set(table["objective"]) == {"cec"}
+
+    def test_a_gap_that_does_not_move_is_insulated(self) -> None:
+        swept = self._swept([
+            ("au", "fixed", "balanced_all_equity", 1.0, 2.0),
+            ("au", "fixed", "target_date_fund", 0.8, 1.6),
+        ])
+        found = odr.objective_verdict(odr.by_objective(swept), "fixed", "au")
+        assert found["insulated"]
+        assert found["worst_move_pp"] == pytest.approx(0.0, abs=1e-9)
+        assert found["contested_sign_holds"]
+
+    def test_a_sign_that_flips_is_not(self) -> None:
+        swept = self._swept([
+            ("au", "fixed", "balanced_all_equity", 1.05, 0.95),
+            ("au", "fixed", "target_date_fund", 1.00, 1.00),
+        ])
+        found = odr.objective_verdict(odr.by_objective(swept), "fixed", "au")
+        assert not found["insulated"]
+        assert found["signs_flipped"] == 1
+        assert found["flipped_cells"] == ["au / fixed"]
+        assert not found["contested_sign_holds"]
+
+    def test_a_move_beyond_the_tolerance_is_not_insulated(self) -> None:
+        """Same sign, but the gap moves ten points."""
+        swept = self._swept([
+            ("au", "fixed", "balanced_all_equity", 1.10, 1.20),
+            ("au", "fixed", "target_date_fund", 1.00, 1.00),
+        ])
+        found = odr.objective_verdict(odr.by_objective(swept), "fixed", "au")
+        assert found["signs_flipped"] == 0
+        assert not found["insulated"]
+        assert found["worst_move_pp"] == pytest.approx(10.0)
+
+    def test_it_names_the_cell_that_moves_most(self) -> None:
+        swept = self._swept([
+            ("au", "fixed", "balanced_all_equity", 1.0, 2.0),
+            ("au", "fixed", "target_date_fund", 0.8, 1.6),
+            ("au", "amort", "balanced_all_equity", 1.10, 1.20),
+            ("au", "amort", "target_date_fund", 1.00, 1.00),
+        ])
+        found = odr.objective_verdict(odr.by_objective(swept), "fixed", "au")
+        assert found["worst_cell"] == ["au", "amort"]
+
+    def test_nothing_measured_is_said_so(self) -> None:
+        assert odr.objective_verdict(pd.DataFrame(), "fixed", "au") == {
+            "measured": False}
+
+    def test_the_levels_are_reported_separately(self) -> None:
+        """The insulation argument needs both halves: gaps that hold still
+        while levels move is evidence; both holding still is not."""
+        swept = self._swept([
+            ("au", "fixed", "balanced_all_equity", 1.0, 2.0),
+            ("au", "fixed", "target_date_fund", 0.8, 1.6),
+        ])
+        found = odr.level_shift(swept)
+        assert found["median_level_shift_pct"] == pytest.approx(100.0)
+
+    def test_a_grid_without_the_second_objective_reports_nothing(self
+                                                                 ) -> None:
+        swept = self._swept([
+            ("au", "fixed", "balanced_all_equity", 1.0, 2.0),
+        ]).drop(columns=["cec_survival"])
+        assert odr.level_shift(swept) == {"measured": False}

@@ -1176,6 +1176,15 @@ ordering:
   # so each headline is now checked against both the panel and the
   # preference specification rather than one each.
   robust_gammas: [2.0, 10.0]
+  # And on a real lifespan. The withdrawal-rule section rejects a horizon
+  # that ends at ninety-three with certainty as not neutral between rules;
+  # this grid compares portfolios *within* a rule, which is a different
+  # exposure, and whether the gap survives the change of objective is a
+  # fact to measure rather than an argument to make. Nothing is
+  # re-simulated -- the same outcomes are scored twice.
+  survival_enabled: true
+  mortality_modal_age: 88.0
+  mortality_dispersion: 10.0
   assumed_return_grid: [0.00, 0.02, 0.04, 0.06, 0.08, 0.10]
 
 incidence:

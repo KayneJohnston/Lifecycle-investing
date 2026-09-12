@@ -1189,6 +1189,21 @@ def ordering(ctx: Any) -> List[Flowable]:
         f"section reports the portfolio ordering directly, under the rule "
         f"Section {SHORT_ORDER.index('longevity') + 1} selects as well as "
         f"under the one the literature assumes."))
+    out.append(ctx.p(
+        f"Two things about the grid before the numbers. The menu is "
+        f"{len(set(swept_all['strategy']))} strategies rather than the six "
+        f"of Section {SHORT_ORDER.index('baseline') + 1}: cash is dropped, "
+        f"because nothing here turns on it and a portfolio that no reader "
+        f"is choosing between costs a column in every table. And every "
+        f"cell is scored twice \u2014 once over the fixed horizon the rest "
+        f"of the paper uses, once weighted by the survival curve Section "
+        f"{SHORT_ORDER.index('longevity') + 1} argues for. Section "
+        f"{SHORT_ORDER.index('ordering') + 1}.5 reports what the second "
+        f"objective does; the tables below are the first, because that is "
+        f"the objective Sections "
+        f"{SHORT_ORDER.index('baseline') + 1} and "
+        f"{SHORT_ORDER.index('pension') + 1} report and the one a reader "
+        f"comparing them will expect."))
     rows = [["Withdrawal rule"] + [label.get(x, x) for x in order]]
     for rule in dict.fromkeys(gapped["rule"]):
         cells = [rule_label(str(rule))]
@@ -1539,6 +1554,61 @@ def ordering(ctx: Any) -> List[Flowable]:
                 f"so the ordering reported here is a property of the "
                 f"pension and the rule rather than of the curvature of "
                 f"the objective."))
+    if _has(f, "ordering_by_objective"):
+        objs = f.table("ordering_by_objective")
+        wide = objs.pivot_table(index=["system", "rule"],
+                                columns="objective",
+                                values="gap_pct")
+        if {"cec", "cec_survival"} <= set(wide.columns) and len(wide):
+            moved = (wide["cec_survival"] - wide["cec"]).abs()
+            flips = int(((np.sign(wide["cec"].round(6))
+                          != np.sign(wide["cec_survival"].round(6)))).sum())
+            key = ("australia_as_legislated", baseline_rule)
+            out.append(ctx.h2("#ordering.5 And the same grid on a real "
+                              "lifespan"))
+            out.append(ctx.p(
+                f"One objection remains, and it is one this paper raises "
+                f"against itself. Section "
+                f"{SHORT_ORDER.index('longevity') + 1} rejects a "
+                f"retirement that ends at ninety-three with certainty as "
+                f"not neutral <i>between</i> withdrawal rules, and "
+                f"re-solves the rule against a survival curve. This "
+                f"section compares portfolios <i>within</i> a rule, which "
+                f"is a different exposure \u2014 a horizon that flatters "
+                f"the rules dividing by it flatters both portfolios in a "
+                f"cell alike, so the gap between them should be close to "
+                f"insulated even where the levels are not. Should be is "
+                f"not is, so every outcome above was scored a second time "
+                f"under the objective that section argues for."))
+            lvl = ""
+            if "cec" in swept_all and "cec_survival" in swept_all:
+                shift = (swept_all["cec_survival"] / swept_all["cec"]
+                         - 1.0) * 100.0
+                lvl = (f"The levels do move: across the grid the "
+                       f"certainty equivalents shift over a span of "
+                       f"{float(shift.max() - shift.min()):.1f} points, "
+                       f"from {float(shift.min()):+.1f}% to "
+                       f"{float(shift.max()):+.1f}%. ")
+            out.append(ctx.p(
+                f"<b>{lvl}The gaps do not.</b> Across all "
+                f"{len(wide)} cells the all-equity lead moves by "
+                f"{float(moved.median()):.2f} percentage points at the "
+                f"median and {float(moved.max()):.2f} at the worst, and "
+                f"{'no sign changes' if not flips else f'{flips} signs change'}. "
+                + (f"The contested cell goes "
+                   f"{float(wide.loc[key, 'cec']):+.2f}% to "
+                   f"{float(wide.loc[key, 'cec_survival']):+.2f}%. "
+                   if key in wide.index else "")
+                + f"So the insulation is not an argument but a "
+                f"measurement: pricing a real lifespan moves the levels by "
+                f"several times what it moves the comparison this paper is "
+                f"about, and moves no sign at all."))
+            out.append(ctx.p(
+                "We report it because the alternative was to ask the "
+                "reader to believe it. A paper that spends a section "
+                "arguing one objective is the right one, and then reports "
+                "its central table under another, owes the reader the "
+                "difference rather than the reasoning."))
     out += ctx.figure(
         "fig67_ordering",
         "The all-equity portfolio's lead over the target-date fund, by "

@@ -12058,6 +12058,56 @@ def write_doc_36(
     else:
         bias_line = ""
 
+    obj_found = notes.get("objective", {})
+    lvl_found = notes.get("levels", {})
+    objectives = frames.get("objectives")
+    obj_tbl = ""
+    if objectives is not None and len(objectives):
+        wide = objectives.pivot_table(index=["system", "rule"],
+                                      columns="objective",
+                                      values="gap_pct").reset_index()
+        obj_tbl = md_table(wide, floatfmt="{:.2f}")
+    if obj_found.get("measured"):
+        obj_line = (
+            f"**The levels move and the gaps do not.** Scored over a real "
+            f"lifespan rather than a retirement that ends at ninety-three "
+            f"with certainty, the certainty equivalents shift across a "
+            f"span of {lvl_found.get('level_span_pct', float('nan')):.1f} "
+            f"percentage points "
+            f"({lvl_found.get('low_level_shift_pct', float('nan')):+.1f}% "
+            f"to {lvl_found.get('high_level_shift_pct', float('nan')):+.1f}%, "
+            f"median "
+            f"{lvl_found.get('median_level_shift_pct', float('nan')):+.1f}%). "
+            f"The gap between the two portfolios inside a cell moves by "
+            f"{obj_found['median_move_pp']:.2f} percentage points at the "
+            f"median and {obj_found['worst_move_pp']:.2f} at the worst "
+            f"({' / '.join(obj_found['worst_cell'])}).")
+        obj_line += (
+            f" {obj_found['signs_flipped']} of {obj_found['cells']} signs "
+            f"change." if obj_found["signs_flipped"] else
+            f" No sign changes in any of the {obj_found['cells']} cells.")
+        if "contested_move_pp" in obj_found:
+            obj_line += (
+                f" The contested cell goes "
+                f"{obj_found['contested_fixed']:+.2f}% to "
+                f"{obj_found['contested_survival']:+.2f}%, and its sign "
+                f"{'holds' if obj_found['contested_sign_holds'] else 'does not hold'}.")
+        obj_line += (
+            " That is the evidence for a claim this section would otherwise"
+            " be making on faith. A horizon that flatters the rules which"
+            " divide by it flatters both portfolios in a cell equally, so a"
+            " comparison *within* a rule is close to insulated from the"
+            " treatment `docs/34` rejects for comparisons *between* rules."
+            " Close to, not exactly: the two portfolios leave different"
+            " estates and ruin at different rates, and the survival"
+            " weighting prices both, which is why the gaps move at all."
+            if obj_found.get("insulated") else
+            " The gap is therefore not insulated from the objective, and"
+            " every number in this section has to be read with the horizon"
+            " treatment attached.")
+    else:
+        obj_line = ""
+
     spread = frames.get("by_gamma")
     gamma_found = notes.get("gamma_check", {})
     if spread is not None and len(spread):
@@ -12161,7 +12211,20 @@ jackknife rather than one assembled out of two marginal standard errors.
 
 {diff_line}
 
-## 6. And the same gaps at other risk aversions
+## 6. And the same gaps on a real lifespan
+
+`docs/34` rejects a retirement that ends at ninety-three with certainty as
+not neutral *between* withdrawal rules, and re-solves the rule against a
+survival curve. This section compares portfolios *within* a rule, which is a
+different exposure -- but the reader should not have to take that on trust,
+so every outcome is scored a second time under the objective `docs/34`
+argues for.
+
+{obj_tbl}
+
+{obj_line}
+
+## 7. And the same gaps at other risk aversions
 
 The balance dial in `docs/35` is defended against the preference
 specification and the sweep above against the panel. Each was checked
@@ -12173,7 +12236,7 @@ gaps are re-read at other risk aversions here.
 
 {gamma_line}
 
-## 7. What this changes
+## 8. What this changes
 
 * The second finding has to be stated with its condition attached, because
   the condition is what the grid is about. "The ordering reverses again"
@@ -12185,7 +12248,7 @@ gaps are re-read at other risk aversions here.
 * This section re-derives the first finding on its own grid rather than
   quoting it, so the two cannot drift.
 
-## 8. What is still not modelled
+## 9. What is still not modelled
 
 * The rules here are fixed policies, not solved ones. A retiree who
   re-optimised the withdrawal each year against the means test would do
@@ -12197,11 +12260,11 @@ gaps are re-read at other risk aversions here.
 * Every row holds the retirement date fixed, so nothing here prices the
   interaction between the drawdown rule and when work stops.
 
-## 9. Figures
+## 10. Figures
 
 {figure_list}
 
-## 10. Reproduction
+## 11. Reproduction
 
 ```bash
 python main.py --steps 36

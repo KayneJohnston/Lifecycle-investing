@@ -522,3 +522,107 @@ def bias_verdict(table: pd.DataFrame, baseline_rule: str, system: str,
         found["isolated"] = bool(
             abs(found["bias_estimate"]) > ratio * worst)
     return found
+
+
+def by_objective(frame: pd.DataFrame, pair: Tuple[str, str] = HEADLINE,
+                 columns: Sequence[str] = ("cec", "cec_survival"),
+                 tie: float = TIE_BAND) -> pd.DataFrame:
+    """The same grid's gaps under each objective it was scored on.
+
+    The paper rejects a fixed retirement horizon as not neutral *between
+    rules* and then compares portfolios *within* a rule. Those are
+    different exposures: a horizon that flatters the rules which divide by
+    it flatters both portfolios in a cell equally, so the gap between them
+    should be close to insulated even where the levels are not. Close to,
+    not exactly -- the two portfolios leave different estates and ruin at
+    different rates, and the survival weighting prices both.
+
+    Whether the insulation holds is a fact about this grid rather than an
+    argument, which is the reason to compute it. Returns one row per cell
+    per objective, so a caller can put the two side by side.
+    """
+    blocks = []
+    for column in columns:
+        if column not in frame:
+            continue
+        block = gaps(frame, pair=pair, column=column, tie=tie)
+        block = block.assign(objective=column)
+        blocks.append(block)
+    if not blocks:
+        return pd.DataFrame()
+    return pd.concat(blocks, ignore_index=True)
+
+
+def objective_verdict(table: pd.DataFrame, baseline_rule: str, system: str,
+                      fixed: str = "cec", survival: str = "cec_survival",
+                      tolerance: float = 2.0) -> Dict[str, Any]:
+    """Whether changing the objective changes what the grid says.
+
+    Three things are separable and the paper needs all three. Whether any
+    *sign* moves, which is what its claims are made of. How far the
+    contested cell moves, which is the cell a reader will check. And how
+    far the *gaps* move on average against how far the *levels* do, which
+    is the evidence for or against the insulation argument above.
+    """
+    if not len(table) or "objective" not in table:
+        return {"measured": False}
+    wide = table.pivot_table(index=["system", "rule"], columns="objective",
+                             values="gap_pct")
+    if fixed not in wide or survival not in wide:
+        return {"measured": False}
+    wide = wide.dropna(subset=[fixed, survival])
+    if not len(wide):
+        return {"measured": False}
+    moved = (wide[survival] - wide[fixed]).abs()
+    flipped = wide[(np.sign(wide[fixed].round(6))
+                    != np.sign(wide[survival].round(6)))]
+    found: Dict[str, Any] = {
+        "measured": True,
+        "cells": int(len(wide)),
+        "median_move_pp": float(moved.median()),
+        "worst_move_pp": float(moved.max()),
+        "worst_cell": [str(x) for x in moved.idxmax()],
+        "signs_flipped": int(len(flipped)),
+        "flipped_cells": [f"{a} / {b}" for a, b in flipped.index],
+        "insulated": bool(len(flipped) == 0
+                          and float(moved.max()) <= tolerance),
+        "tolerance_pp": float(tolerance),
+    }
+    key = (system, baseline_rule)
+    if key in wide.index:
+        found["contested_fixed"] = float(wide.loc[key, fixed])
+        found["contested_survival"] = float(wide.loc[key, survival])
+        found["contested_move_pp"] = float(
+            wide.loc[key, survival] - wide.loc[key, fixed])
+        found["contested_sign_holds"] = bool(
+            np.sign(round(float(wide.loc[key, fixed]), 6))
+            == np.sign(round(float(wide.loc[key, survival]), 6)))
+    return found
+
+
+def level_shift(frame: pd.DataFrame, fixed: str = "cec",
+                survival: str = "cec_survival") -> Dict[str, Any]:
+    """How far the *levels* move when the objective does.
+
+    The counterpart to :func:`objective_verdict`. If the levels move a lot
+    and the gaps move little, the insulation argument is supported by the
+    data rather than by assertion; if both move alike, it is not.
+    """
+    if fixed not in frame or survival not in frame:
+        return {"measured": False}
+    block = frame[[fixed, survival]].dropna()
+    if not len(block):
+        return {"measured": False}
+    shift = (block[survival] / block[fixed] - 1.0) * 100.0
+    return {
+        "measured": True,
+        "rows": int(len(block)),
+        "median_level_shift_pct": float(shift.median()),
+        "low_level_shift_pct": float(shift.min()),
+        "high_level_shift_pct": float(shift.max()),
+        # The span is what the comparison needs. A median near zero can
+        # hide levels moving ten per cent in both directions, and it is
+        # the movement rather than its average that the gaps are being
+        # held against.
+        "level_span_pct": float(shift.max() - shift.min()),
+    }

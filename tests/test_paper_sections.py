@@ -954,6 +954,48 @@ class TestTheJackknifeDiagnosticIsCarried:
         assert not odr.bias_verdict(table, "amort", "au")["isolated"]
 
 
+class TestTheObjectiveIsNotSwitchedSilently:
+    """Section 9 rejects a fixed retirement horizon as not neutral between
+    withdrawal rules and re-solves against a survival curve. Section 10
+    then scored its whole grid on the horizon Section 9 rejected, and said
+    nothing about it -- so a reader met a section that opened "the previous
+    section found the withdrawal rule a retiree should use" and had no way
+    to know the objective had changed underneath them."""
+
+    def test_the_grid_is_scored_on_both_objectives(self) -> None:
+        source = open("main.py").read()
+        step = source[source.index("def step36_ordering"):
+                      source.index("def step37_ceiling")]
+        assert "cec_survival" in step
+        assert "mrt.certainty_equivalent(" in step
+
+    def test_the_paper_reports_what_the_second_objective_does(self) -> None:
+        source = (PAPER / "short.py").read_text()
+        assert "ordering_by_objective" in source
+
+    def test_the_paper_says_which_objective_its_tables_use(self) -> None:
+        """Reporting the comparison is not enough if the reader cannot
+        tell which of the two the headline tables are scored on."""
+        flat = re.sub(r'"\s*\n\s*(f?)"', "",
+                      (PAPER / "short.py").read_text())
+        assert "scored twice" in flat
+
+    def test_the_insulation_claim_is_measured_not_asserted(self) -> None:
+        """`objective_verdict` has to be able to come back negative, or
+        the sentence it supports is decoration."""
+        import pandas as pd
+
+        from src import ordering as odr
+
+        swept = pd.DataFrame.from_records([
+            {"system": "au", "rule": "r", "strategy": s,
+             "cec": c, "cec_survival": v}
+            for s, c, v in [("balanced_all_equity", 1.05, 0.95),
+                            ("target_date_fund", 1.00, 1.00)]])
+        found = odr.objective_verdict(odr.by_objective(swept), "r", "au")
+        assert found["measured"] and not found["insulated"]
+
+
 class TestFloatNumbering:
     """Figure and table numbers are issued by a counter on the context and
     the short paper trims whole subsections *after* that counter has run, so
