@@ -1026,13 +1026,38 @@ class TestRuinIsReportedOnBothMeasures:
                    + (PAPER.parent / "src" / "report.py").read_text()
                    + (PAPER.parent / "src" / "ordering.py").read_text())
         columns = list(pd.read_csv(path, nrows=1).columns)
-        # A column whose name is built rather than typed -- `cec_gamma2`
-        # comes from an f-string over the risk-aversion grid -- never
-        # appears literally in the source, so the stem is what to look for.
-        unread = [c for c in columns
-                  if c not in readers
-                  and re.sub(r"[\d.]+$", "", c) not in readers]
+
+        def cited(name: str) -> bool:
+            """Whether the source refers to this column *as a column*.
+
+            A bare substring search is too weak to be a guard: `cec`
+            occurs inside `cec_survival`, `prob_ruin` inside
+            `prob_ruin_survival`, and a short name would pass whatever
+            happened to it. Columns are addressed as quoted strings --
+            `row["cec"]`, `"cec": lambda v: ...` -- so the quotes are what
+            distinguishes a reference from a coincidence. A name built by
+            f-string over a grid (`cec_gamma2`) is cited by its stem.
+            """
+            for candidate in (name, re.sub(r"[\d.]+$", "", name)):
+                if not candidate:
+                    continue
+                if re.search(rf"""['"]{re.escape(candidate)}['"]""", readers):
+                    return True
+                # `f"cec_gamma{g:g}"` -- the stem is followed by a brace.
+                if re.search(rf"""['"]{re.escape(candidate)}\{{""", readers):
+                    return True
+            return False
+
+        unread = [c for c in columns if not cited(c)]
         assert not unread, unread
+
+    def test_the_unread_check_can_actually_fail(self) -> None:
+        """Guards the guard. A column nothing mentions must be caught, or
+        the check above is decoration."""
+        readers = 'row["cec"] and frame["prob_ruin"]'
+        pattern = r"""['"]{}['"]"""
+        assert re.search(pattern.format("cec"), readers)
+        assert not re.search(pattern.format("nobody_reads_this"), readers)
 
 
 class TestFloatNumbering:
@@ -1353,3 +1378,70 @@ class TestTheReadmeIndexesEveryDocument:
                             self._readme())
         assert claimed, "the sentence under the table has been reworded"
         assert claimed.group(1) == words[n], (claimed.group(1), n)
+
+
+class TestTheRuinConventionIsDeclaredWhereItIsUsed:
+    """Section 5 leads on a fixed-horizon ruin probability; Section 9 argues
+    the measure overstates the level. Both are right -- the comparison in
+    Section 5 is between two portfolios measured alike, and the number is
+    the replicated study's convention -- but a reader who meets Section 9
+    first has to reconcile them unaided. The caveat does the reconciling,
+    and takes the size of the distortion from Section 9's own grid rather
+    than describing it."""
+
+    def test_the_baseline_section_carries_the_caveat(self) -> None:
+        source = (PAPER / "content.py").read_text()
+        body = source[source.index("def section_baseline("):
+                      source.index("def section_pension(")]
+        assert "_ruin_convention(ctx, f)" in body, (
+            "section 5 quotes a fixed-horizon ruin probability with no "
+            "pointer to the section that revisits the measure")
+
+    def test_the_caveat_points_at_the_section_that_revisits_it(self) -> None:
+        # Adjacent literals are joined first: `"Section "` and
+        # `"#longevity keeps"` sit on separate source lines, and an
+        # unjoined scan would read the second as a bare reference.
+        body = self._prose()
+        assert "Section #longevity" in body
+        # A bare `#longevity` resolves to a naked numeral mid-sentence,
+        # which reads as a typo -- the first draft of this caveat printed
+        # "every section but 9 keeps". Every reference is spelled out.
+        assert "#longevity" not in body.replace("Section #longevity", "")
+
+    @staticmethod
+    def _prose() -> str:
+        """The helper's f-strings with adjacent literals concatenated and
+        the docstring dropped, which is what the reader actually sees."""
+        source = (PAPER / "content.py").read_text()
+        body = source[source.index("def _ruin_convention("):
+                      source.index("def section_baseline(")]
+        body = body.split('"""', 2)[-1]
+        return re.sub(r'"\s*\n\s*(f?)"', "", body)
+
+    def test_it_reads_the_size_rather_than_asserting_it(self) -> None:
+        source = (PAPER / "content.py").read_text()
+        body = source[source.index("def _ruin_convention("):
+                      source.index("def section_baseline(")]
+        assert "lng.ruin_overstatement(" in body
+        assert 'f.table("longevity_sweep")' in body
+
+    def test_the_caveat_does_not_disown_the_comparison(self) -> None:
+        """The referee's point was that the number is sound and the
+        measure is the question. A caveat that retracted the comparison
+        would be the wrong fix."""
+        source = (PAPER / "content.py").read_text()
+        body = source[source.index("def _ruin_convention("):
+                      source.index("def section_baseline(")]
+        assert "difference" in body and "measured the same way" in body
+
+    def test_the_built_paper_prints_it(self) -> None:
+        pdf = PAPER / "floor_beneath_the_portfolio.pdf"
+        reader = pytest.importorskip("pypdf")
+        if not pdf.exists():
+            pytest.skip("the short paper has not been built")
+        text = "\n".join(
+            page.extract_text() or ""
+            for page in reader.PdfReader(str(pdf)).pages)
+        assert "One caveat on the measure, not the comparison" in text
+        # And the forward pointer resolved to a number, not to the token.
+        assert "#longevity" not in text

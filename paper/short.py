@@ -171,6 +171,15 @@ def front(ctx: Any) -> List[Flowable]:
     au_base = au_rows[au_rows["rule"] == baseline_rule]
     us_base = us_rows[us_rows["rule"] == baseline_rule]
     au_best = au_rows.loc[au_rows["gap_pct"].idxmax()]
+    # The rule Section #longevity selects rather than the best cell of
+    # the grid. Leading with the maximiser would make that section
+    # decorative at the one place its answer should bind, so the
+    # recommendation is the headline and the maximum sits beside it.
+    rec = _recommended(f)
+    rec_gap = (f"{rec['gap_pct']:+.2f}%" if rec.get("measured")
+               else f"{float(au_best['gap_pct']):+.2f}%")
+    rec_rule = (rule_label(str(rec["rule"])) if rec.get("measured")
+                else rule_label(str(au_best["rule"])))
     au_base_gap = float(au_base["gap_pct"].iloc[0]) if len(au_base) \
         else float("nan")
     # The widest rule effect, which is the number the abstract leads with
@@ -223,8 +232,10 @@ def front(ctx: Any) -> List[Flowable]:
         f"leaves the all-equity portfolio ahead by {flat_gap:+.2f}%, and "
         f"{float(legis['share_above_cutoff']):.0%} of these households are "
         f"past the cut-off before the test applies. (iii) A withdrawal "
-        f"rule that cannot deplete restores the ordering, moving the "
-        f"Australian lead to {float(au_best['gap_pct']):+.2f}%. (iv) "
+        f"rule that cannot deplete restores the ordering: under the rule "
+        f"Section {SHORT_ORDER.index('longevity') + 1} selects the "
+        f"Australian lead is {rec_gap}, and every rate in the family "
+        f"restores it. (iv) "
         f"Sixteen countries resolve the rule effect and not the reversal. "
         f"(v) Who pays for compulsory saving changes lifetime consumption "
         f"by {abs(cost):.1f}% and the retiree's problem not at all. (vi) On "
@@ -258,6 +269,15 @@ def introduction(ctx: Any) -> List[Flowable]:
     us_rows = gapped[gapped["system"] == "us_social_security"]
     us_base = us_rows[us_rows["rule"] == baseline_rule]
     au_best = au_rows.loc[au_rows["gap_pct"].idxmax()]
+    # The rule Section #longevity selects rather than the best cell of
+    # the grid. Leading with the maximiser would make that section
+    # decorative at the one place its answer should bind, so the
+    # recommendation is the headline and the maximum sits beside it.
+    rec = _recommended(f)
+    rec_gap = (f"{rec['gap_pct']:+.2f}%" if rec.get("measured")
+               else f"{float(au_best['gap_pct']):+.2f}%")
+    rec_rule = (rule_label(str(rec["rule"])) if rec.get("measured")
+                else rule_label(str(au_best["rule"])))
     au_base_gap = float(au_base["gap_pct"].iloc[0]) if len(au_base) \
         else float("nan")
     us_base_gap = float(us_base["gap_pct"].iloc[0]) if len(us_base) \
@@ -383,8 +403,11 @@ def introduction(ctx: Any) -> List[Flowable]:
         f"out of the larger portfolio compulsory saving bought it. Holding "
         f"the pension and the returns fixed and changing only the rule, the "
         f"all-equity lead in the Australian system moves from "
-        f"{au_base_gap:+.2f}% to {float(au_best['gap_pct']):+.2f}% under "
-        f"{rule_label(str(au_best['rule']))}, so "
+        f"{au_base_gap:+.2f}% to {rec_gap} under the "
+        f"{rec_rule} rule Section "
+        f"{SHORT_ORDER.index('longevity') + 1} selects \u2014 and to "
+        f"{float(au_best['gap_pct']):+.2f}% at the most generous rate in "
+        f"the family \u2014 so "
         f"{'the portfolio ordering reverses a second time' if recovers else 'the target-date fund keeps the lead even then'}. "
         f"The all-equity prescription is therefore conditional on two "
         f"institutions rather than one \u2014 and, as the next paragraph "
@@ -1139,6 +1162,15 @@ def ordering(ctx: Any) -> List[Flowable]:
     us_base = us[us["rule"] == baseline_rule]
     au_best = au.loc[au["gap_pct"].idxmax()]
     au_worst = au.loc[au["gap_pct"].idxmin()]
+    # The rule Section #longevity selects rather than the best cell of
+    # the grid. Leading with the maximiser would make that section
+    # decorative at the one place its answer should bind, so the
+    # recommendation is the headline and the maximum sits beside it.
+    rec = _recommended(f)
+    rec_gap = (f"{rec['gap_pct']:+.2f}%" if rec.get("measured")
+               else f"{float(au_best['gap_pct']):+.2f}%")
+    rec_rule = (rule_label(str(rec["rule"])) if rec.get("measured")
+                else rule_label(str(au_best["rule"])))
     recovers = bool(float(au_best["gap_pct"]) > 0.0)
     winners = au[au["gap_pct"] > 0.0]
     swept_all = f.table("ordering_sweep")
@@ -1252,10 +1284,17 @@ def ordering(ctx: Any) -> List[Flowable]:
         out.append(ctx.p(
             f"<b>And the second finding holds as a statement about "
             f"portfolios, not only about countries.</b> Under "
-            f"{au_best['rule']} the all-equity portfolio leads by "
-            f"{float(au_best['gap_pct']):+.2f}% in the Australian system, "
+            f"{rec_rule} \u2014 the rule Section "
+            f"{SHORT_ORDER.index('longevity') + 1} selects, which is not "
+            f"the most generous rate in the family and is the one a "
+            f"retiree is being advised to use \u2014 the all-equity "
+            f"portfolio leads by {rec_gap} in the Australian system, "
             f"against {float(au_base['gap_pct'].iloc[0]):+.2f}% under the "
-            f"fixed real rule. {len(winners)} of {len(au)} rules in the "
+            f"fixed real rule. The family spans "
+            f"{float(au['gap_pct'].drop(au['gap_pct'].idxmin()).min()):+.2f}% "
+            f"to {float(au_best['gap_pct']):+.2f}%, so nothing here turns "
+            f"on which rate is picked. {len(winners)} of {len(au)} rules "
+            f"in the "
             f"menu return the lead. A rule that supplies its own floor "
             f"restores the all-equity prescription, and that is a claim "
             f"about portfolios rather than an inference from one about "
@@ -1806,6 +1845,15 @@ def conclusion(ctx: Any) -> List[Flowable]:
     au_rows = gapped[gapped["system"] == "australia_as_legislated"]
     us_rows = gapped[gapped["system"] == "us_social_security"]
     au_best = au_rows.loc[au_rows["gap_pct"].idxmax()]
+    # The rule Section #longevity selects rather than the best cell of
+    # the grid. Leading with the maximiser would make that section
+    # decorative at the one place its answer should bind, so the
+    # recommendation is the headline and the maximum sits beside it.
+    rec = _recommended(f)
+    rec_gap = (f"{rec['gap_pct']:+.2f}%" if rec.get("measured")
+               else f"{float(au_best['gap_pct']):+.2f}%")
+    rec_rule = (rule_label(str(rec["rule"])) if rec.get("measured")
+                else rule_label(str(au_best["rule"])))
     recovers = bool(float(au_best["gap_pct"]) > 0.0)
     swept_all = f.table("ordering_sweep")
     au_eq = swept_all[(swept_all["system"] == "australia_as_legislated")
@@ -1907,9 +1955,11 @@ def conclusion(ctx: Any) -> List[Flowable]:
         f"A withdrawal rule that cannot deplete the portfolio supplies the "
         f"floor the pension no longer does, and holding everything else "
         f"fixed it moves the all-equity lead in the Australian system to "
-        f"{float(au_best['gap_pct']):+.2f}% under "
-        f"{rule_label(str(au_best['rule']))}"
-        f"{', which returns the ordering the pension had reversed' if recovers else ', which narrows the gap without returning the lead'}. "
+        f"{rec_gap} under the {rec_rule} rule Section "
+        f"{SHORT_ORDER.index('longevity') + 1} selects, and to "
+        f"{float(au_best['gap_pct']):+.2f}% at the most generous rate in "
+        f"the family"
+        f"{', either of which returns the ordering the pension had reversed' if recovers else ', neither of which returns the lead'}. "
         f"So the reversal is not a fact about Australia. It is a fact about "
         f"any retiree whose income in the bad states depends on the "
         f"portfolio itself — which includes a saver under an asset test, "
@@ -2171,6 +2221,24 @@ _NUMBER_WORDS: Dict[int, str] = {
 def _spelled(n: int) -> str:
     """``five`` for 5, ``24`` for 24 -- spelled up to twelve, then digits."""
     return _NUMBER_WORDS.get(int(n), str(int(n)))
+
+
+def _recommended(f: Any, system: str = "australia_as_legislated"
+                 ) -> Dict[str, Any]:
+    """What the rule Section #longevity selects does to the ordering grid.
+
+    The grid's best cell and the rule this paper recommends are not the
+    same cell, and the difference is the point: a section exists to choose
+    a rule, so the headline should quote the choice and give the maximum
+    beside it rather than lead with the maximum and leave the choice
+    unmentioned.
+    """
+    if not (_has(f, "longevity_ranking") and _has(f, "ordering_gaps")):
+        return {"measured": False}
+    from src import ordering as odr
+
+    return odr.recommended_rule(f.table("longevity_ranking"),
+                                f.table("ordering_gaps"), system)
 
 
 def _has(f: Any, name: str) -> bool:

@@ -2066,6 +2066,64 @@ def _corr_gap(f: Any) -> Dict[str, float]:
 # ---------------------------------------------------------------------------
 # 5. Baseline results
 # ---------------------------------------------------------------------------
+def _ruin_convention(ctx: Any, f: Any) -> Paragraph:
+    """The sentence reconciling this section's ruin figures with #longevity.
+
+    Both numbers in the paragraph above are aggregated over a horizon that
+    ends at a certain age, which is the convention of the study being
+    replicated and the convention every section but #longevity keeps.  That
+    section measures how much the convention costs; the size of the
+    overstatement is read from its grid rather than described, so the two
+    sections cannot end up saying different things about it.
+    """
+    from src import longevity as lng
+
+    horizon = ","
+    try:
+        age_death = int(f.cfg["lifecycle"]["age_death"])
+        age_retire = int(f.cfg["lifecycle"]["age_retire"])
+    except (KeyError, TypeError, ValueError):
+        pass
+    else:
+        years = age_death - age_retire
+        spelled = NUMBER_WORDS.get(years, str(years)).lower()
+        horizon = (f" \u2014 here age {age_death}, {spelled} years after "
+                   f"retirement at {age_retire} \u2014")
+
+    # The size of the overstatement, if the grid that measures it has been
+    # run. The sentence still says the right thing without it -- a certain
+    # horizon can only report more ruin, since survival-weighted ruin is
+    # the same event intersected with being alive -- but a number the
+    # reader can weigh is the point of saying anything at all.
+    scale = ("Section #longevity re-scores the same decisions against a "
+             "survival curve.")
+    try:
+        over = lng.ruin_overstatement(f.table("longevity_sweep"))
+    except (KeyError, FileNotFoundError, AttributeError, OSError):
+        over = {"measured": False}
+    if over.get("measured"):
+        scale = (f"Section #longevity re-scores the same decisions against "
+                 f"a survival curve and puts a size on the overstatement: "
+                 f"across the {over['combinations']:,} combinations of its "
+                 f"grid that can run out at all, the fixed horizon reports "
+                 f"a median of {over['median_ratio']:.1f} times the "
+                 f"survival-weighted number.")
+
+    return ctx.p(
+        f"<b>One caveat on the measure, not the comparison.</b> Both ruin "
+        f"probabilities are aggregated over a horizon that ends at a "
+        f"certain age{horizon} which is the convention of the study this "
+        f"paper replicates and the default wherever this one does not say "
+        f"otherwise. A certain horizon overstates the level of ruin for "
+        f"every strategy, because it counts as failure a portfolio "
+        f"exhausted at an age most investors do not reach. {scale} What a "
+        f"certain horizon does <i>not</i> overstate is the "
+        f"<i>difference</i> between two portfolios measured the same way "
+        f"on the same draws, which is what this section compares. A reader "
+        f"who wants the level rather than the ordering should take it from "
+        f"Section #longevity.")
+
+
 def section_baseline(ctx: Any) -> List[Flowable]:
     f = ctx.f
     head = f.headline
@@ -2129,6 +2187,13 @@ def section_baseline(ctx: Any) -> List[Flowable]:
         f"{pc(float(tdf['prob_consumption_below_target']), 1)}). The "
         f"conservative portfolio is not buying downside protection on this "
         f"panel. It is paying for the appearance of it."))
+
+    # A reader who meets Section #longevity first will have been told that
+    # fixed-horizon ruin is the wrong measure, and will then find this
+    # section leaning on it. The measure is the replicated study's and the
+    # comparison survives it, but saying so is cheaper than leaving the
+    # reader to reconcile the two sections themselves.
+    out.append(_ruin_convention(ctx, f))
 
     out.extend(ctx.figure(
         "fig09_cec_by_risk_aversion",

@@ -634,3 +634,85 @@ class TestTheSecondObjective:
             ("au", "fixed", "balanced_all_equity", 1.0, 2.0),
         ]).drop(columns=["cec_survival"])
         assert odr.level_shift(swept) == {"measured": False}
+
+
+class TestTheRecommendedRule:
+    """A whole section upstream exists to choose a withdrawal rule. Quoting
+    the best cell of this grid instead makes that choice decorative and the
+    headline flattering, so the two studies are joined -- and because they
+    spell the same policy differently and always have, the join is the part
+    that can rot."""
+
+    RANKING = pd.DataFrame({
+        "rule_label": ["amortisation (6% assumed return)",
+                       "amortisation (8% assumed return)",
+                       "constant percent"],
+        "rank_mortality": [1, 2, 3]})
+    GAPS = pd.DataFrame({
+        "system": ["au"] * 4,
+        "rule": ["fixed_real_rule", "amortisation at 6%",
+                 "amortisation at 8%", "constant_percent at 4%"],
+        "gap_pct": [-2.08, 24.87, 26.63, 18.43]})
+
+    def test_it_finds_the_rule_the_longevity_study_ranks_first(self) -> None:
+        found = odr.recommended_rule(self.RANKING, self.GAPS, "au")
+        assert found["rule"] == "amortisation at 6%"
+        assert found["gap_pct"] == pytest.approx(24.87)
+
+    def test_it_reports_the_maximum_separately(self) -> None:
+        """Both numbers, so the paper can lead with one and give the other
+        rather than choosing which to omit."""
+        found = odr.recommended_rule(self.RANKING, self.GAPS, "au")
+        assert found["best_rule"] == "amortisation at 8%"
+        assert found["best_gap_pct"] == pytest.approx(26.63)
+        assert not found["is_best"]
+
+    def test_it_says_so_when_the_recommendation_is_the_maximum(self) -> None:
+        ranking = self.RANKING.assign(rank_mortality=[2, 1, 3])
+        found = odr.recommended_rule(ranking, self.GAPS, "au")
+        assert found["rule"] == "amortisation at 8%"
+        assert found["is_best"]
+
+    def test_the_join_matches_on_the_rate_not_the_wording(self) -> None:
+        """`amortisation (6% assumed return)` against `amortisation at 6%`.
+        Matching on the family alone would take whichever rate came first."""
+        found = odr.recommended_rule(self.RANKING, self.GAPS, "au")
+        assert "6%" in found["rule"]
+
+    def test_a_join_that_resolves_nothing_is_reported(self) -> None:
+        """Silently finding nothing would send the paper back to quoting
+        the maximum, which is the error this exists to prevent."""
+        ranking = pd.DataFrame({"rule_label": ["gompertz"],
+                                "rank_mortality": [1]})
+        assert odr.recommended_rule(ranking, self.GAPS, "au") == {
+            "measured": False}
+
+    def test_a_rate_the_grid_does_not_carry_is_not_silently_swapped(self
+                                                                    ) -> None:
+        ranking = pd.DataFrame({
+            "rule_label": ["amortisation (7% assumed return)"],
+            "rank_mortality": [1]})
+        assert not odr.recommended_rule(ranking, self.GAPS,
+                                        "au")["measured"]
+
+    def test_a_system_the_grid_does_not_carry_is_reported(self) -> None:
+        assert odr.recommended_rule(self.RANKING, self.GAPS,
+                                    "nowhere") == {"measured": False}
+
+    def test_empty_in_not_measured_out(self) -> None:
+        assert odr.recommended_rule(pd.DataFrame(), pd.DataFrame(),
+                                    "au") == {"measured": False}
+
+    def test_the_real_tables_still_join(self) -> None:
+        """The guard that matters: the two studies' labels agree today. If
+        either renames its rules this fails here rather than in the paper."""
+        import pathlib
+
+        root = pathlib.Path(__file__).resolve().parents[1] / "results/tables"
+        if not (root / "longevity_ranking.csv").exists():
+            pytest.skip("the longevity study has not been run")
+        found = odr.recommended_rule(
+            pd.read_csv(root / "longevity_ranking.csv"),
+            pd.read_csv(root / "ordering_gaps.csv"),
+            "australia_as_legislated")
+        assert found["measured"], "the two studies no longer name the same rule"

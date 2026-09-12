@@ -855,3 +855,72 @@ class TestTheHorizonNumbersReachTheProse:
         for key in ("expected_age_at_death", "life_expectancy",
                     "fixed_horizon_years"):
             assert key in call.group(0), key
+
+
+class TestTheRuinOverstatement:
+    """The size of the fixed-horizon distortion, computed once.
+
+    Section #baseline quotes fixed-horizon ruin because that is the
+    replicated study's convention, and points forward to this section for
+    the size of what it is living with. Both sections therefore read the
+    same helper: a second hand-rolled median would be free to drift.
+    """
+
+    ROWS = [
+        # ruin_fixed, ruin_mortality: ratios 2.0, 4.0, and a rule that
+        # cannot deplete at all.
+        (1.0, 0.1, "constant_real", 0.04, 1.00, 0.80, 0.20, 0.10),
+        (1.0, 0.1, "constant_real", 0.05, 0.95, 0.85, 0.40, 0.10),
+        (1.0, 0.1, "gompertz", np.nan, 0.90, 0.95, 0.00, 0.00),
+    ]
+
+    def test_it_measures_only_the_rules_that_can_run_out(self) -> None:
+        over = lv.ruin_overstatement(_frame(self.ROWS))
+        assert over["measured"]
+        assert over["combinations"] == 2          # the gompertz row is out
+        assert over["median_ratio"] == pytest.approx(3.0)
+        assert over["worst_ratio"] == pytest.approx(4.0)
+
+    def test_a_grid_that_cannot_deplete_reports_nothing(self) -> None:
+        """Rather than a ratio of zero over zero, which would read as a
+        finding that the horizon costs nothing."""
+        rows = [(1.0, 0.1, "gompertz", np.nan, 0.90, 0.95, 0.0, 0.0)]
+        assert lv.ruin_overstatement(_frame(rows)) == {"measured": False}
+
+    def test_a_frame_without_the_columns_reports_nothing(self) -> None:
+        frame = pd.DataFrame({"rule_label": ["constant_real"]})
+        assert lv.ruin_overstatement(frame) == {"measured": False}
+
+    def test_a_zero_survival_ruin_is_dropped_not_infinite(self) -> None:
+        """A combination that fails only after the survival curve has run
+        out divides by zero; the median must not become infinity."""
+        rows = [(1.0, 0.1, "constant_real", 0.04, 1.00, 0.80, 0.20, 0.10),
+                (1.0, 0.1, "constant_real", 0.05, 0.95, 0.85, 0.30, 0.00)]
+        over = lv.ruin_overstatement(_frame(rows))
+        assert over["combinations"] == 2          # both can deplete
+        assert np.isfinite(over["median_ratio"])
+        assert over["median_ratio"] == pytest.approx(2.0)
+
+    def test_the_verdict_quotes_the_helper_rather_than_its_own_median(self
+                                                                      ) -> None:
+        frame = _frame(self.ROWS)
+        found = lv.verdict(frame, lv.ranking_shift(frame),
+                           lv.ablation(frame))
+        over = lv.ruin_overstatement(frame)
+        assert found["median_ruin_ratio"] == pytest.approx(
+            over["median_ratio"])
+        assert found["depleting_combinations"] == over["combinations"]
+
+    def test_the_overstatement_never_runs_the_wrong_way(self) -> None:
+        """Survival-weighted ruin is the same event intersected with being
+        alive, so the fixed horizon can only report more of it. On the real
+        grid the claim the paper makes is that the ratio exceeds one."""
+        import pathlib
+
+        path = pathlib.Path("results/tables/longevity_sweep.csv")
+        if not path.exists():
+            pytest.skip("pipeline results not present")
+        over = lv.ruin_overstatement(pd.read_csv(path))
+        assert over["measured"], "the real grid no longer feeds the caveat"
+        assert over["median_ratio"] >= 1.0
+        assert over["worst_ratio"] >= over["median_ratio"]

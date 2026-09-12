@@ -22,6 +22,7 @@ reworded, and :func:`verdict` is written so the prose has to say so.
 
 from __future__ import annotations
 
+import re
 import logging
 from typing import Any, Callable, Dict, List, Mapping, Sequence, Tuple
 
@@ -626,3 +627,66 @@ def level_shift(frame: pd.DataFrame, fixed: str = "cec",
         # held against.
         "level_span_pct": float(shift.max() - shift.min()),
     }
+
+
+#: How the longevity study spells a rule against how this grid spells it.
+#: ``amortisation (6% assumed return)`` and ``amortisation at 6%`` are the
+#: same policy named by two studies that never had to agree until one
+#: started quoting the other's answer.
+_RATE_IN_LABEL = re.compile(r"(-?\d+(?:\.\d+)?)\s*%")
+
+
+def recommended_rule(ranking: pd.DataFrame, gapped: pd.DataFrame,
+                     system: str, rank_column: str = "rank_mortality",
+                     label_column: str = "rule_label") -> Dict[str, Any]:
+    """The rule the longevity study selects, and what it does to this grid.
+
+    The paper's second finding is that a rule which cannot deplete restores
+    the portfolio ordering, and the natural number to quote for it is the
+    best cell in the grid. That is the wrong number: a whole section
+    upstream exists to choose a rule, and quoting the maximiser instead
+    makes the choice decorative and the headline flattering. This joins the
+    two so the headline can be the recommended rule with the range beside
+    it.
+
+    The join is on the rate inside the label rather than the label itself,
+    because the two studies spell the same policy differently and always
+    have. A join that silently found nothing would send the paper back to
+    quoting the maximum, so an unresolvable one is reported rather than
+    swallowed.
+    """
+    found: Dict[str, Any] = {"measured": False}
+    if not len(ranking) or not len(gapped) or rank_column not in ranking:
+        return found
+    best = ranking.loc[ranking[rank_column].idxmin()]
+    label = str(best[label_column])
+    rate = _RATE_IN_LABEL.search(label)
+    block = gapped[gapped["system"] == system]
+    if not len(block):
+        return found
+    family = label.split()[0].lower()
+    match = block[block["rule"].str.lower().str.startswith(family)]
+    if rate is not None and len(match) > 1:
+        wanted = float(rate.group(1))
+        exact = match[match["rule"].apply(
+            lambda r: any(abs(float(x) - wanted) < 1e-9
+                          for x in _RATE_IN_LABEL.findall(str(r))))]
+        match = exact if len(exact) else match.iloc[0:0]
+    if not len(match):
+        return found
+    row = match.iloc[0]
+    found.update({
+        "measured": True,
+        "label": label,
+        "rule": str(row["rule"]),
+        "gap_pct": float(row["gap_pct"]),
+        # The range the family spans, so the paper can give the span rather
+        # than either endpoint.
+        "family_low": float(match["gap_pct"].min()) if len(match) > 1
+        else float(row["gap_pct"]),
+        "best_rule": str(block.loc[block["gap_pct"].idxmax(), "rule"]),
+        "best_gap_pct": float(block["gap_pct"].max()),
+        "is_best": bool(str(row["rule"])
+                        == str(block.loc[block["gap_pct"].idxmax(), "rule"])),
+    })
+    return found

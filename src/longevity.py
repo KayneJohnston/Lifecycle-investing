@@ -57,7 +57,7 @@ LOGGER = logging.getLogger(__name__)
 
 __all__ = [
     "Combination", "describe", "front_load", "correlation_strength", "allocation_grid", "plan_grid", "sweep", "optimum",
-    "by_objective", "ranking_shift", "ablation", "verdict",
+    "by_objective", "ranking_shift", "ablation", "ruin_overstatement", "verdict",
     "FIXED", "MORTALITY",
 ]
 
@@ -458,6 +458,45 @@ def rate_split_verdict(preference: pd.DataFrame) -> Dict[str, Any]:
     return found
 
 
+def ruin_overstatement(frame: pd.DataFrame) -> Dict[str, Any]:
+    """How far a fixed horizon inflates the probability of ruin.
+
+    Ruin is the number every retirement study quotes, and a horizon that
+    ends at a certain age counts as a failure a portfolio exhausted at
+    ninety-one for somebody who, on the survival curve, most likely died
+    before reaching it.  The overstatement is measured across the
+    combinations that *can* run out: on a rule that cannot, both numbers
+    are zero and their ratio would say nothing.
+
+    Sections other than #longevity quote fixed-horizon ruin, because that
+    is the replicated study's convention and because a comparison between
+    two portfolios measured alike survives the distortion.  They point at
+    this number to say how large the distortion they are living with is,
+    so it is computed in one place rather than restated.
+
+    :param frame: the swept grid, carrying ``ruin_fixed`` and
+        ``ruin_mortality`` for each combination.
+    :returns: ``measured`` false when nothing in the grid can deplete;
+        otherwise ``combinations``, the ``median_ratio`` of the two
+        measures, and the ``worst_ratio`` over the same rows.
+    """
+    for column in ("ruin_fixed", "ruin_mortality"):
+        if column not in frame.columns:
+            return {"measured": False}
+    depleting = frame[frame["ruin_fixed"] > 0.0]
+    if not len(depleting):
+        return {"measured": False}
+    ratios = (depleting["ruin_fixed"]
+              / depleting["ruin_mortality"].replace(0.0, np.nan))
+    finite = ratios.dropna()
+    if not len(finite):
+        return {"measured": False, "combinations": int(len(depleting))}
+    return {"measured": True,
+            "combinations": int(len(depleting)),
+            "median_ratio": float(finite.median()),
+            "worst_ratio": float(finite.max())}
+
+
 def verdict(frame: pd.DataFrame, shift: pd.DataFrame,
             ablated: pd.DataFrame,
             horizon: Mapping[str, float] | None = None) -> Dict[str, Any]:
@@ -572,10 +611,13 @@ def verdict(frame: pd.DataFrame, shift: pd.DataFrame,
         float(mortality_best["ruin_fixed"]) > 0.0)
     depleting = frame[frame["ruin_fixed"] > 0.0]
     if len(depleting):
-        ratios = (depleting["ruin_fixed"]
-                  / depleting["ruin_mortality"].replace(0.0, np.nan))
+        # The ratio itself comes from the shared helper, so the number the
+        # baseline section points at and the number this section prints
+        # cannot drift apart.
+        overstated = ruin_overstatement(frame)
         found["depleting_combinations"] = int(len(depleting))
-        found["median_ruin_ratio"] = float(ratios.median())
+        if overstated.get("measured"):
+            found["median_ruin_ratio"] = float(overstated["median_ratio"])
         best_depleting = depleting.loc[depleting[MORTALITY].idxmax()]
         found["best_depleting_rule"] = str(best_depleting["rule_label"])
         found["best_depleting_ruin_fixed"] = float(
