@@ -5167,10 +5167,22 @@ def step36_ordering(cfg: Dict[str, Any],
     differences = pd.DataFrame()
     difference_found: Dict[str, Any] = {"measured": False}
     if len(influence):
-        differences = odr.difference_intervals(
-            influence, gapped, baseline_rule,
-            str(found.get("contender_system", "")))
-        difference_found = odr.difference_verdict(differences)
+        # Every system the jackknife covers, not only the legislated one.
+        # The rule effect under the means test at *matched* contributions
+        # is the one the corrected headline sits beside, and it was going
+        # unmeasured while the confounded cell had an interval.
+        frames = []
+        for system in loo_systems:
+            block = odr.difference_intervals(
+                influence, gapped, baseline_rule, system)
+            if len(block):
+                frames.append(block.assign(system=system))
+        differences = (pd.concat(frames, ignore_index=True) if frames
+                       else pd.DataFrame())
+        contender = str(found.get("contender_system", ""))
+        difference_found = odr.difference_verdict(
+            differences[differences["system"] == contender]
+            if "system" in differences else differences)
         if difference_found.get("measured"):
             LOGGER.info("against %s, the widest rule effect is %s at "
                         "%+.1f pp +/- %.1f, CI [%+.1f, %+.1f]; %d of %d "

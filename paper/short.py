@@ -240,7 +240,7 @@ def front(ctx: Any) -> List[Flowable]:
         f"contribution, worth "
         f"{matched['contribution_effect_means_tested']:+.1f} points here, "
         f"or a withdrawal rule that cannot deplete, worth "
-        f"{abs(widest_pp):.0f} \u2014 offsets most of it. Near the test, "
+        f"{abs(widest_pp):.0f} points \u2014 offsets most of it. Near the test, "
         f"the drawdown default and the portfolio default are one decision."
         if matched.get("measured") else
         f"An all-equity lifecycle portfolio is said to dominate the "
@@ -270,10 +270,11 @@ def front(ctx: Any) -> List[Flowable]:
         f"Section {SHORT_ORDER.index('longevity') + 1} selects the "
         f"Australian lead is {rec_gap}, and every rate in the family "
         f"restores it. (iv) "
-        f"Sixteen countries resolve the reversal at matched contributions "
-        f"and the rule effect, and not the net of the two institutions "
-        f"Australia combines. (v) Who pays for compulsory saving changes "
-        f"lifetime consumption "
+        f"Sixteen delete-one-country sub-panels sign the reversal at "
+        f"matched contributions and sign the rule effect under both "
+        f"pensions; what they cannot sign is the net of the two "
+        f"institutions Australia combines. (v) Who pays for compulsory "
+        f"saving changes lifetime consumption "
         f"by {abs(cost):.1f}% and the retiree's problem not at all. (vi) On "
         f"a household the test does bind, the wanted equity share is a "
         f"property of the withdrawal rule rather than of the pension."))
@@ -290,6 +291,16 @@ def introduction(ctx: Any) -> List[Flowable]:
     f = ctx.f
     bite = f.table("leisure_means_test_bite")
     legis = bite[bite["household"] == "as legislated"].iloc[0]
+    # The matched household -- this paper's own savings rate, Australia's
+    # pension. Every comparative claim is made on it, and a draft quoted
+    # the legislated household's balance beside the matched household's
+    # headline, which is two different workers in one paragraph.
+    sched = bite[bite["household"] == "pension schedule only"].iloc[0]
+    saving = float(f.cfg["lifecycle"]["savings_rate"])
+    _sg = float(f.cfg.get("pension", {}).get("sg_rate", 0.12))
+    _sg_tax = float(f.cfg.get("pension", {}).get("sg_contributions_tax",
+                                                 0.15))
+    total = saving + _sg * (1.0 - _sg_tax)
     band = f.table("incidence_band_profile")
     arms = list(dict.fromkeys(band["arm"])) if "arm" in band else []
     base_arm = band[band["arm"] == arms[0]] if arms else band
@@ -370,44 +381,77 @@ def introduction(ctx: Any) -> List[Flowable]:
         "to nothing else, which is what lets the paper say <i>why</i> the "
         "prescription reverses rather than only <i>that</i> it does."))
     out.append(ctx.p(
-        f"One thing about that household should be said here rather than "
-        f"discovered in Section {SHORT_ORDER.index('leisure') + 1}. It "
-        f"contributes enough, for long enough, that it arrives at "
-        f"retirement well past the point where the assets test stops "
-        f"paying: {float(legis['share_above_cutoff']):.0%} of simulated "
-        f"households are over the cut-off before the test is applied, and "
-        f"the pension replaces "
-        f"{float(legis['benefit_replacement']):.1%} of career income "
-        f"against the American schedule's "
-        f"{float(legis['us_benefit_replacement']):.0%}. "
-        f"So the headline comparison is not mainly a comparison of two "
-        f"means-test designs. It is a comparison between a household "
+        f"<b>Two households appear below and it is worth separating them "
+        f"here rather than leaving a reader to notice.</b> The first "
+        f"saves this paper's own {saving:.0%} of income and is the "
+        f"household every comparative statement is made on, because "
+        f"holding the contribution rate still is what lets a difference "
+        f"be attributed to the pension. The second adds Australia's "
+        f"compulsory Superannuation Guarantee on top, for a total of "
+        f"{total:.1%}, and is the household an Australian actually is. "
+        f"They are the same worker with two savings rates, and they arrive "
+        f"at retirement in different places: "
+        f"{float(sched['median_wealth_multiple']):.1f} times average "
+        f"earnings against {float(legis['median_wealth_multiple']):.1f}, "
+        f"with {float(sched['share_above_cutoff']):.0%} and "
+        f"{float(legis['share_above_cutoff']):.0%} of them respectively "
+        f"past the point where the assets test stops paying."))
+    out.append(ctx.p(
+        f"That distance matters for the mechanism and it is the reason to "
+        f"lead with the first. Even the {saving:.0%} saver is mostly past "
+        f"the cut-off before the test is applied — the pension "
+        f"replaces {float(sched['benefit_replacement']):.1%} of their "
+        f"career income against the American schedule's "
+        f"{float(sched['us_benefit_replacement']):.0%}, and "
+        f"{float(legis['benefit_replacement']):.1%} of the Australian's "
+        f"— so neither headline is mainly a comparison of two "
+        f"means-test designs. Both are comparisons between a household "
         f"that receives an unconditional pension and the same household "
         f"receiving almost none, which is exactly the intervention the "
         f"mechanism section says should matter and the one the taper "
         f"reading says should not. The households a means test actually "
-        f"binds are a different population, and Section "
+        f"binds are a third population, and Section "
         f"{SHORT_ORDER.index('incidence') + 1} reaches them by scaling "
-        f"the balance rather than by pretending this one is among them."))
+        f"the balance rather than by pretending either of these is among "
+        f"them."))
     out.append(ctx.h2("#introduction.1 What we find"))
     matched = _matched(f, baseline_rule)
     mt_iv = (_interval_for(f, matched["systems"]["means_tested/voluntary"],
                            baseline_rule)
              if matched.get("measured") else {"measured": False})
     if matched.get("measured") and mt_iv.get("measured"):
+        split_mt = _split_found(
+            f, baseline_rule, matched["systems"]["means_tested/voluntary"])
         out.append(ctx.p(
-            f"<b>The ordering reverses under an asset-tested pension.</b> "
-            f"The all-equity portfolio's lead over the target-date fund, "
-            f"{matched['cells']['earnings_related/voluntary']:+.2f}% under "
-            f"the American schedule, becomes "
-            f"{matched['cells']['means_tested/voluntary']:+.2f}% when that "
-            f"schedule is replaced by a means-tested one paid to the same "
-            f"household on the same contributions, and the de-risking glide "
-            f"path takes first place. Nothing about the return panel "
-            f"changes between those two runs; the objective function does. "
-            f"That sign is one the cross-section resolves: the delete-one "
-            f"interval is [{mt_iv['ci'][0]:+.2f}, {mt_iv['ci'][1]:+.2f}] "
-            f"and the ordering is the same in all sixteen sub-panels."))
+            f"<b>The ordering reverses when a pension is means-tested, and "
+            f"the cleanest form of that is a pair of runs differing in "
+            f"nothing else.</b> Pay this household the Age Pension's own "
+            f"flat rate with no test attached and the all-equity portfolio "
+            f"leads the target-date fund by {flat_gap:+.2f}%; apply the "
+            f"test to that identical benefit and the lead becomes "
+            f"{matched['cells']['means_tested/voluntary']:+.2f}%, and the "
+            f"de-risking glide path takes first place. The rate, the "
+            f"contribution rate, the panel and the simulated lifetimes are "
+            f"the same in both; only the test is switched on. Against the "
+            f"American schedule instead the same household leads by "
+            f"{matched['cells']['earnings_related/voluntary']:+.2f}%, which "
+            f"is the anchor to the literature and bundles the level change "
+            f"with the test — worth "
+            f"{flat_gap - matched['cells']['earnings_related/voluntary']:+.2f} "
+            f"points, so nothing in what follows turns on which of the two "
+            f"references is used."))
+        out.append(ctx.p(
+            f"<b>That sign is one the cross-section resolves.</b> All "
+            f"{_spelled(int(split_mt['deletions']))} of the fifteen-country "
+            f"sub-panels put the target-date fund ahead, and the least "
+            f"negative of them is "
+            f"{split_mt['largest_flip_value']:+.2f}% — clear of zero "
+            f"rather than close to it. The delete-one interval, "
+            f"[{mt_iv['ci'][0]:+.2f}, {mt_iv['ci'][1]:+.2f}], agrees, and "
+            f"we lead with the count rather than the interval for a reason "
+            f"Section {SHORT_ORDER.index('ordering') + 1}.3 gives: this "
+            f"cell's deletions are skewed enough that the standard error "
+            f"built on them is the weaker of the two statistics."))
         out.append(ctx.p(
             f"<b>Australia's own combination is a different and smaller "
             f"number, because a second institution pushes back.</b> The "
@@ -467,9 +511,12 @@ def introduction(ctx: Any) -> List[Flowable]:
         "steep enough to qualify — a dollar of assessable assets costs 7.8% "
         "of pension a year, more than domestic equity earns on average in "
         "this panel. But that reading does not survive checking where the "
-        "household stands: it is past the cut-off before the test is "
-        "applied, so the taper reaches it only in the left tail, after a "
-        "portfolio has already fallen. What the means test removes is the "
+        f"household stands. {float(sched['share_above_cutoff']):.0%} of "
+        f"the matched households and "
+        f"{float(legis['share_above_cutoff']):.0%} of the Australian ones "
+        "are past the cut-off before the test is applied, so the taper "
+        "reaches either only in the left tail, after a portfolio has "
+        "already fallen. What the means test removes is the "
         "unconditional annuity itself. A retiree standing on a guaranteed "
         "floor can carry the equity tail; one standing on their portfolio "
         "alone cannot, and a risk-averse objective prices that difference "
@@ -515,10 +562,11 @@ def introduction(ctx: Any) -> List[Flowable]:
     out.append(ctx.p(
         f"<b>On a household the test actually binds, the portfolio is a "
         f"property of the withdrawal rule, not of the pension.</b> The "
-        f"household simulated here retires on "
+        f"two households above retire on "
+        f"{float(sched['median_wealth_multiple']):.1f} and "
         f"{float(legis['median_wealth_multiple']):.1f} times average "
-        f"earnings, so we scale the arriving balance until it sits inside "
-        f"the taper band and ask again. Spending a fixed real amount, it "
+        f"earnings, both far outside the taper band, so we scale the "
+        f"arriving balance until it sits inside and ask again. Spending a fixed real amount, it "
         f"wants no equity at any balance the test can reach; spending a "
         f"share of the current balance, it wants at least "
         f"{float(rule_arm['equity'].median()):.0%} equity at every one of "
@@ -1376,9 +1424,11 @@ def ordering(ctx: Any) -> List[Flowable]:
         f"tested — and one percentage-of-balance rule as the "
         f"representative of the rules that scale with the portfolio without "
         f"amortising. Running all "
-        f"{int(len(f.table('longevity_ranking')))} against three pension "
-        f"systems, five portfolios and sixteen deletions would cost a great "
-        f"deal to populate rows nothing in the argument reads. The "
+        f"{int(len(f.table('longevity_ranking')))} against "
+        f"{_spelled(len(order))} pension regimes, "
+        f"{_spelled(len(set(swept_all['strategy'])))} portfolios and "
+        f"sixteen deletions would cost a great deal to populate rows "
+        f"nothing in the argument reads. The "
         f"percentage rule is run at "
         f"{float(f.cfg['ordering']['percent_rate']):.0%} rather than at the "
         f"{float(_best_percent_rate(f)):.0%} Section "
@@ -1486,15 +1536,17 @@ def ordering(ctx: Any) -> List[Flowable]:
     out.append(ctx.h2("#ordering.2 The reversal lives in the worst cell of "
                       "the table"))
     out.append(ctx.p(
-        f"One column of the table deserves to be read against the rest, "
-        f"because it carries the paper's headline and it is the only "
-        f"negative entry in {int(len(gapped))} cells. The reversal appears "
-        f"under {int((au['gap_pct'] < 0).sum())} of the {len(au)} rules, and "
-        f"the rule is the fixed real withdrawal — the 4% rule, and the one "
-        f"the lifecycle literature and this paper's earlier sections all "
-        f"spend by. Section {SHORT_ORDER.index('longevity') + 1} has "
-        f"already found that rule is not the one a retiree should use. This "
-        f"table says what it costs the household that does."))
+        f"One row of the table deserves to be read against the rest. "
+        f"{_spelled(int((gapped['gap_pct'] < 0).sum())).capitalize()} of "
+        f"the {int(len(gapped))} cells are negative, both of them "
+        f"means-tested and both of them in the same row: the fixed real "
+        f"withdrawal — the 4% rule, and the one the lifecycle "
+        f"literature and this paper's earlier sections all spend by. Every "
+        f"other rule in the menu leaves the all-equity portfolio ahead "
+        f"under every pension in the grid. Section "
+        f"{SHORT_ORDER.index('longevity') + 1} has already found that rule "
+        f"is not the one a retiree should use. This table says what it "
+        f"costs the household that does."))
     lived = "prob_ruin_survival" in au_eq
     rows = [["Withdrawal rule", "CEC", "Ruin, fixed horizon"]
             + (["Ruin, real lifespan"] if lived else [])]
@@ -1582,86 +1634,13 @@ def ordering(ctx: Any) -> List[Flowable]:
                 "yes" if bool(row["sign_survives_every_deletion"]) else "no"])
         out += ctx.table(
             rows,
-            "Delete-one-country intervals on the all-equity lead, for the "
-            "two systems the headline compares.",
+            "Delete-one-country intervals on the all-equity lead, for "
+            "every system a headline is drawn from.",
             note="The jackknife standard error over sixteen sub-panels, "
                  "each holding fifteen markets. An interval containing zero "
                  "is a cell in which this panel cannot say which portfolio "
                  "wins.")
-        hit = band[(band["system"] == "australia_as_legislated")
-                   & (band["rule"] == baseline_rule)]
-        if len(hit):
-            row = hit.iloc[0]
-            resolved = bool(row["ci_excludes_zero"])
-            out.append(ctx.p(
-                f"<b>The reversal is "
-                f"{'a sign this panel can resolve' if resolved else 'not a sign this panel can resolve'}.</b> "
-                f"The contested cell is {float(row['gap_pct']):+.2f}% with a "
-                f"delete-one standard error of "
-                f"{float(row['standard_error']):.2f}, so the interval is "
-                f"[{float(row['ci_low']):+.2f}, "
-                f"{float(row['ci_high']):+.2f}]"
-                f"{', which excludes zero' if resolved else ', which contains zero'}. "
-                f"Across the sixteen sub-panels the cell runs "
-                f"[{float(row['loo_low']):+.2f}, "
-                f"{float(row['loo_high']):+.2f}], and the sign "
-                f"{'holds in every one' if bool(row['sign_survives_every_deletion']) else 'does not hold in all of them'}."))
-            if not resolved:
-                out.append(ctx.p(
-                    "We therefore state the reversal as what it is: a "
-                    "point estimate this cross-section is too small to "
-                    "separate from zero."))
-    if _has(f, "ordering_pseudo"):
-        pseudo = f.table("ordering_pseudo")
-        seat = pseudo[(pseudo["system"] == "australia_as_legislated")
-                      & (pseudo["rule"] == baseline_rule)]
-        if len(seat):
-            row = seat.iloc[0]
-            rest = pseudo.drop(seat.index)
-            out.append(ctx.p(
-                f"<b>The interval understates the problem, and the "
-                f"deletions say why.</b> A jackknife standard error is "
-                f"built on the sixteen sub-panel estimates and assumes "
-                f"the statistic is close to linear in the country being "
-                f"removed \u2014 that the deletions scatter around the "
-                f"full-sample number, roughly half above and half below. "
-                f"In the contested cell they do not. Only "
-                f"{int(row['below_point'])} of "
-                f"{int(row['deletions'])} fall below "
-                f"{float(row['point']):+.2f}%, and the mean deletion is "
-                f"{float(row['loo_mean']):+.2f}% \u2014 the average "
-                f"fifteen-country panel does not reverse the ordering at "
-                f"all. The implied jackknife bias is "
-                f"{float(row['bias_estimate']):+.1f} percentage points, "
-                f"{float(row['bias_over_point']):.0f} times the estimate "
-                f"it is a bias in."))
-            if len(rest):
-                lo = int(rest["below_point"].min())
-                hi = int(rest["below_point"].max())
-                worst = float(rest["bias_estimate"].abs().max())
-                out.append(ctx.p(
-                    f"That is a statement about this cell and not about "
-                    f"jackknives. Every other cell in the table splits "
-                    f"{lo}-to-{hi} around its own point estimate and none "
-                    f"carries an implied bias beyond {worst:.1f} points \u2014 "
-                    f"the same machinery, the same panel, the same "
-                    f"sixteen deletions, well behaved everywhere the sign "
-                    f"is not in dispute."))
-            # What the skew does *not* license. A draft read the count
-            # above as a count of sub-panels that reverse, and reported
-            # that essentially none of them do. Half of them do, and the
-            # two counts answer different questions -- one about the point
-            # estimate, one about zero. So the second is measured too.
-            out += _sign_split(ctx, f, baseline_rule)
-            out.append(ctx.p(
-                "It also settles what weight the interval can carry. The "
-                "standard error rests on pseudo-values behaving, and here "
-                "they do not, so of the three things this section reports "
-                "about the contested cell \u2014 the interval, the span "
-                "across deletions, and the count of deletions that keep "
-                "the sign \u2014 the interval is the weakest and the "
-                "count is the strongest. We report all three rather than "
-                "the flattering one."))
+    out += _both_reversals(ctx, f, baseline_rule)
     out.append(ctx.h2("#ordering.4 The interval on the difference, which "
                       "is the claim"))
     out.append(ctx.p(
@@ -1672,26 +1651,82 @@ def ordering(ctx: Any) -> List[Flowable]:
         "between cells, so the differences are paired and get a jackknife "
         "of their own rather than one assembled out of two marginal "
         "standard errors."))
+    systems_here = ([str(x) for x in dict.fromkeys(diffs["system"])]
+                    if diffs is not None and "system" in diffs else [])
     if diffs is not None and len(diffs):
-        rows = [["Rule, against the fixed real rule", "Difference (pp)",
-                 "Jackknife s.e.", "95% interval", "Cell correlation"]]
-        for _, row in diffs.iterrows():
-            rows.append([
-                rule_label(str(row["rule"])),
-                f"{float(row['difference_pp']):+.1f}",
-                f"{float(row['standard_error']):.1f}",
-                f"[{float(row['ci_low']):+.1f}, "
-                f"{float(row['ci_high']):+.1f}]",
-                f"{float(row['correlation']):.2f}"])
+        header = ["Rule, against the fixed real rule"]
+        for system in systems_here:
+            header += [f"{label.get(system, system)}: difference (pp)",
+                       "95% interval"]
+        if not systems_here:
+            header = ["Rule, against the fixed real rule", "Difference (pp)",
+                      "Jackknife s.e.", "95% interval", "Cell correlation"]
+        rows = [header]
+        keys = list(dict.fromkeys(diffs["rule"]))
+        for key in keys:
+            cells = [rule_label(str(key))]
+            if systems_here:
+                for system in systems_here:
+                    hit = diffs[(diffs["system"] == system)
+                                & (diffs["rule"] == key)]
+                    if len(hit):
+                        r = hit.iloc[0]
+                        cells += [f"{float(r['difference_pp']):+.1f}",
+                                  f"[{float(r['ci_low']):+.1f}, "
+                                  f"{float(r['ci_high']):+.1f}]"]
+                    else:
+                        cells += ["\u2014", "\u2014"]
+            else:
+                r = diffs[diffs["rule"] == key].iloc[0]
+                cells += [f"{float(r['difference_pp']):+.1f}",
+                          f"{float(r['standard_error']):.1f}",
+                          f"[{float(r['ci_low']):+.1f}, "
+                          f"{float(r['ci_high']):+.1f}]",
+                          f"{float(r['correlation']):.2f}"]
+            rows.append(cells)
         out += ctx.table(
             rows,
             "Delete-one-country intervals on the difference between each "
-            "withdrawal rule and the fixed real rule, in the Australian "
-            "system.",
-            note="Paired across the sixteen sub-panels. The correlation "
-                 "column says how much the pairing helps: near zero the "
-                 "difference is no better resolved than the levels it is "
-                 "built from.")
+            "withdrawal rule and the fixed real rule, under every pension "
+            "the jackknife covers.",
+            anchor="rule_differences",
+            note="Paired across the sixteen sub-panels, so the pairing can "
+                 "cancel whatever the deletions do to both cells at once. "
+                 "How much it helps is a property of the cells: where the "
+                 "level is badly resolved the difference built on it "
+                 "inherits some of that.",
+            font_size=7.0)
+        # Named rather than ranked. A draft picked the systems by which
+        # had the smallest median standard error and then labelled them
+        # "matched" and "legislated", which put the American column's
+        # numbers under both names.
+        matched_here = _matched(f, baseline_rule)
+        pair = ((matched_here["systems"]["means_tested/voluntary"],
+                 "australia_as_legislated")
+                if matched_here.get("measured") else ())
+        if len(pair) == 2 and all(x in systems_here for x in pair):
+            def _stat(system: str) -> Tuple[float, int, int]:
+                block = diffs[diffs["system"] == system]
+                return (float(block["standard_error"].median()),
+                        int(block["ci_excludes_zero"].sum()), len(block))
+
+            mt_se, mt_n, mt_of = _stat(pair[0])
+            au_se, au_n, au_of = _stat(pair[1])
+            out.append(ctx.p(
+                f"<b>The rule effect is resolved under both means-tested "
+                f"regimes, and far more tightly at matched "
+                f"contributions.</b> There the standard errors run about "
+                f"{mt_se:.1f} points and {mt_n} of {mt_of} differences "
+                f"exclude zero; as legislated they run about {au_se:.1f} "
+                f"and {au_n} of {au_of} do. The gap between those two "
+                f"columns is not a fact about withdrawal rules — the "
+                f"point estimates in them differ by only a few points. It "
+                f"is the badly behaved cell of Section "
+                f"{SHORT_ORDER.index('ordering') + 1}.3 propagating into "
+                f"every difference built against it, which is what one "
+                f"should expect and is the reason to print both."))
+        diffs = (diffs[diffs["system"] == "australia_as_legislated"]
+                 if systems_here else diffs)
         widest = diffs.loc[diffs["difference_pp"].abs().idxmax()]
         resolved_n = int(diffs["ci_excludes_zero"].sum())
         out.append(ctx.p(
@@ -1709,9 +1744,10 @@ def ordering(ctx: Any) -> List[Flowable]:
             f"reason to compute a difference interval at all is that it "
             f"<i>can</i> be far tighter, and here it is not."))
         out.append(ctx.p(
-            f"So the rule effect is resolved and the reversal is not, but "
-            f"by a narrower margin than the point estimates suggest. The "
-            f"honest summary is that sixteen countries can separate a "
+            f"So the rule effect is resolved under both pensions, the "
+            f"reversal is resolved at matched contributions, and what "
+            f"remains unresolved is the legislated cell alone. The honest "
+            f"summary is that sixteen countries can separate a "
             f"{abs(float(widest['difference_pp'])):.0f}-point effect from "
             f"zero and cannot separate a two-point one \u2014 which is what "
             f"one would expect, and is worth having established rather than "
@@ -1928,20 +1964,46 @@ def limitations(ctx: Any) -> List[Flowable]:
             f"{'holds throughout' if bool(contested['sign_survives_every_deletion']) else 'does not survive every deletion'}.")
     if resolved is not None and len(resolved):
         line += (
-            f" The other cells are not like that: "
-            f"{len(resolved)} of {len(band)} have intervals excluding "
-            f"zero. So the cross-section is small enough to leave one "
-            f"sign undetermined and large enough to settle the rest, and "
-            f"the two should not be reported in the same voice.")
+            f" The rest of the table is not like that: "
+            f"{len(resolved)} of {len(band)} cells have intervals "
+            f"excluding zero, the matched reversal among them. So the "
+            f"cross-section is small enough to leave one sign undetermined "
+            f"and large enough to settle every other, and the two should "
+            f"not be reported in the same voice.")
     if seat is not None:
         line += (
-            f" And the interval is the weaker half of that. Only "
+            f" And the interval is the weaker half of that, in <i>both</i> "
+            f"the cells where the ordering reverses. Only "
             f"{int(seat['below_point'])} of {int(seat['deletions'])} "
-            f"deletions fall below the contested estimate and the mean "
-            f"deletion is {float(seat['loo_mean']):+.2f}%, so the estimate "
-            f"is not a typical member of its own sub-panels and the "
-            f"standard error built on them carries less than it looks like "
-            f"it does.")
+            f"deletions fall below the legislated estimate, the mean "
+            f"deletion is {float(seat['loo_mean']):+.2f}%, and the matched "
+            f"cell is skewed the same way")
+        _mt_ps = None
+        if _has(f, "ordering_pseudo") and _matched_here.get("measured"):
+            _p = f.table("ordering_pseudo")
+            _hit = _p[(_p["system"]
+                       == _matched_here["systems"]["means_tested/voluntary"])
+                      & (_p["rule"]
+                         == str(f.cfg["lifecycle"]["retirement"]["rule"]))]
+            _mt_ps = _hit.iloc[0] if len(_hit) else None
+        if _mt_ps is not None:
+            line += (
+                f" — {int(_mt_ps['below_point'])} of "
+                f"{int(_mt_ps['deletions'])}, an implied bias of "
+                f"{float(_mt_ps['bias_estimate']):+.1f} points against the "
+                f"legislated cell's {float(seat['bias_estimate']):+.1f}. "
+                f"So neither estimate is a typical member of its own "
+                f"sub-panels and neither standard error carries what it "
+                f"looks like it carries. What separates the two cells is "
+                f"not the interval but the count of deletions that keep "
+                f"the sign, which assumes nothing about how they scatter: "
+                f"sixteen of sixteen at matched contributions, eight as "
+                f"legislated.")
+        else:
+            line += (
+                ", so the estimate is not a typical member of its own "
+                "sub-panels and the standard error built on them carries "
+                "less than it looks like it does.")
     split = (_split_found(f, str(f.cfg["lifecycle"]["retirement"]["rule"]))
              if _has(f, "ordering_influence") else {"measured": False})
     if split.get("measured"):
@@ -2140,14 +2202,26 @@ def conclusion(ctx: Any) -> List[Flowable]:
     if gamma_walk:
         out.append(ctx.p(
             f"A second check points the same way from a different "
+            f"direction, and it reaches the resolved cell as well as the "
+            f"unresolved one. Re-scoring the identical simulated lifetimes "
+            f"at risk aversions of {gamma_list}, the matched means-tested "
+            f"cell runs "
+            f"{_gamma_walk(f, baseline_rule, matched['systems']['means_tested/voluntary'])[1] or gamma_walk} "
+            f"and the legislated one {gamma_walk} — neither is negative at "
+            f"the lowest of the three — while every other withdrawal rule "
+            f"in the menu stays positive throughout. The reversal "
+            f"therefore needs three things at once: an asset-tested "
+            f"pension, a fixed real withdrawal, and a household "
+            f"risk-averse enough to pay for the floor. Its absence needs "
+            f"only one of the three to fail, and that is as true of the "
+            f"cell the panel signs as of the cell it cannot."
+            if matched.get("measured") else
+            f"A second check points the same way from a different "
             f"direction. Re-scoring the identical simulated lifetimes at "
             f"risk aversions of {gamma_list}, the contested cell runs "
             f"{gamma_walk} — it is not negative at the lowest one — while "
             f"every other withdrawal rule in the menu stays positive "
-            f"throughout. The reversal therefore needs three things at "
-            f"once: an asset-tested pension, a fixed real withdrawal, and "
-            f"a household risk-averse enough to pay for the floor. Its "
-            f"absence needs only one of the three to fail."))
+            f"throughout."))
     out.append(ctx.p(
         f"That last sentence is the one we would put first. The reversal "
         f"holds in {int((au_rows['gap_pct'] < 0).sum())} of the "
@@ -2700,6 +2774,132 @@ def _split_found(f: Any, rule: str,
     from src import ordering as odr
     return odr.sign_split(f.table("ordering_influence"),
                           f.table("ordering_gaps"), rule, system)
+
+
+def _both_reversals(ctx: Any, f: Any, rule: str) -> List[Flowable]:
+    """The two negative cells given the same three statistics apiece.
+
+    A draft of this section reported the jackknife diagnostics for the
+    legislated cell alone, because on a three-system grid nothing else was
+    negative. Holding the contribution rate still produced a second
+    reversal, and it is the one the paper now leads with -- so applying
+    the scepticism to the old cell and not the new one would be choosing
+    where to be careful.
+
+    The three statistics are not interchangeable and the section says
+    which it trusts. An *interval* assumes the deletions scatter around
+    the point estimate; a *bias diagnostic* says whether they do; a
+    *count of deletions that keep the sign* assumes nothing at all. Where
+    the second says the first is unreliable, the third is what a claim
+    about a sign should rest on.
+    """
+    if not (_has(f, "ordering_intervals") and _has(f, "ordering_pseudo")):
+        return []
+    band, pseudo = f.table("ordering_intervals"), f.table("ordering_pseudo")
+    matched = _matched(f, rule)
+    order = []
+    if matched.get("measured"):
+        order.append((matched["systems"]["means_tested/voluntary"],
+                      "means-tested at matched contributions"))
+    order.append(("australia_as_legislated", "the system as legislated"))
+
+    rows = [["Cell", "Lead (%)", "95% interval",
+             "Deletions below the point", "Implied bias (pp)",
+             "Deletions keeping the sign"]]
+    seen: List[Dict[str, Any]] = []
+    for system, name in order:
+        iv = band[(band["system"] == system) & (band["rule"] == rule)]
+        ps = pseudo[(pseudo["system"] == system) & (pseudo["rule"] == rule)]
+        split = _split_found(f, rule, system)
+        if not (len(iv) and len(ps) and split.get("measured")):
+            continue
+        a, b = iv.iloc[0], ps.iloc[0]
+        seen.append({"name": name, "iv": a, "ps": b, "split": split})
+        rows.append([
+            name.capitalize(),
+            f"{float(a['gap_pct']):+.2f}",
+            f"[{float(a['ci_low']):+.2f}, {float(a['ci_high']):+.2f}]",
+            f"{int(b['below_point'])} of {int(b['deletions'])}",
+            f"{float(b['bias_estimate']):+.1f}",
+            f"{int(split['sign_holds'])} of {int(split['deletions'])}"])
+    if len(seen) < 2:
+        return []
+
+    out: List[Flowable] = list(ctx.table(
+        rows,
+        "The two cells in which the ordering reverses, on the three "
+        "statistics the sixteen deletions support.",
+        anchor="both_reversals",
+        note="The interval assumes the deletions scatter around the point "
+             "estimate. The implied bias, (n−1) times the gap between "
+             "the mean deletion and the point, says whether they do. The "
+             "count against zero assumes neither."))
+
+    first, second = seen[0], seen[1]
+    out.append(ctx.p(
+        f"<b>The two reversals are not equally well established, and the "
+        f"statistic that separates them is the last column.</b> At matched "
+        f"contributions every one of the sixteen fifteen-country panels "
+        f"puts the target-date fund ahead, and the least negative of them "
+        f"is {_split_found(f, rule, order[0][0])['largest_flip_value']:+.2f}% "
+        f"— clear of zero rather than close to it. As legislated the "
+        f"sub-panels divide "
+        f"{int(second['split']['sign_holds'])}–"
+        f"{int(second['split']['sign_flips'])}, which is no evidence about "
+        f"a sign at all."))
+
+    out.append(ctx.p(
+        f"<b>The middle two columns are the reason to lead with the last "
+        f"one rather than with the interval.</b> A jackknife standard "
+        f"error assumes the deletions sit around the point estimate, "
+        f"roughly half above and half below. In neither of these cells do "
+        f"they: {int(first['ps']['below_point'])} of "
+        f"{int(first['ps']['deletions'])} fall below the matched estimate "
+        f"and {int(second['ps']['below_point'])} of "
+        f"{int(second['ps']['deletions'])} below the legislated one, "
+        f"against seven of sixteen in almost every other cell of the "
+        f"table. The implied biases are "
+        f"{float(first['ps']['bias_estimate']):+.1f} and "
+        f"{float(second['ps']['bias_estimate']):+.1f} points. So the "
+        f"intervals we print for these two cells are the weakest of the "
+        f"three statistics, in both, and we print them because withholding "
+        f"an unflattering number is worse than qualifying it."))
+
+    out.append(ctx.p(
+        f"That leaves the two cells in genuinely different positions, and "
+        f"the difference is not one of degree. The matched cell's claim "
+        f"survives its own diagnostic, because the diagnostic bears on the "
+        f"interval and the claim rests on the count — sixteen of "
+        f"sixteen sub-panels, none of them near zero. The legislated "
+        f"cell's claim has nothing left once the interval is discounted: "
+        f"eight of sixteen, an implied bias "
+        f"{abs(float(second['ps']['bias_estimate'])) / max(abs(float(first['ps']['bias_estimate'])), 1e-9):.1f} "
+        f"times the matched cell's, and a mean deletion of "
+        f"{float(second['ps']['loo_mean']):+.2f}% that does not reverse "
+        f"the ordering at all. We report the first as a finding and the "
+        f"second as a number we cannot sign."))
+
+    rest = pseudo[~((pseudo["rule"] == rule)
+                    & pseudo["system"].isin([o[0] for o in order]))]
+    if len(rest):
+        out.append(ctx.p(
+            f"None of this is a property of jackknives. Across the "
+            f"{len(rest)} cells in which the ordering does not reverse, "
+            f"the deletions split "
+            f"{int(rest['below_point'].min())}-to-"
+            f"{int(rest['below_point'].max())} around their own point "
+            f"estimates and no implied bias exceeds "
+            f"{float(rest['bias_estimate'].abs().max()):.1f} points — "
+            f"the same machinery, the same panel, the same sixteen "
+            f"deletions, well behaved wherever the sign is not close to "
+            f"zero. It is the two cells nearest a sign change that the "
+            f"diagnostic fires on, which is where a jackknife is most "
+            f"likely to be nonlinear and least likely to be trusted."))
+
+    # And which countries carry the legislated cell, which is the more
+    # useful thing sixteen deletions can say about a sign they cannot fix.
+    out += _sign_split(ctx, f, rule)
+    return out
 
 
 def _sign_split(ctx: Any, f: Any, rule: str,

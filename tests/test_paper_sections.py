@@ -929,10 +929,24 @@ class TestTheJackknifeDiagnosticIsCarried:
 
     def test_it_says_the_other_cells_are_well_behaved(self) -> None:
         """The claim is comparative. Without the contrast the diagnostic
-        reads as a caveat about jackknives rather than about this cell."""
+        reads as a caveat about jackknives rather than about these cells.
+
+        The wording is not pinned -- an earlier version of this test froze
+        a sentence and failed when the section was rewritten to cover two
+        reversals rather than one. What has to survive is the contrast
+        itself: the section must read the cells that do *not* reverse and
+        report how they behave.
+        """
         source = re.sub(r'"\s*\n\s*(f?)"', "",
                         (PAPER / "short.py").read_text())
-        assert "Every other cell in the table splits" in source
+        body = source[source.index("def _both_reversals("):
+                      source.index("def _sign_split(")]
+        assert "does not reverse" in body, (
+            "the diagnostic no longer contrasts the reversing cells with "
+            "the rest of the table")
+        assert "below_point" in body and "bias_estimate" in body
+        # And on the same two statistics, not a different pair.
+        assert body.count("bias_estimate") >= 2
 
     def test_the_verdict_names_the_contested_cell(self) -> None:
         """`bias_verdict` is only meaningful on the cell whose sign is in
@@ -1445,3 +1459,133 @@ class TestTheRuinConventionIsDeclaredWhereItIsUsed:
         assert "One caveat on the measure, not the comparison" in text
         # And the forward pointer resolved to a number, not to the token.
         assert "#longevity" not in text
+
+
+class TestTheTwoReversalsAreTreatedAlike:
+    """Holding the contribution rate still added a second negative cell,
+    and it is the one the paper now leads with. Several passages went on
+    describing a single contested cell, and one of them said the reversal
+    could not be separated from zero eight pages after the paper had
+    separated it. These check the asymmetry has not come back."""
+
+    @staticmethod
+    def _gaps():
+        import pandas as pd
+
+        path = (PAPER.parent / "results" / "tables" / "ordering_gaps.csv")
+        if not path.exists():
+            pytest.skip("the ordering study has not been run")
+        return pd.read_csv(path)
+
+    def test_the_grid_still_has_two_reversals(self) -> None:
+        """The premise. If a rerun leaves one, the prose below is wrong in
+        the other direction and this is where that surfaces."""
+        gaps = self._gaps()
+        assert int((gaps["gap_pct"] < 0).sum()) == 2, (
+            "the number of negative cells has changed; every sentence "
+            "counting them is now suspect")
+
+    def test_the_negative_count_is_counted_and_not_typed(self) -> None:
+        """A draft said 'the only negative entry in 40 cells' while two
+        cells were negative: the 40 was generated and the 'only' was not."""
+        source = (PAPER / "short.py").read_text()
+        assert "only negative entry" not in source
+        assert "gap_pct'] < 0).sum()" in source.replace('"', "'"), (
+            "the count of negative cells is typed rather than counted")
+
+    def test_both_reversals_get_the_same_three_statistics(self) -> None:
+        source = (PAPER / "short.py").read_text()
+        body = source[source.index("def _both_reversals("):
+                      source.index("def _sign_split(")]
+        for field in ("ci_low", "below_point", "bias_estimate",
+                      "sign_holds"):
+            assert field in body, field
+        # Both systems, not one.
+        assert "means_tested/voluntary" in body
+        assert "australia_as_legislated" in body
+
+    def test_the_diagnostic_is_not_applied_to_one_cell_only(self) -> None:
+        """The substantive point: the bias diagnostic fires on the matched
+        cell too, and a section that reported it for the legislated cell
+        alone would be choosing where to be sceptical."""
+        import pandas as pd
+
+        path = (PAPER.parent / "results" / "tables" / "ordering_pseudo.csv")
+        if not path.exists():
+            pytest.skip("the ordering study has not been run")
+        pseudo = pd.read_csv(path)
+        rule = "fixed_real_rule"
+        cells = pseudo[(pseudo["rule"] == rule)
+                       & pseudo["system"].isin(["age_pension_matched",
+                                                "australia_as_legislated"])]
+        assert len(cells) == 2
+        # Both are skewed, which is why both must be reported.
+        assert (cells["below_point"] < 6).all(), (
+            "the matched cell's pseudo-values are now well behaved; the "
+            "paper's even-handedness paragraph needs rechecking")
+
+    def test_no_passage_calls_the_reversal_unresolvable_outright(self) -> None:
+        """Three did, after Section 10.1 had resolved it at matched
+        contributions. Each now has to name which cell it means."""
+        source = (PAPER / "short.py").read_text()
+        for dead in ("state the reversal as what it is",
+                     "the rule effect is resolved and the reversal is not"):
+            assert dead not in source, dead
+
+    def test_the_built_paper_signs_the_matched_cell(self) -> None:
+        pdf = PAPER / "floor_beneath_the_portfolio.pdf"
+        reader = pytest.importorskip("pypdf")
+        if not pdf.exists():
+            pytest.skip("the short paper has not been built")
+        text = "\n".join(
+            page.extract_text() or ""
+            for page in reader.PdfReader(str(pdf)).pages)
+        assert "all sixteen" in text or "16 of 16" in text
+
+
+class TestTheTwoHouseholdsAreLabelled:
+    """The headline moved from the household that carries the
+    Superannuation Guarantee to the one that does not, and the framing
+    prose did not move with it -- so the introduction quoted a 32x balance
+    beside a headline computed on a 14x one."""
+
+    @staticmethod
+    def _bite():
+        import pandas as pd
+
+        path = (PAPER.parent / "results" / "tables"
+                / "leisure_means_test_bite.csv")
+        if not path.exists():
+            pytest.skip("the leisure study has not been run")
+        return pd.read_csv(path).set_index("household")
+
+    def test_the_two_households_are_genuinely_different(self) -> None:
+        """If they ever converge the labelling below is harmless noise;
+        while they differ by a factor of two it is not."""
+        bite = self._bite()
+        matched = float(bite.loc["pension schedule only",
+                                 "median_wealth_multiple"])
+        legislated = float(bite.loc["as legislated", "median_wealth_multiple"])
+        assert legislated / matched > 1.5
+
+    def test_the_introduction_reads_both_rows(self) -> None:
+        source = (PAPER / "short.py").read_text()
+        body = source[source.index("def introduction("):
+                      source.index("def model(")]
+        assert "pension schedule only" in body, (
+            "the introduction reads only the legislated household while "
+            "the headline is computed on the matched one")
+        assert "sched[" in body and "legis[" in body
+
+    def test_the_headline_household_is_the_one_the_headline_uses(self) -> None:
+        """The matched cell of the ordering grid and the 'pension schedule
+        only' row of the means-test table are the same household: 10%
+        saving, Australian pension. If the config ever renames one the
+        introduction's arithmetic silently describes someone else."""
+        import yaml
+
+        cfg = yaml.safe_load((PAPER.parent / "config.yaml").read_text())
+        factorial = cfg["ordering"]["factorial"]
+        assert factorial["means_tested"]["voluntary"] == "age_pension_matched"
+        assert factorial["earnings_related"]["voluntary"] == \
+            "us_social_security"

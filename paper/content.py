@@ -7420,7 +7420,7 @@ def _gate_correction(ctx: Any, f: Any, pension_age: int,
         f"where a feature is slack."))
     out.extend(ctx.table(
         [["Retires at", "Gate alone", "Means test alone", "Interaction",
-          "Can the gate bind?"]]
+          "Gate and means test separable?"]]
         + [[f"{int(r['retire_age'])}",
             f"{r['timing_effect']:+.4f}",
             f"{r['formula_effect']:+.4f}",
@@ -7431,10 +7431,15 @@ def _gate_correction(ctx: Any, f: Any, pension_age: int,
         "each arm's own best. Effects are against the baseline arm in "
         "certainty-equivalent consumption.",
         anchor="gate_held_still",
-        note=f"A household that has already reached {pension_age} is paid "
-             f"the same with an eligibility gate as without one, so the two "
-             f"gated arms reproduce the two ungated ones and the date can "
-             f"say nothing about the gate. Those rows are marked."))
+        note=f"The last column asks whether the joint arm can differ from "
+             f"the means-test arm at that date. Past {pension_age} it "
+             f"cannot: the household has reached the eligibility age, so a "
+             f"gate in front of it changes nothing and the two arms are "
+             f"one simulation. The gate-alone column is not zero on those "
+             f"rows, because that arm also drops the actuarial adjustment "
+             f"and so forgoes the bonus for claiming late \u2014 the "
+             f"residual is that bonus, and the sweep below isolates the "
+             f"same term at the other end of the grid."))
 
     lines: List[str] = []
     if "timing_where_it_bites" in found:
