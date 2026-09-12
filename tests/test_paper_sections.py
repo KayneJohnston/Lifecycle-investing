@@ -1589,3 +1589,40 @@ class TestTheTwoHouseholdsAreLabelled:
         assert factorial["means_tested"]["voluntary"] == "age_pension_matched"
         assert factorial["earnings_related"]["voluntary"] == \
             "us_social_security"
+
+
+class TestTheFigureAndTheTableNameTheArmsAlike:
+    """Section 10's table and its figure both label five pension regimes.
+    They did it with two vocabularies: the table said "United States, 20.2%
+    saving" and "Means-tested, 10% saving" where the figure said "United
+    States, matched saving" and "Age Pension, matched saving" -- the same
+    phrase for the two arms whose contribution rates are opposite."""
+
+    def test_every_ordering_arm_has_one_name(self) -> None:
+        import re
+
+        from src import plots
+
+        source = (PAPER / "short.py").read_text()
+        block = source[source.index('    label = {"us_social_security"'):]
+        block = block[:block.index("}")]
+        paper_names = dict(re.findall(r'"([a-z_]+)":\s*"([^"]+)"', block))
+        assert paper_names, "the ordering section's label map moved"
+        for key, name in paper_names.items():
+            assert plots.SYSTEM_LABEL.get(key) == name, (
+                f"{key} is '{name}' in the table and "
+                f"'{plots.SYSTEM_LABEL.get(key)}' in the figure")
+
+    def test_no_two_arms_share_a_name(self) -> None:
+        """The failure was not a mismatch but a collision: two different
+        contribution rates under one phrase."""
+        from src import plots
+
+        keys = ("us_social_security", "us_matched_saving",
+                "age_pension_untested", "age_pension_matched",
+                "australia_as_legislated")
+        names = [plots.SYSTEM_LABEL[k] for k in keys]
+        assert len(set(names)) == len(names), names
+        assert not any(n.count("matched saving") for n in names), (
+            "'matched' describes a relation between two arms, not a "
+            "contribution rate; naming an arm by it hides the rate")

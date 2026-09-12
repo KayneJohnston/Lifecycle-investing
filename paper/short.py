@@ -473,8 +473,9 @@ def introduction(ctx: Any) -> List[Flowable]:
     out.append(ctx.p(
         f"Two qualifications belong with those sentences rather than after "
         f"them. The reversal holds under "
-        f"{int((au_rows['gap_pct'] < 0).sum())} of the "
-        f"{int(len(au_rows))} withdrawal rules we run; under every other "
+        f"{_spelled(int((au_rows['gap_pct'] < 0).sum()))} of the "
+        f"{_spelled(int(len(au_rows)))} withdrawal rules we run; under "
+        f"every other "
         f"one the all-equity portfolio leads in Australia too. And the "
         f"legislated cell is the one this cross-section cannot "
         f"resolve: a delete-one-country jackknife over the sixteen markets "
@@ -1094,7 +1095,7 @@ def incidence(ctx: Any) -> List[Flowable]:
                 held = float(infl[cols[0]].iloc[0])
                 out.append(ctx.p(
                     f"<b>The answer is {held:.0%} equity in every one of "
-                    f"the {len(infl)} deletions.</b> Not close to "
+                    f"the {_spelled(len(infl))} deletions.</b> Not close to "
                     f"{held:.0%} — identical, to every digit the sweep "
                     f"resolves. A jackknife standard error would be "
                     f"exactly zero and the interval a point, which is "
@@ -1507,9 +1508,8 @@ def ordering(ctx: Any) -> List[Flowable]:
             f"fixed real rule. The family spans "
             f"{float(au['gap_pct'].drop(au['gap_pct'].idxmin()).min()):+.2f}% "
             f"to {float(au_best['gap_pct']):+.2f}%, so nothing here turns "
-            f"on which rate is picked. {len(winners)} of {len(au)} rules "
-            f"in the "
-            f"menu return the lead. A rule that supplies its own floor "
+            f"on which rate is picked. {_spelled(len(winners))} of "
+            f"{_spelled(len(au))} rules in the menu return the lead. A rule that supplies its own floor "
             f"restores the all-equity prescription, and that is a claim "
             f"about portfolios rather than an inference from one about "
             f"countries."))
@@ -2236,8 +2236,9 @@ def conclusion(ctx: Any) -> List[Flowable]:
             f"throughout."))
     out.append(ctx.p(
         f"That last sentence is the one we would put first. The reversal "
-        f"holds in {int((au_rows['gap_pct'] < 0).sum())} of the "
-        f"{int(len(au_rows))} withdrawal rules we run, and the rule it "
+        f"holds in {_spelled(int((au_rows['gap_pct'] < 0).sum()))} of the "
+        f"{_spelled(int(len(au_rows)))} withdrawal rules we run, and the "
+        f"rule it "
         f"holds under is the fixed real withdrawal — which costs the same "
         f"Australian household {100 * (1 - 1 / cec_ratio):.0f}% of its "
         f"certainty-equivalent consumption against the best rule in the "
