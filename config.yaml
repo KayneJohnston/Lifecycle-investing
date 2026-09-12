@@ -1171,6 +1171,11 @@ ordering:
   # Monte Carlo difference between two path counts into the interval, which
   # is precisely the error the jackknife is there to exclude.
   influence_n_paths: 50000
+  # The same gaps re-scored at other risk aversions. Nothing is
+  # re-simulated -- scoring an outcome again is free next to producing it --
+  # so each headline is now checked against both the panel and the
+  # preference specification rather than one each.
+  robust_gammas: [2.0, 10.0]
   assumed_return_grid: [0.00, 0.02, 0.04, 0.06, 0.08, 0.10]
 
 incidence:
@@ -1207,6 +1212,13 @@ incidence:
   # risk aversions and these consumption floors; nothing is re-simulated.
   robust_gammas: [2.0, 10.0]
   robust_floors: [0.01, 0.05]
+  # The other half of the defence. The corner is checked against five
+  # preference specifications above; this checks it against the panel, the
+  # way the ordering study checks its own headline. Restricted to the base
+  # arm and the balances the test can actually reach, because that is the
+  # only part of the grid the claim is about.
+  influence_enabled: true
+  influence_n_paths: 25000
 
 longevity:
   enabled: true

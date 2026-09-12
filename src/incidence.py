@@ -582,3 +582,75 @@ def robustness_verdict(table: pd.DataFrame, baseline: str = "cec",
     found["worst_equity"] = float(
         others["equity_where_the_test_binds"].iloc[worst])
     return found
+
+
+def influence(profile_for: Callable[[Sequence[str]], pd.DataFrame],
+              countries: Sequence[str], cutoff_column: str = "cutoff",
+              ) -> pd.DataFrame:
+    """The balance profile, recomputed once per country removed.
+
+    The corner this study reports -- no equity anywhere the assets test can
+    reach -- is defended against the preference specification by
+    :func:`robustness` and, until this, against nothing else. Sixteen
+    developed markets are not sixteen independent draws, so the delete-one
+    jackknife is the other half of the defence and the one the ordering
+    study already carries.
+    """
+    rows: List[Dict[str, Any]] = []
+    for dropped in countries:
+        kept = [c for c in countries if c != dropped]
+        LOGGER.info("leave-one-out: dropping %s (%d markets left)",
+                    dropped, len(kept))
+        block = profile_for(kept)
+        if not len(block):
+            continue
+        cut = float(block[cutoff_column].iloc[0])
+        bound = block[block["median_wealth"] <= cut]
+        rows.append({
+            "dropped": str(dropped), "n_markets": len(kept),
+            "equity_where_the_test_binds": float(bound["equity"].median())
+            if len(bound) else np.nan,
+            "equity_overall": float(block["equity"].median()),
+            "bound_scales": int(len(bound)),
+        })
+    return pd.DataFrame.from_records(rows)
+
+
+def influence_verdict(influence_frame: pd.DataFrame, point: float,
+                      column: str = "equity_where_the_test_binds",
+                      ) -> Dict[str, Any]:
+    """Whether the corner survives dropping any one country's history.
+
+    A corner at zero cannot have a symmetric interval -- the grid does not
+    go below it -- so the field that carries the claim is
+    ``identical_in_every_deletion``. Where the point estimate is off the
+    boundary the jackknife standard error is reported alongside it.
+    """
+    if not len(influence_frame) or column not in influence_frame:
+        return {"measured": False}
+    values = influence_frame[column].to_numpy(dtype=float)
+    values = values[np.isfinite(values)]
+    if not values.size:
+        return {"measured": False}
+    n = int(values.size)
+    mean = float(values.mean())
+    se = float(np.sqrt((n - 1) / n * float(((values - mean) ** 2).sum()))) \
+        if n > 1 else float("nan")
+    found: Dict[str, Any] = {
+        "measured": True,
+        "deletions": n,
+        "point": float(point),
+        "low": float(values.min()),
+        "high": float(values.max()),
+        "standard_error": se,
+        "identical_in_every_deletion": bool(
+            np.allclose(values, point, atol=1e-9)),
+        "at_the_floor": bool(np.isclose(point, 0.0, atol=1e-9)),
+    }
+    found["ci_low"] = float(point) - 1.96 * se
+    found["ci_high"] = float(point) + 1.96 * se
+    # Only meaningful off the boundary: an interval around a corner runs
+    # into a grid that stops there, and quoting one would invite the reader
+    # to imagine allocations the sweep never offered.
+    found["interval_is_meaningful"] = bool(not found["at_the_floor"])
+    return found

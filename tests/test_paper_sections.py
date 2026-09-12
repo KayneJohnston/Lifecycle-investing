@@ -905,3 +905,283 @@ class TestSubsectionRenumbering:
             trimmed = len(sh.TRIMMED.get(key, ()))
             assert len(set(moved.values())) == len(moved), key
             assert max(moved.values()) <= trimmed + len(moved), key
+
+
+class TestFloatNumbering:
+    """Figure and table numbers are issued by a counter on the context and
+    the short paper trims whole subsections *after* that counter has run, so
+    the numbering used to arrive with holes in it: Figure 1 then Figure 5,
+    Table 3 then Table 8 then Table 23. The renumbering pass closes them on
+    the assembled story, where what survived is known."""
+
+    @staticmethod
+    def _story(numbers):
+        """A story of caption heads at the given numbers, half of them
+        nested inside a ``KeepTogether`` the way the real builder nests them.
+        """
+        import build_paper as bp
+        from reportlab.platypus import KeepTogether
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import Paragraph
+
+        head = ParagraphStyle("caption_head")
+        out = []
+        for i, (kind, n) in enumerate(numbers):
+            caption = Paragraph(f"{kind} {n}. A caption", head)
+            out.append(KeepTogether([caption]) if i % 2 else caption)
+        return out, bp
+
+    def test_the_two_walkers_stay_distinct(self) -> None:
+        """`_walk` flattens the story for reading and `_slots` yields
+        mutable positions for rewriting. A second `def _walk` shadowed the
+        first, and the only symptom was the missing-glyph check quietly
+        matching nothing -- it filters for Paragraphs, and the generator
+        hands back tuples."""
+        import build_paper as bp
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import KeepTogether, Paragraph
+
+        inner = Paragraph("leaf", ParagraphStyle("body"))
+        story = [KeepTogether([inner])]
+        assert inner in bp._walk(story)
+        assert list(bp._slots(story)) == [(story, 0), ([inner], 0)]
+
+    def test_gaps_are_closed_in_document_order(self) -> None:
+        story, bp = self._story([("Figure", 1), ("Figure", 5), ("Figure", 6)])
+        mapping = bp.renumber_floats(story)
+        assert mapping["Figure"] == {1: 1, 5: 2, 6: 3}
+
+    def test_the_printed_captions_are_rewritten(self) -> None:
+        story, bp = self._story([("Table", 3), ("Table", 8), ("Table", 23)])
+        bp.renumber_floats(story)
+        printed = [fl.getPlainText() if hasattr(fl, "getPlainText")
+                   else fl._content[0].getPlainText() for fl in story]
+        assert [p.split(".")[0] for p in printed] == [
+            "Table 1", "Table 2", "Table 3"]
+
+    def test_figures_and_tables_are_counted_separately(self) -> None:
+        story, bp = self._story([("Figure", 2), ("Table", 7), ("Figure", 9)])
+        mapping = bp.renumber_floats(story)
+        assert mapping == {"Figure": {2: 1, 9: 2}, "Table": {7: 1}}
+
+    def test_a_document_with_nothing_trimmed_is_left_alone(self) -> None:
+        story, bp = self._story([("Figure", 1), ("Figure", 2)])
+        before = [id(fl) for fl in story]
+        bp.renumber_floats(story)
+        assert [id(fl) for fl in story] == before
+
+    def test_a_named_float_resolves_to_its_final_number(self) -> None:
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import Paragraph
+
+        story, bp = self._story([("Table", 3), ("Table", 8)])
+        story.append(Paragraph("see @table:fidelity for the check",
+                               ParagraphStyle("body")))
+        bp.renumber_floats(story, {"fidelity": ("Table", 8)})
+        assert story[-1].getPlainText() == "see Table 2 for the check"
+
+    def test_a_name_no_float_claims_stops_the_build(self) -> None:
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import Paragraph
+
+        story, bp = self._story([("Table", 3)])
+        story.append(Paragraph("see @table:missing", ParagraphStyle("body")))
+        with pytest.raises(SystemExit, match="does not print"):
+            bp.renumber_floats(story, {})
+
+    def test_a_name_on_a_trimmed_float_stops_the_build(self) -> None:
+        """The anchor was registered, but the float it named was trimmed out
+        of this paper -- so the reference has nothing to point at."""
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import Paragraph
+
+        story, bp = self._story([("Table", 3)])
+        story.append(Paragraph("see @table:gone", ParagraphStyle("body")))
+        with pytest.raises(SystemExit, match="does not print"):
+            bp.renumber_floats(story, {"gone": ("Table", 8)})
+
+    def test_two_floats_cannot_share_a_name(self) -> None:
+        import build_paper as bp
+
+        ctx = bp.Context.__new__(bp.Context)
+        ctx.float_anchors = {}
+        ctx._anchor("dup", "Table", 1)
+        with pytest.raises(SystemExit, match="claimed twice"):
+            ctx._anchor("dup", "Figure", 2)
+
+    def test_an_unnamed_float_registers_nothing(self) -> None:
+        import build_paper as bp
+
+        ctx = bp.Context.__new__(bp.Context)
+        ctx.float_anchors = {}
+        ctx._anchor("", "Table", 1)
+        assert ctx.float_anchors == {}
+
+
+class TestNoFloatIsCitedByANumber:
+    """A literal "Table 4" in the prose is a pointer nothing checks. One had
+    been pointing at the wrong table since the numbering last moved, in both
+    papers at once. Named anchors are checked; bare numbers are not, so the
+    prose is not allowed to contain them."""
+
+    #: The caption heads the builder writes are the legitimate occurrences,
+    #: and they are built from the counter rather than typed.
+    CITATION = re.compile(r'"[^"]*\b(?:Figure|Table) \d+\b')
+
+    def test_the_shared_sections_cite_no_float_by_number(self) -> None:
+        found = self.CITATION.findall(FLAT)
+        assert not found, found
+
+    def test_the_short_paper_cites_no_float_by_number(self) -> None:
+        source = (PAPER / "short.py").read_text()
+        flat = re.sub(r'"\s*\n\s*(f?)"', "", source)
+        found = self.CITATION.findall(flat)
+        assert not found, found
+
+    def test_every_anchor_the_prose_names_is_registered_somewhere(self
+                                                                  ) -> None:
+        """The reference and the ``anchor=`` that satisfies it are written in
+        two different places, and a build only catches the mismatch for the
+        paper it builds."""
+        import build_paper as bp
+
+        source = _RAW + (PAPER / "short.py").read_text()
+        named = {m.group(2)
+                 for m in bp._FLOAT_ANCHOR_REFERENCE.finditer(source)}
+        declared = set(re.findall(r'anchor="([a-z0-9_]+)"', source))
+        assert named <= declared, sorted(named - declared)
+
+
+class TestRuleLabels:
+    """Withdrawal rules reach the results tables under the key the pipeline
+    runs them by, and three of them are Python identifiers. They were
+    printing as identifiers in table columns, in a parameter appendix and
+    once in the middle of a sentence, in both papers."""
+
+    def test_the_baseline_rule_is_written_for_a_reader(self) -> None:
+        assert content.rule_label("fixed_real_rule") == "fixed real"
+
+    def test_a_rate_survives_the_relabelling(self) -> None:
+        assert content.rule_label("constant_percent at 4%") == \
+            "percentage of balance at 4%"
+
+    def test_a_label_that_is_already_prose_is_left_alone(self) -> None:
+        assert content.rule_label("amortisation at 6%") == "amortisation at 6%"
+
+    def test_a_plan_label_keeps_its_retirement_age(self) -> None:
+        """`plan.Plan.label` appends the retirement age to the rule key, so
+        the relabelling has to be a prefix swap and not a lookup."""
+        assert content.rule_label("constant_percent at 7.0%, retire at 63") \
+            == "percentage of balance at 7.0%, retire at 63"
+
+    def test_an_unknown_rule_loses_its_underscores(self) -> None:
+        assert content.rule_label("some_new_rule") == "some new rule"
+
+    def test_both_papers_print_no_rule_key(self) -> None:
+        """The check that matters: no identifier reaches a page. Read off
+        the built documents, because the leak was never in one place."""
+        import re
+
+        from pypdf import PdfReader
+
+        keys = sorted(content.RULE_LABELS)
+        pattern = re.compile(r"\b(" + "|".join(keys) + r")\b")
+        for name in ("floor_beneath_the_portfolio.pdf",
+                     "lifecycle_asset_allocation.pdf"):
+            path = PAPER / name
+            if not path.exists():
+                pytest.skip(f"{name} has not been built")
+            text = "\n".join((page.extract_text() or "")
+                             for page in PdfReader(str(path)).pages)
+            # "amortisation" is a word as well as a key, so only the keys
+            # that are not English are a leak.
+            found = {m.group(0) for m in pattern.finditer(text)
+                     if "_" in m.group(0)}
+            assert not found, (name, sorted(found))
+
+
+class TestTheReadmeIndexesEveryDocument:
+    """The README's table is the repository's index. Four sections were
+    added without rows, and the sentence under the table still said
+    "thirty-two" -- so the two newest studies, which the paper leans on,
+    were invisible to anyone reading the front page."""
+
+    ROOT = PAPER.parent
+
+    @classmethod
+    def _readme(cls) -> str:
+        return (cls.ROOT / "README.md").read_text()
+
+    @classmethod
+    def _documents(cls) -> list:
+        return sorted(p.name for p in (cls.ROOT / "docs").glob("*.md"))
+
+    def test_every_document_has_a_row(self) -> None:
+        import re
+
+        linked = set(re.findall(r"\(docs/([0-9]+_[a-z_]+\.md)\)",
+                                self._readme()))
+        missing = sorted(set(self._documents()) - linked)
+        assert not missing, missing
+
+    def test_no_row_points_at_a_document_that_is_gone(self) -> None:
+        import re
+
+        linked = set(re.findall(r"\(docs/([0-9]+_[a-z_]+\.md)\)",
+                                self._readme()))
+        assert not sorted(linked - set(self._documents()))
+
+    def test_the_layout_block_counts_the_documents(self) -> None:
+        import re
+
+        claimed = re.search(r"generated analysis documents \((\d+) files\)",
+                            self._readme())
+        assert claimed, "the layout block has been reworded"
+        assert int(claimed.group(1)) == len(self._documents())
+
+    def test_the_newest_step_has_a_worked_example(self) -> None:
+        """The quick-start block is a selection, not a catalogue, so most
+        steps need no line. The newest one does: four studies were added
+        without one, and the list stopped advertising the work that the
+        paper's last two sections rest on."""
+        import re
+        import sys
+
+        sys.path.insert(0, str(self.ROOT))
+        main = pytest.importorskip("main")
+        listed = {int(n) for line in self._readme().split("\n")
+                  if line.startswith("python main.py --steps ")
+                  for n in re.findall(r"\d+", line.split("#")[0])}
+        assert max(main.STEPS) in listed, sorted(listed)[-4:]
+
+    def test_the_advertised_test_count_is_the_real_one(self) -> None:
+        """Quoted in the quick-start block, where a reader checks their
+        checkout is complete. It had been stale by eight hundred."""
+        import re
+        import subprocess
+
+        claimed = re.search(r"pytest tests/ -q\s+# ([\d,]+) tests",
+                            self._readme())
+        assert claimed, "the quick-start block has been reworded"
+        run = subprocess.run(
+            [sys.executable, "-m", "pytest", "tests/", "-q",
+             "--collect-only", "-p", "no:cacheprovider"],
+            cwd=self.ROOT, capture_output=True, text=True)
+        found = re.search(r"(\d+) tests collected", run.stdout)
+        assert found, run.stdout[-400:]
+        assert int(claimed.group(1).replace(",", "")) == int(found.group(1))
+
+    def test_the_count_under_the_table_is_right(self) -> None:
+        """A number written as a word, so it cannot be updated by the
+        pipeline and has to be checked."""
+        import re
+
+        words = {30: "thirty", 31: "thirty-one", 32: "thirty-two",
+                 33: "thirty-three", 34: "thirty-four", 35: "thirty-five",
+                 36: "thirty-six", 37: "thirty-seven", 38: "thirty-eight",
+                 39: "thirty-nine", 40: "forty"}
+        n = len(self._documents())
+        claimed = re.search(r"All ([a-z-]+) are \*\*generated\*\*",
+                            self._readme())
+        assert claimed, "the sentence under the table has been reworded"
+        assert claimed.group(1) == words[n], (claimed.group(1), n)

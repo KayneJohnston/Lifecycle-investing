@@ -298,3 +298,130 @@ def precision_verdict(table: pd.DataFrame, baseline_rule: str,
     found["unresolved"] = [f"{r['system']} / {r['rule']}"
                            for _, r in unresolved.iterrows()]
     return found
+
+
+def difference_intervals(influence_frame: pd.DataFrame, gapped: pd.DataFrame,
+                         reference_rule: str, system: str,
+                         column: str = "gap_pct") -> pd.DataFrame:
+    """Jackknife the *difference* between each rule and a reference rule.
+
+    Intervals on two levels do not give an interval on their difference,
+    and the difference is what the paper's surviving claim is about: that
+    changing the withdrawal rule moves the all-equity lead by tens of
+    points. The two cells are computed on the same sixteen sub-panels, so
+    the differences are paired and the jackknife is taken on the paired
+    series rather than assembled out of the two marginal standard errors.
+    How much that pairing helps depends on how correlated the cells are,
+    which is itself reported: where the correlation is low the difference
+    is no better resolved than the levels, and saying so is the point.
+    """
+    if not len(influence_frame) or not len(gapped):
+        return pd.DataFrame()
+    block = influence_frame[influence_frame["system"] == system]
+    if not len(block) or reference_rule not in set(block["rule"]):
+        return pd.DataFrame()
+    wide = block.pivot(index="dropped", columns="rule", values=column)
+    if reference_rule not in wide:
+        return pd.DataFrame()
+    base_series = wide[reference_rule].to_numpy(dtype=float)
+    point_of = {str(r["rule"]): float(r[column])
+                for _, r in gapped[gapped["system"] == system].iterrows()}
+    reference_point = point_of.get(reference_rule, float("nan"))
+    rows: List[Dict[str, Any]] = []
+    for rule in wide.columns:
+        if str(rule) == reference_rule:
+            continue
+        values = wide[rule].to_numpy(dtype=float)
+        paired = values - base_series
+        ok = np.isfinite(paired)
+        n = int(ok.sum())
+        if n < 2:
+            continue
+        centred = paired[ok] - paired[ok].mean()
+        se = float(np.sqrt((n - 1) / n * float((centred ** 2).sum())))
+        point = point_of.get(str(rule), float("nan")) - reference_point
+        rows.append({
+            "system": str(system), "rule": str(rule),
+            "reference_rule": reference_rule,
+            "difference_pp": point,
+            "standard_error": se,
+            "ci_low": point - 1.96 * se,
+            "ci_high": point + 1.96 * se,
+            "loo_low": float(paired[ok].min()),
+            "loo_high": float(paired[ok].max()),
+            "correlation": float(np.corrcoef(base_series[ok],
+                                             values[ok])[0, 1])
+            if n > 2 else float("nan"),
+            "deletions": n,
+            "sign_survives_every_deletion": bool(
+                np.all(np.sign(paired[ok]) == np.sign(point))),
+            "ci_excludes_zero": bool(
+                (point - 1.96 * se) * (point + 1.96 * se) > 0.0),
+        })
+    out = pd.DataFrame.from_records(rows)
+    if not len(out):
+        return out
+    order = [r for r in dict.fromkeys(gapped["rule"]) if r != reference_rule]
+    out["rule"] = pd.Categorical(out["rule"], categories=order, ordered=True)
+    out = out.sort_values("rule").reset_index(drop=True)
+    out["rule"] = out["rule"].astype(str)
+    return out
+
+
+def difference_verdict(table: pd.DataFrame) -> Dict[str, Any]:
+    """Whether the rule effect is resolved, and by how much.
+
+    ``all_resolved`` is the field the prose turns on. The paper's claim is
+    that the withdrawal rule matters more than the pension does, and that
+    is a claim about these differences rather than about the levels the
+    previous table reports.
+    """
+    if not len(table):
+        return {"measured": False}
+    widest = table.loc[table["difference_pp"].abs().idxmax()]
+    found: Dict[str, Any] = {
+        "measured": True,
+        "comparisons": int(len(table)),
+        "reference_rule": str(table["reference_rule"].iloc[0]),
+        "resolved": int(table["ci_excludes_zero"].sum()),
+        "all_resolved": bool(table["ci_excludes_zero"].all()),
+        "widest_rule": str(widest["rule"]),
+        "widest_pp": float(widest["difference_pp"]),
+        "widest_se": float(widest["standard_error"]),
+        "widest_ci": (float(widest["ci_low"]), float(widest["ci_high"])),
+        "median_correlation": float(table["correlation"].median()),
+        "smallest_resolved_pp": float(
+            table.loc[table["ci_excludes_zero"], "difference_pp"].abs().min())
+        if bool(table["ci_excludes_zero"].any()) else float("nan"),
+    }
+    unresolved = table[~table["ci_excludes_zero"]]
+    found["unresolved"] = [str(r["rule"]) for _, r in unresolved.iterrows()]
+    return found
+
+
+def gamma_verdict(by_gamma: pd.DataFrame, rule: str, system: str,
+                  column: str = "gap_pct") -> Dict[str, Any]:
+    """Whether one cell's sign holds across the risk aversions scored.
+
+    The contested cell is the paper's headline, and a sign that depends on
+    the curvature of the felicity function is a sign about the objective
+    rather than about the pension. Cheap to check, because scoring an
+    outcome again costs nothing next to simulating it.
+    """
+    if not len(by_gamma) or "gamma" not in by_gamma:
+        return {"measured": False}
+    hit = by_gamma[(by_gamma["system"] == system)
+                   & (by_gamma["rule"] == rule)].sort_values("gamma")
+    if len(hit) < 2:
+        return {"measured": False}
+    values = hit[column].to_numpy(dtype=float)
+    return {
+        "measured": True,
+        "gammas": [float(g) for g in hit["gamma"]],
+        "gaps": [float(v) for v in values],
+        "low": float(values.min()),
+        "high": float(values.max()),
+        "sign_holds": bool(len(set(np.sign(np.round(values, 6)))
+                               - {0.0}) <= 1),
+        "spread_pp": float(values.max() - values.min()),
+    }

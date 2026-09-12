@@ -323,3 +323,115 @@ class TestPrecisionVerdict:
     def test_an_empty_table_is_not_measured(self) -> None:
         assert odr.precision_verdict(pd.DataFrame(), "fixed") == {
             "measured": False}
+
+
+class TestDifferenceIntervals:
+    """The paper's surviving claim is a difference between two cells, and
+    an interval on two levels is not an interval on their difference. The
+    deletions are shared, so the difference gets a paired jackknife."""
+
+    @staticmethod
+    def _inputs(base, other, base_point=-2.0, other_point=26.0):
+        infl = pd.DataFrame(
+            [{"dropped": f"C{i}", "system": "au", "rule": "fixed",
+              "gap_pct": v} for i, v in enumerate(base)]
+            + [{"dropped": f"C{i}", "system": "au", "rule": "amort",
+                "gap_pct": v} for i, v in enumerate(other)])
+        gapped = pd.DataFrame([
+            {"system": "au", "rule": "fixed", "gap_pct": base_point},
+            {"system": "au", "rule": "amort", "gap_pct": other_point}])
+        return infl, gapped
+
+    def test_the_difference_is_the_difference_of_the_points(self) -> None:
+        out = odr.difference_intervals(
+            *self._inputs([-2.0, -3.0, -1.0], [26.0, 25.0, 27.0]),
+            reference_rule="fixed", system="au")
+        assert float(out["difference_pp"].iloc[0]) == pytest.approx(28.0)
+
+    def test_perfectly_correlated_cells_leave_no_difference_error(self
+                                                                   ) -> None:
+        """When two cells move together across deletions the difference is
+        constant, and the paired jackknife should see that even though each
+        level is noisy on its own."""
+        out = odr.difference_intervals(
+            *self._inputs([-2.0, -8.0, 4.0], [26.0, 20.0, 32.0]),
+            reference_rule="fixed", system="au")
+        assert float(out["standard_error"].iloc[0]) == pytest.approx(0.0,
+                                                                     abs=1e-9)
+        assert bool(out["ci_excludes_zero"].iloc[0])
+        assert float(out["correlation"].iloc[0]) == pytest.approx(1.0)
+
+    def test_uncorrelated_cells_leave_the_difference_noisy(self) -> None:
+        out = odr.difference_intervals(
+            *self._inputs([-2.0, -8.0, 4.0], [26.0, 32.0, 20.0]),
+            reference_rule="fixed", system="au")
+        assert float(out["standard_error"].iloc[0]) > 5.0
+        assert float(out["correlation"].iloc[0]) < 0.0
+
+    def test_the_reference_rule_is_not_compared_with_itself(self) -> None:
+        out = odr.difference_intervals(
+            *self._inputs([-2.0, -3.0], [26.0, 25.0]),
+            reference_rule="fixed", system="au")
+        assert "fixed" not in set(out["rule"])
+        assert list(out["rule"]) == ["amort"]
+
+    def test_a_missing_reference_rule_gives_nothing(self) -> None:
+        out = odr.difference_intervals(
+            *self._inputs([-2.0, -3.0], [26.0, 25.0]),
+            reference_rule="no_such_rule", system="au")
+        assert not len(out)
+
+    def test_a_missing_system_gives_nothing(self) -> None:
+        out = odr.difference_intervals(
+            *self._inputs([-2.0, -3.0], [26.0, 25.0]),
+            reference_rule="fixed", system="no_such_system")
+        assert not len(out)
+
+
+class TestDifferenceVerdict:
+    def test_it_names_the_widest_effect(self) -> None:
+        table = odr.difference_intervals(
+            *TestDifferenceIntervals._inputs([-2.0, -3.0, -1.0],
+                                             [26.0, 25.0, 27.0]),
+            reference_rule="fixed", system="au")
+        found = odr.difference_verdict(table)
+        assert found["widest_rule"] == "amort"
+        assert found["widest_pp"] == pytest.approx(28.0)
+        assert found["all_resolved"]
+
+    def test_an_unresolved_difference_is_listed(self) -> None:
+        table = odr.difference_intervals(
+            *TestDifferenceIntervals._inputs([-2.0, -20.0, 18.0],
+                                             [26.0, 40.0, 6.0], -2.0, 1.0),
+            reference_rule="fixed", system="au")
+        found = odr.difference_verdict(table)
+        assert not found["all_resolved"]
+        assert "amort" in found["unresolved"]
+
+    def test_an_empty_table_is_not_measured(self) -> None:
+        assert odr.difference_verdict(pd.DataFrame()) == {"measured": False}
+
+
+class TestGammaVerdict:
+    @staticmethod
+    def _frame(values):
+        return pd.DataFrame([{"system": "au", "rule": "fixed",
+                              "gap_pct": v, "gamma": g}
+                             for g, v in values])
+
+    def test_a_stable_sign_is_reported_as_stable(self) -> None:
+        found = odr.gamma_verdict(self._frame([(2.0, -1.0), (5.0, -2.0),
+                                               (10.0, -4.0)]), "fixed", "au")
+        assert found["sign_holds"]
+        assert found["spread_pp"] == pytest.approx(3.0)
+
+    def test_a_sign_that_flips_with_gamma_is_flagged(self) -> None:
+        """A sign that depends on the curvature of the objective is a
+        statement about the objective, not about the pension."""
+        found = odr.gamma_verdict(self._frame([(2.0, 4.0), (5.0, -2.0),
+                                               (10.0, -9.0)]), "fixed", "au")
+        assert not found["sign_holds"]
+
+    def test_one_risk_aversion_is_not_a_check(self) -> None:
+        assert odr.gamma_verdict(self._frame([(5.0, -2.0)]), "fixed",
+                                 "au") == {"measured": False}

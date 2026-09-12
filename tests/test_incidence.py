@@ -590,3 +590,68 @@ class TestRobustness:
 
     def test_an_empty_table_is_not_measured(self) -> None:
         assert ic.robustness_verdict(pd.DataFrame()) == {"measured": False}
+
+
+class TestPanelInfluence:
+    """The corner is defended against preferences by `robustness`; this is
+    the other half, against the panel. A result checked against only the
+    objection you thought of is half a defence."""
+
+    @staticmethod
+    def _profile(equity_by_country: dict):
+        def profile_for(kept):
+            dropped = set("ABCD") - set(kept)
+            value = equity_by_country[next(iter(dropped))]
+            return pd.DataFrame([
+                {"scale": 0.1, "median_wealth": 1.0, "cutoff": 7.0,
+                 "equity": value, "cec": 1.0},
+                {"scale": 0.5, "median_wealth": 5.0, "cutoff": 7.0,
+                 "equity": value, "cec": 1.0},
+                {"scale": 1.0, "median_wealth": 50.0, "cutoff": 7.0,
+                 "equity": 1.0, "cec": 1.0}])
+        return profile_for
+
+    def test_only_the_bound_balances_count(self) -> None:
+        """The claim is about households the test can reach; the row at
+        fifty times average earnings would dilute it."""
+        out = ic.influence(self._profile(dict.fromkeys("ABCD", 0.0)),
+                           list("ABCD"))
+        assert list(out["equity_where_the_test_binds"]) == [0.0] * 4
+        assert set(out["bound_scales"]) == {2}
+
+    def test_a_corner_that_holds_everywhere_is_reported_as_identical(self
+                                                                     ) -> None:
+        out = ic.influence(self._profile(dict.fromkeys("ABCD", 0.0)),
+                           list("ABCD"))
+        found = ic.influence_verdict(out, 0.0)
+        assert found["identical_in_every_deletion"]
+        assert found["at_the_floor"]
+        assert not found["interval_is_meaningful"]
+
+    def test_a_corner_the_panel_moves_is_flagged(self) -> None:
+        out = ic.influence(
+            self._profile({"A": 0.0, "B": 0.0, "C": 0.6, "D": 0.0}),
+            list("ABCD"))
+        found = ic.influence_verdict(out, 0.0)
+        assert not found["identical_in_every_deletion"]
+        assert found["high"] == pytest.approx(0.6)
+
+    def test_an_interior_point_gets_a_meaningful_interval(self) -> None:
+        """An interval around a corner runs into a grid that stops there;
+        away from the boundary it is worth quoting."""
+        out = ic.influence(
+            self._profile({"A": 0.5, "B": 0.4, "C": 0.6, "D": 0.5}),
+            list("ABCD"))
+        found = ic.influence_verdict(out, 0.5)
+        assert found["interval_is_meaningful"]
+        assert found["standard_error"] > 0.0
+
+    def test_every_country_is_dropped_exactly_once(self) -> None:
+        out = ic.influence(self._profile(dict.fromkeys("ABCD", 0.0)),
+                           list("ABCD"))
+        assert list(out["dropped"]) == list("ABCD")
+        assert set(out["n_markets"]) == {3}
+
+    def test_an_empty_frame_is_not_measured(self) -> None:
+        assert ic.influence_verdict(pd.DataFrame(), 0.0) == {
+            "measured": False}

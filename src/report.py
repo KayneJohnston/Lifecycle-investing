@@ -11550,6 +11550,39 @@ def write_doc_35(
     else:
         robust_line = ""
 
+    panel = notes.get("panel_precision", {})
+    if panel.get("measured"):
+        if panel["identical_in_every_deletion"]:
+            panel_line = (
+                f"**And it survives the panel too.** Recomputed sixteen "
+                f"times with one country's history removed each time, the "
+                f"share the household wants where the test binds is "
+                f"{panel['point']:.0%} in every one of them. There is no "
+                f"interval to quote because there is no variation to put an "
+                f"interval around."
+                if panel["at_the_floor"] else
+                f"**And it survives the panel too.** Across "
+                f"{panel['deletions']} delete-one sub-panels the share is "
+                f"{panel['point']:.0%} every time.")
+        else:
+            panel_line = (
+                f"**The panel moves it.** Across {panel['deletions']} "
+                f"delete-one sub-panels the share the household wants where "
+                f"the test binds runs {panel['low']:.0%} to "
+                f"{panel['high']:.0%} against a point estimate of "
+                f"{panel['point']:.0%}")
+            if panel.get("interval_is_meaningful"):
+                panel_line += (
+                    f", a jackknife standard error of "
+                    f"{100 * panel['standard_error']:.1f} points and an "
+                    f"interval of [{100 * panel['ci_low']:.0f}, "
+                    f"{100 * panel['ci_high']:.0f}]")
+            panel_line += (
+                ". The corner is a property of this cross-section as much "
+                "as of the household, and the claim has to carry that.")
+    else:
+        panel_line = ""
+
     figure_list = "\n".join(f"* `{f}`" for f in figures)
     intro = _header(
         "35 - Who Pays for the Guarantee, and Who the Test Binds",
@@ -11721,6 +11754,15 @@ objective.
 {robust_tbl}
 
 {robust_line}
+
+Preferences are one of the two ways a result like this can be an artefact.
+The other is the panel: sixteen developed markets whose twentieth centuries
+were not independent of one another. So the base arm is recomputed sixteen
+times with one country's history removed each time, over the balances the
+test can actually reach, which is the only part of the grid the claim is
+about.
+
+{panel_line}
 
 ## 8. What this changes
 
@@ -11933,6 +11975,65 @@ def write_doc_36(
     else:
         precision_line = ""
 
+    diffs = frames.get("differences")
+    diff_found = notes.get("difference", {})
+    if diffs is not None and len(diffs):
+        diff_tbl = md_table(_compact(
+            diffs, ["rule", "difference_pp", "standard_error", "ci_low",
+                    "ci_high", "correlation", "ci_excludes_zero"],
+            {"rule": "Rule", "difference_pp": "Difference (pp)",
+             "standard_error": "Jackknife s.e.", "ci_low": "CI low",
+             "ci_high": "CI high", "correlation": "Cell correlation",
+             "ci_excludes_zero": "Excludes zero"}), floatfmt="{:.2f}")
+    else:
+        diff_tbl = ""
+    if diff_found.get("measured"):
+        lo, hi = diff_found["widest_ci"]
+        diff_line = (
+            f"**Against {diff_found['reference_rule']}, the widest rule "
+            f"effect is {diff_found['widest_rule']} at "
+            f"{diff_found['widest_pp']:+.1f} percentage points, with a "
+            f"paired jackknife standard error of "
+            f"{diff_found['widest_se']:.1f} and an interval of "
+            f"[{lo:+.1f}, {hi:+.1f}].** "
+            f"{diff_found['resolved']} of {diff_found['comparisons']} "
+            f"differences exclude zero"
+            f"{'; all of them do' if diff_found['all_resolved'] else ', and ' + _join(diff_found['unresolved']) + (' does not' if len(diff_found['unresolved']) == 1 else ' do not')}.")
+        diff_line += (
+            f" The pairing helps less than it might: the two cells "
+            f"correlate {diff_found['median_correlation']:.2f} across "
+            f"deletions at the median, so the differences are not much "
+            f"better resolved than the levels they are built from. That is "
+            f"worth stating rather than leaving to be assumed, because the "
+            f"reason to compute a difference interval at all is that it "
+            f"can be far tighter than the levels -- and here it is not.")
+    else:
+        diff_line = ""
+
+    spread = frames.get("by_gamma")
+    gamma_found = notes.get("gamma_check", {})
+    if spread is not None and len(spread):
+        gamma_tbl = md_table(
+            spread.pivot_table(index=["system", "rule"], columns="gamma",
+                               values="gap_pct").reset_index(),
+            floatfmt="{:.2f}")
+    else:
+        gamma_tbl = ""
+    if gamma_found.get("measured"):
+        pairs = ", ".join(f"{g:g}: {v:+.2f}%" for g, v
+                          in zip(gamma_found["gammas"], gamma_found["gaps"]))
+        gamma_line = (
+            f"**The contested cell keeps its sign across every risk "
+            f"aversion scored** ({pairs}), spanning "
+            f"{gamma_found['spread_pp']:.1f} percentage points."
+            if gamma_found["sign_holds"] else
+            f"**The contested cell changes sign with the risk aversion** "
+            f"({pairs}). Which portfolio wins there is a statement about "
+            f"the curvature of the objective as much as about the pension, "
+            f"and it cannot be reported without the risk aversion attached.")
+    else:
+        gamma_line = ""
+
     figure_list = "\n".join(f"* `{f}`" for f in figures)
     intro = _header(
         "36 - Which Portfolio Wins, and Under What",
@@ -11987,20 +12088,43 @@ country of evidence.
 
 {precision_line}
 
-## 4. What this changes
+## 4. The interval on the difference, which is the claim
 
-* The second finding has to be stated as what the evidence supports. The
-  wording is not cosmetic: a plan sponsor reading "the ordering reverses
-  again" would take it as licence to keep an all-equity default in a
-  means-tested system, which is
-  {"what this section supports" if found.get("recovers") else "not what this section supports"}.
+An interval on two levels is not an interval on their difference, and the
+difference is what this section's surviving claim is about: that changing
+the withdrawal rule moves the lead by tens of points. The sixteen sub-panels
+are shared between cells, so the differences are paired and get their own
+jackknife rather than one assembled out of two marginal standard errors.
+
+{diff_tbl}
+
+{diff_line}
+
+## 5. And the same gaps at other risk aversions
+
+The balance dial in `docs/35` is defended against the preference
+specification and the sweep above against the panel. Each was checked
+against the objection the other one answers, which is half a defence twice
+over. Scoring an outcome again costs nothing next to producing it, so the
+gaps are re-read at other risk aversions here.
+
+{gamma_tbl}
+
+{gamma_line}
+
+## 6. What this changes
+
+* The second finding has to be stated with its condition attached, because
+  the condition is what the grid is about. "The ordering reverses again"
+  reads as a fact about the pension; what this section measures is that
+  {"the reversal is confined to one withdrawal rule, and that under every other rule in the menu the all-equity portfolio leads" if found.get("recovers") else "the reversal survives every withdrawal rule in the menu"}.
 * The withdrawal rule belongs in the statement of the result either way,
   because it moves the Australian gap by
   {found.get('contender_gap_range_pp', float('nan')):.1f} percentage points.
 * This section re-derives the first finding on its own grid rather than
   quoting it, so the two cannot drift.
 
-## 5. What is still not modelled
+## 7. What is still not modelled
 
 * The rules here are fixed policies, not solved ones. A retiree who
   re-optimised the withdrawal each year against the means test would do
@@ -12012,11 +12136,11 @@ country of evidence.
 * Every row holds the retirement date fixed, so nothing here prices the
   interaction between the drawdown rule and when work stops.
 
-## 6. Figures
+## 8. Figures
 
 {figure_list}
 
-## 7. Reproduction
+## 9. Reproduction
 
 ```bash
 python main.py --steps 36

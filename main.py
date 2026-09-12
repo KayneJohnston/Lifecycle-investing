@@ -4843,12 +4843,74 @@ def step35_incidence(cfg: Dict[str, Any],
                     found_c.get("worst_position", "?"),
                     found_c.get("changes_the_verdict"))
 
+    # -- and the other half of the defence: the panel ---------------------
+    # The corner above is checked against five preference specifications
+    # and, until this, against nothing else. The ordering study carries a
+    # delete-one-country jackknife; this is the same check on this result,
+    # restricted to the base arm and the balances the test can reach, which
+    # is the only part of the grid the claim is about.
+    inc_influence = pd.DataFrame()
+    inc_precision: Dict[str, Any] = {"measured": False}
+    if block.get("influence_enabled", False):
+        loo_paths = int(block.get("influence_n_paths", n_paths))
+        cut_scales = [x for x in scales
+                      if x * float(profile["median_wealth"].max())
+                      / max(scales) <= float(profile["cutoff"].iloc[0])]
+        cut_scales = cut_scales or scales
+        countries = list(panel.countries)
+        LOGGER.info("jackknife: %d deletions x %d scales x %d allocations "
+                    "at %s paths", len(countries), len(cut_scales),
+                    len(equities), f"{loo_paths:,}")
+
+        def _profile_for(kept: Sequence[str]) -> pd.DataFrame:
+            sub = dl.build_tier_a(cfg, countries=list(kept))
+            for chunk in bs.from_config(sub, cfg).chunks(loo_paths,
+                                                         loo_paths):
+                sub_paths = chunk
+            base_arm = arms[inc.ARMS[0]]
+
+            def _spec_sub(scale: float) -> Any:
+                return dataclasses.replace(
+                    base_arm, retirement_balance_scale=float(scale))
+
+            def _run_sub(scale: float, equity: float) -> Any:
+                aged = _spec_sub(scale)
+                income = lc.simulate_income(
+                    aged, loo_paths,
+                    np.random.default_rng(int(cfg["run"]["seed"])),
+                    dom_eq=sub_paths.dom_eq, intl_eq=sub_paths.intl_eq)
+                shares = np.full(aged.horizon, equity)
+                shares[:aged.n_working] = accumulation_equity
+                weights = gp.weights_from_shares(
+                    shares, np.full(aged.horizon, domestic), bond_share)
+                strategy = lc.Strategy(key="grid", label="grid",
+                                       weights=weights)
+                return lc.simulate(sub_paths, strategy, aged, income)
+
+            return inc.band_profile(inc.balance_sweep(
+                _run_sub, _spec_sub, cut_scales, equities,
+                _score_with(base_arm), log_every=0))
+
+        inc_influence = inc.influence(_profile_for, countries)
+        inc_precision = inc.influence_verdict(
+            inc_influence,
+            float(robust_found.get("baseline_equity", float("nan"))))
+        if inc_precision.get("measured"):
+            LOGGER.info("the corner holds in every deletion: %s (range "
+                        "%.0f%%-%.0f%% across %d sub-panels)",
+                        inc_precision["identical_in_every_deletion"],
+                        100 * inc_precision["low"],
+                        100 * inc_precision["high"],
+                        inc_precision["deletions"])
+
     tables = Path(cfg["run"]["table_dir"])
     _save_table(swept, tables, "incidence_sweep")
     _save_table(optima, tables, "incidence_optimum")
     _save_table(balances, tables, "incidence_balance_sweep")
     _save_table(profile, tables, "incidence_band_profile")
     _save_table(robust, tables, "incidence_robustness")
+    if len(inc_influence):
+        _save_table(inc_influence, tables, "incidence_influence")
     figures = [str(plots.plot_incidence(
         swept, balances, profile, found, shape, bridge,
         Path(cfg["run"]["figure_dir"])))]
@@ -4856,12 +4918,14 @@ def step35_incidence(cfg: Dict[str, Any],
     rp.write_doc_35(
         Path("docs") / "35_incidence.md", cfg,
         {"swept": swept, "optimum": optima, "balances": balances,
-         "profile": profile, "robustness": robust},
+         "profile": profile, "robustness": robust,
+         "influence": inc_influence},
         figures,
         {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
          "employer_rate": float(base.super_net_rate),
          "verdict": found, "shape": shape, "shapes": shapes,
          "bridge": bridge, "rule": rule, "robust": robust_found,
+         "panel_precision": inc_precision,
          "pension_age": pension_age,
          "base_rule": str(base.retirement_rule),
          "rule_rate": float(base.rule_rate),
@@ -4943,17 +5007,27 @@ def step36_ordering(cfg: Dict[str, Any],
     def _simulate(system: str, rule: Any, strategy: str) -> Any:
         return _outcomes(system, _rule_key[id(rule)], rule)[strategy]
 
+    # The ordering is also scored at other risk aversions. The balance dial
+    # in step 35 is defended against the preference specification and not
+    # against the panel; this sweep was defended against the panel and not
+    # against the preference. Scoring costs nothing next to simulating, so
+    # each result is now checked against both objections.
+    robust_gammas = [float(x) for x in block.get("robust_gammas", ())]
+
     def _score(outcome: Any) -> Dict[str, Any]:
         # The estate is carried, because an amortisation rule spends the
         # portfolio to zero by construction and a fixed real rule leaves a
         # large one; excluding it would hand the amortisation family a free
         # win on a margin the config prices.
         window = outcome.consumption[:, spec.n_working:]
+        bundle = ut.bundle_from_outcome(outcome, cfg, spec)
         return {
             "cec": float(ut.crra_certainty_equivalent(
-                ut.bundle_from_outcome(outcome, cfg, spec), gamma, beta,
-                float(util["bequest_weight"]),
+                bundle, gamma, beta, float(util["bequest_weight"]),
                 bool(util["bequest_enabled"]))),
+            **{f"cec_gamma{g:g}": float(ut.crra_certainty_equivalent(
+                bundle, g, beta, float(util["bequest_weight"]),
+                bool(util["bequest_enabled"]))) for g in robust_gammas},
             "prob_ruin": float(np.mean(outcome.ruin)),
             "mean_consumption": float(window.mean()),
             "p5_consumption": float(np.percentile(window, 5)),
@@ -5029,6 +5103,49 @@ def step36_ordering(cfg: Dict[str, Any],
                         precision["reversal_sign_survives"],
                         precision["reversal_resolved"])
 
+    # -- the difference the paper's claim is actually about ---------------
+    # An interval on two levels is not an interval on their difference, and
+    # the claim this section survives on is that changing the rule moves the
+    # lead by tens of points. The deletions are paired, so the difference
+    # has its own jackknife.
+    differences = pd.DataFrame()
+    difference_found: Dict[str, Any] = {"measured": False}
+    if len(influence):
+        differences = odr.difference_intervals(
+            influence, gapped, baseline_rule,
+            str(found.get("contender_system", "")))
+        difference_found = odr.difference_verdict(differences)
+        if difference_found.get("measured"):
+            LOGGER.info("against %s, the widest rule effect is %s at "
+                        "%+.1f pp +/- %.1f, CI [%+.1f, %+.1f]; %d of %d "
+                        "differences exclude zero",
+                        difference_found["reference_rule"],
+                        difference_found["widest_rule"],
+                        difference_found["widest_pp"],
+                        difference_found["widest_se"],
+                        *difference_found["widest_ci"],
+                        difference_found["resolved"],
+                        difference_found["comparisons"])
+
+    # -- and the same gaps at other risk aversions ------------------------
+    by_gamma = pd.DataFrame()
+    gamma_found: Dict[str, Any] = {"measured": False}
+    if robust_gammas:
+        frames = [gapped.assign(gamma=gamma)]
+        for value in robust_gammas:
+            column = f"cec_gamma{value:g}"
+            if column in swept:
+                frames.append(odr.gaps(swept, column=column).assign(
+                    gamma=value))
+        by_gamma = pd.concat(frames, ignore_index=True)
+        gamma_found = odr.gamma_verdict(by_gamma, baseline_rule,
+                                        str(found.get("contender_system", "")))
+        if gamma_found.get("measured"):
+            LOGGER.info("across gamma %s the contested cell runs "
+                        "%+.2f%% to %+.2f%% and its sign holds: %s",
+                        gamma_found["gammas"], gamma_found["low"],
+                        gamma_found["high"], gamma_found["sign_holds"])
+
     tables = Path(cfg["run"]["table_dir"])
     _save_table(swept, tables, "ordering_sweep")
     _save_table(gapped, tables, "ordering_gaps")
@@ -5036,16 +5153,22 @@ def step36_ordering(cfg: Dict[str, Any],
     if len(influence):
         _save_table(influence, tables, "ordering_influence")
         _save_table(intervals, tables, "ordering_intervals")
+    if len(differences):
+        _save_table(differences, tables, "ordering_differences")
+    if len(by_gamma):
+        _save_table(by_gamma, tables, "ordering_by_gamma")
     figures = [str(plots.plot_ordering(swept, gapped, found, intervals,
                                        Path(cfg["run"]["figure_dir"])))]
     elapsed = time.perf_counter() - started
     rp.write_doc_36(
         Path("docs") / "36_ordering.md", cfg,
-        {"swept": swept, "gaps": gapped, "intervals": intervals},
+        {"swept": swept, "gaps": gapped, "intervals": intervals,
+         "differences": differences, "by_gamma": by_gamma},
         figures,
         {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
          "verdict": found, "baseline_rule": baseline_rule,
-         "precision": precision})
+         "precision": precision, "difference": difference_found,
+         "gamma_check": gamma_found})
     LOGGER.info("docs/36 written (%.0fs)", elapsed)
     state["ordering_gaps"] = gapped
     return state

@@ -795,6 +795,31 @@ def _compact_strategy(key: str) -> str:
     return COMPACT_STRATEGY.get(key, _pretty_strategy(key))
 
 
+#: Withdrawal rules reach the results tables under the key the pipeline runs
+#: them by. Two of the three the sweep uses are already written for a reader
+#: ("amortisation at 6%"); the baseline and the percentage rule are Python
+#: identifiers, and they were printing as identifiers in the middle of
+#: columns of prose labels, and once in the middle of a sentence.
+RULE_LABELS: Dict[str, str] = {
+    "fixed_real_rule": "fixed real",
+    "constant_percent": "percentage of balance",
+    "amortisation": "amortisation",
+}
+
+
+def rule_label(name: str) -> str:
+    """A withdrawal rule as a reader should see it.
+
+    Matched on the prefix rather than the whole string, because the swept
+    rules carry their rate in the same key: ``constant_percent at 4%`` has
+    to come back as ``percentage of balance at 4%`` with the rate intact.
+    """
+    for key, shown in RULE_LABELS.items():
+        if name.startswith(key):
+            return shown + name[len(key):]
+    return name.replace("_", " ")
+
+
 def section_number(key: str) -> int:
     """The number this section carries in the current reading order."""
     try:
@@ -1350,9 +1375,10 @@ def section_data(ctx: Any) -> List[Flowable]:
                                         "bond": "Bonds", "bill": "Bills",
                                         "inflation": "Inflation"}[v]}),
         "Pooled cross-asset correlation matrix of annual real returns",
+        anchor="pooled_correlations",
         note="Pooled across all country-years in the panel. These are the "
-             "moments the block bootstrap is required to reproduce; Table 4 "
-             "reports how closely it does so."))
+             "moments the block bootstrap is required to reproduce; "
+             "@table:bootstrap_fidelity reports how closely it does so."))
 
     out.extend(ctx.table(
         rows_from(wins, ["year", "country", "raw_intl_eq", "winsorised_intl_eq"],
@@ -1704,8 +1730,8 @@ def section_methods(ctx: Any) -> List[Flowable]:
         "simultaneously. Domestic equity, international equity, bonds, bills "
         "and inflation for a given simulated year therefore come from the same "
         "real country in the same real year. This is what preserves the "
-        "cross-asset correlation matrix of Table 2 without any of it being "
-        "imposed parametrically.",
+        "cross-asset correlation matrix of @table:pooled_correlations "
+        "without any of it being imposed parametrically.",
         "<b>Blocks respect data gaps.</b> Admissibility is enforced through "
         "pre-computed run-lengths: for each (country, year) the sampler knows "
         "how many consecutive years of complete data follow, and only draws a "
@@ -1755,6 +1781,7 @@ def section_methods(ctx: Any) -> List[Flowable]:
                    "std_ratio": lambda v: f2(v, 3),
                    "bootstrap_kurtosis": lambda v: f2(v, 1)}),
         "Does the bootstrap reproduce the panel it samples from?",
+        anchor="bootstrap_fidelity",
         note="Means agree to within twenty basis points on every series and "
              "standard deviations to within eight percent. The inflation row "
              "has an excess kurtosis in the thousands: that is the "
@@ -2924,7 +2951,7 @@ def section_glide(ctx: Any) -> List[Flowable]:
             [["Withdrawal rule", "Equity at retirement", "Equity elsewhere",
               "Dip (pp)", "Domestic share, working", "Domestic, retired",
               "Solved CEC"]]
-            + [[str(r["rule"]),
+            + [[rule_label(str(r["rule"])),
                 f"{float(r['min_equity_share_at_retirement']):.0%}",
                 f"{float(r['mean_equity_share_elsewhere']):.1%}",
                 f"{float(r['dip_size_pp']):+.1f}",
@@ -7059,7 +7086,7 @@ def section_plan(ctx: Any) -> List[Flowable]:
     if len(ablation):
         out.extend(ctx.table(
             [["What was free to move", "Plan chosen", "CEC", "Gain (%)"]]
-            + [[str(r["freedom"]), str(r["plan"]),
+            + [[str(r["freedom"]), rule_label(str(r["plan"])),
                 f"{float(r['cec']):.4f}",
                 f"{float(r['gain_over_neither_pct']):+.2f}"]
                for _, r in ablation.iterrows()],
@@ -7620,7 +7647,7 @@ def section_leisure(ctx: Any) -> List[Flowable]:
             out.extend(ctx.table(
                 [["Rule", "Pension system", "CEC", "Ruin (%)", "Mean c",
                   "5th pct c"]]
-                + [[str(r["rule"]),
+                + [[rule_label(str(r["rule"])),
                   SYSTEM_LABEL.get(str(r["system"]), str(r["system"])),
                   f"{r['cec']:.4f}", f"{100 * r['prob_ruin']:.1f}",
                   f"{r['mean_consumption']:.3f}",
@@ -8132,7 +8159,7 @@ def section_longevity(ctx: Any) -> List[Flowable]:
         else:
             out.append(ctx.p(
                 f"The rate optimum is interior: the best rate-setting rule, "
-                f"{found['best_rated_rule']}, wants "
+                f"{rule_label(str(found['best_rated_rule']))}, wants "
                 f"{float(found['best_rated_rate']):.1%} inside a grid "
                 f"running {float(found['rate_grid_low']):.1%} to "
                 f"{float(found['rate_grid_high']):.1%}, so the curve turns "
@@ -8488,7 +8515,7 @@ def section_ordering(ctx: Any) -> List[Flowable]:
         "one directly rather than reading it off the other."))
     rows = [["Withdrawal rule"] + [label.get(x, x) for x in order]]
     for rule in dict.fromkeys(gapped["rule"]):
-        cells = [str(rule)]
+        cells = [rule_label(str(rule))]
         for system in order:
             hit = gapped[(gapped["system"] == system)
                          & (gapped["rule"] == rule)]
@@ -8508,7 +8535,8 @@ def section_ordering(ctx: Any) -> List[Flowable]:
     if len(us_base) and len(au_base):
         out.append(ctx.p(
             f"<b>The headline survives being re-derived on this grid.</b> "
-            f"Under {baseline_rule} the all-equity portfolio leads by "
+            f"Under a {rule_label(baseline_rule)} withdrawal the "
+            f"all-equity portfolio leads by "
             f"{float(us_base['gap_pct'].iloc[0]):+.2f}% in the American "
             f"system and {float(au_base['gap_pct'].iloc[0]):+.2f}% in the "
             f"Australian one."))
@@ -8557,7 +8585,7 @@ def section_ordering(ctx: Any) -> List[Flowable]:
         for _, row in band.iterrows():
             rows.append([
                 label.get(str(row["system"]), str(row["system"])),
-                str(row["rule"]),
+                rule_label(str(row["rule"])),
                 f"{float(row['gap_pct']):+.2f}",
                 f"{float(row['standard_error']):.2f}",
                 f"[{float(row['ci_low']):+.2f}, {float(row['ci_high']):+.2f}]",
@@ -9278,7 +9306,7 @@ def appendix_parameters(ctx: Any) -> List[Flowable]:
          " / ".join(f"{float(lc['social_security'][k]):.0%}"
                     for k in ("pia_rate1", "pia_rate2", "pia_rate3")),
          "Successive tranches of career-average earnings"],
-        ["Withdrawal rule", "—", str(lc["retirement"]["rule"]),
+        ["Withdrawal rule", "—", rule_label(str(lc["retirement"]["rule"])),
          "Baseline; eight families compared in §#spending"],
         ["Withdrawal rate", "—", f"{float(lc['retirement']['rule_rate']):.0%}",
          "Baseline; swept in §#baseline.4 and §#sensitivity.4"],
@@ -10024,14 +10052,18 @@ def section_pension(ctx: Any) -> List[Flowable]:
 
     out.append(ctx.h2("#pension.3 What it does to the ranking"))
     out.append(ctx.p(
-        (f"<b>The ranking does not survive the means test.</b> "
+        (f"<b>The point estimate reverses the ranking.</b> "
          f"All-international leads the 50/50 split by {base_gap:.2f}% under "
          f"the American schedule and by {au_gap:.2f}% under the Australian "
          f"one, where the best strategy becomes "
          f"<i>{_pretty_strategy(str(rows.loc['australia_as_legislated', 'winner']))}</i>. "
          f"This is the only place in this paper where the headline ordering "
          f"fails, and it fails for a reason that has nothing to do with the "
-         f"return panel."
+         f"return panel. How precisely sixteen countries can resolve that "
+         f"failure is a separate question, and Section #ordering answers "
+         f"it: not at all. The sign reported here is a point estimate, and "
+         f"every statement about it in this section should be read with "
+         f"that section's interval attached."
          if au_reorders else
          f"<b>The ranking survives the means test.</b> All-international "
          f"leads the 50/50 split by {au_gap:.2f}% against {base_gap:.2f}% "
@@ -10167,9 +10199,11 @@ def section_pension(ctx: Any) -> List[Flowable]:
          if found["mean_and_cec_disagree"] else
          f"The average and the certainty equivalent agree: {au_mean:+.0f}% "
          f"and {au_cec:+.0f}%."),
-        (f"<b>The allocation ranking reverses.</b> This is the only place "
-         f"in this paper where it does. Under the means test the best "
-         f"strategy becomes "
+        (f"<b>The allocation ranking reverses \u2014 as a point estimate.</b> "
+         f"This is the only place in this paper where it does, and Section "
+         f"#ordering shows it is also the one cell of that section's table "
+         f"whose sign this cross-section cannot resolve. Under the means "
+         f"test the best strategy becomes "
          f"<i>{_pretty_strategy(str(rows.loc['australia_as_legislated', 'winner']))}</i>, "
          f"and for a saver poorer than this one it goes further still. Every "
          f"other section models a retiree whose public income arrives "
