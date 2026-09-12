@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 
 import datetime as dt
-from typing import Any, Callable, Dict, List, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -875,6 +875,26 @@ def section_span(first: str, last: str) -> str:
         return (f"Sections {COMPANION['numbers'][first]} to "
                 f"{COMPANION['numbers'][last]} of {COMPANION['name']}")
     return f"Sections {section_number(first)} to {section_number(last)}"
+
+
+def adjacency(here: str, there: str,
+              near: str = "the next section",
+              far: str | None = None) -> str:
+    """``the next section``, but only where it really is the next one.
+
+    The same prose serves two cuts of this study, and two sections that
+    are adjacent in the short paper are four apart in the long one. A
+    phrase like "the next section" is therefore a claim about the reading
+    order rather than a turn of phrase, and it was false in one of the two
+    documents. Where the sections are adjacent the reader gets the phrase;
+    where they are not, the section is named.
+    """
+    try:
+        follows = section_number(there) == section_number(here) + 1
+    except KeyError:                       # in the companion, not here
+        follows = False
+    return near if follows else (far if far is not None
+                                 else f"Section #{there}")
 
 
 def appendix(letter: str) -> str:
@@ -8456,6 +8476,171 @@ def section_tax(ctx: Any) -> List[Flowable]:
     return out
 
 
+def _crossing_mechanism(found: Mapping[str, Any]) -> str:
+    """Why the winner changes as the estate is valued more highly.
+
+    The obvious story -- a weight on what is left over promotes the rule
+    that leaves more, which is the rule that spends more slowly -- is a
+    testable claim about two numbers, and the section reports the numbers
+    rather than the story. Where the front-load figures do not order that
+    way the story is wrong, and saying so is better than printing it
+    anyway.
+    """
+    if "front_load_before" not in found:
+        return ""
+    before = float(found["front_load_before"])
+    after = float(found["front_load_after"])
+    if found.get("slower_after_the_change"):
+        return (f", and it does so by spending more slowly: it draws "
+                f"{after:.1%} of the balance in the first retirement year "
+                f"against {before:.1%}, so more of the portfolio is still "
+                f"there to be left. That is the right trade once the "
+                f"estate is worth more at the margin than the spending it "
+                f"displaces, and the weight is what decides when it is")
+    return (f", and not by spending more slowly: it draws {after:.1%} of "
+            f"the balance in the first retirement year against "
+            f"{before:.1%}, so whatever the weight is rewarding here, it "
+            f"is not a rule that simply leaves more behind")
+
+
+def _bequest_pivot(ctx: Any, f: Any, ranking: pd.DataFrame,
+                   ) -> List[Flowable]:
+    """How firmly this section's recommendation is actually selected.
+
+    Section #ordering reads this section's pick as the rule a retiree
+    should use, which is the right way round and which also raises the
+    standard the pick has to meet. Two things about it went unstated.
+
+    The margin is the first. The top of the ranking is a run of the same
+    rule at adjacent assumed returns, separated by fractions of a per
+    cent, so the grid selects a *family* far more sharply than a member
+    of one.
+
+    The bequest weight is the second, and it is the sharper omission.
+    Every rule here differs from a fixed real withdrawal in the estate it
+    leaves *by construction* -- the amortisation family spends the
+    portfolio to nothing, a fixed real rule dies with most of it -- so
+    the bequest term enters this ranking with a weight no data pins down.
+    This section already re-scores the whole grid under a second
+    objective on the ground that scoring is free beside simulating. The
+    same argument applies to the weight, and had not been made.
+    """
+    out: List[Flowable] = []
+    try:
+        table = f.table("longevity_bequest")
+    except (FileNotFoundError, OSError):
+        return out
+    if not len(table) or len(ranking) < 2:
+        return out
+
+    from src import longevity as lng
+    found = lng.bequest_verdict(
+        table, float(f.cfg["utility"]["bequest_weight"]))
+    if not found.get("measured"):
+        return out
+    ordered = ranking.sort_values("rank_mortality")
+    top, second = ordered.iloc[0], ordered.iloc[1]
+    margin = 100.0 * (float(top[lng.MORTALITY])
+                      / float(second[lng.MORTALITY]) - 1.0)
+
+    out.append(ctx.h2("#longevity.3 How firmly the rule is selected"))
+    out.append(ctx.p(
+        f"<b>The family is selected far more sharply than the member.</b> "
+        f"At the top of the survival-weighted ranking is "
+        f"{rule_label(str(top['rule_label']))} at "
+        f"{float(top[lng.MORTALITY]):.4f}, against "
+        f"{float(second[lng.MORTALITY]):.4f} for "
+        f"{rule_label(str(second['rule_label']))} \u2014 a margin of "
+        f"{margin:.2f}%, between two settings of the same rule. Section "
+        f"#ordering reads this section's pick as the rule a retiree "
+        f"should use, so the pick had better say how close it is. What "
+        f"the grid resolves is that a horizon-based rule wins; which "
+        f"assumed return inside the family does is not something these "
+        f"differences separate."))
+    out.extend(ctx.table(
+        [["Bequest weight", "Winning rule", "Runner-up",
+          "Margin over the runner-up"]]
+        + [[f"{float(r['bequest_weight']):g}",
+            rule_label(str(r["winner"])),
+            rule_label(str(r["runner_up"])),
+            f"{float(r['margin_pct']):.2f}%"]
+           for _, r in table.iterrows()],
+        "The rule the survival-weighted objective picks, at each weight "
+        "on the estate.",
+        anchor="longevity_bequest",
+        note="Each rule is taken at its own best settings under each "
+             "weight, so a rule is not penalised for a rate that suits a "
+             "different preference. Nothing is re-simulated: each weight "
+             "is another score off the same outcomes, exactly as the "
+             "second objective is."))
+
+    holds = [w for w in found["weights"]
+             if w <= found.get("changes_at", float("inf"))
+             and w != found.get("changes_at")]
+    if found["winner_is_stable"]:
+        out.append(ctx.p(
+            f"<b>The pick survives the parameter.</b> The same rule wins "
+            f"at every weight from {min(found['weights']):g} to "
+            f"{max(found['weights']):g}, so the recommendation is not an "
+            f"artefact of the weight configured here."))
+    else:
+        out.append(ctx.p(
+            f"<b>The pick survives most of the range and not all of "
+            f"it.</b> The winner at the configured weight, "
+            f"{rule_label(str(found['baseline_winner']))}, also wins "
+            f"from a weight of {min(holds):g} to {max(holds):g}, so the "
+            f"recommendation is not an artefact of the "
+            f"{found['baseline_weight']:g} configured here \u2014 which "
+            f"is the check worth running, since the rules in this grid "
+            f"differ in the estate they leave by construction rather than "
+            f"by accident. At {found['changes_at']:g}, a bequest motive "
+            f"stronger than anything this paper assumes, "
+            f"{rule_label(str(found['changes_to']))} takes over"
+            + _crossing_mechanism(found) + "."))
+
+    named = [rule_label(str(w)) for w in found["winners"]]
+    winners = (named[0] if len(named) == 1
+               else " and ".join([", ".join(named[:-1]), named[-1]]))
+    plural = "s" if len(found["winners"]) > 1 else ""
+    downstream = adjacency("longevity", "ordering",
+                           near="the next section",
+                           far="the section that uses it")
+    line = (
+        f"<b>What the weight does not touch is the contrast "
+        f"{downstream} runs on.</b> Section #ordering compares the portfolios "
+        f"twice, once under a rule that can exhaust the account and once "
+        f"under one that cannot, and takes the second from this "
+        f"section\u2019s ranking. What it needs from here is therefore "
+        f"which side of that divide the winner falls on, not which member "
+        f"of the winning family it is. The rule{plural} winning across "
+        f"the grid {'are' if plural else 'is'} {winners}")
+    if found["every_winner_survives"]:
+        line += (
+            f", and every one of them sets its spending from a horizon and "
+            f"so cannot run the account to zero; the fixed real "
+            f"withdrawal, which can, wins at no weight on the grid. The "
+            f"weight moves the member, and at the top of the grid the "
+            f"family, but it never moves the winner across the divide, "
+            f"which is the part of this section Section #ordering uses.")
+    elif not found["winner_side_known"]:
+        line += (
+            f". Whether each of them can exhaust the account is not "
+            f"established here, so this check does not settle what "
+            f"Section #ordering takes from the ranking.")
+    else:
+        depleting = " and ".join(
+            rule_label(str(w)) for w in found["depleting_winners"])
+        line += (
+            f", and {depleting} can run the account to zero. At the "
+            f"weight{'s' if len(found['depleting_winners']) > 1 else ''} "
+            f"where that rule wins, the ranking hands Section #ordering a "
+            f"rule on the wrong side of its own contrast, and the "
+            f"comparison there has to be read as conditional on a bequest "
+            f"motive no stronger than the one assumed here.")
+    out.append(ctx.p(line))
+    return out
+
+
 def section_longevity(ctx: Any) -> List[Flowable]:
     """The withdrawal rule once the horizon stops being a constant."""
     f = ctx.f
@@ -8724,6 +8909,10 @@ def section_longevity(ctx: Any) -> List[Flowable]:
             f"before reaching it. Every ruin probability elsewhere in this "
             f"paper carries the same overstatement."))
 
+    # The section's summary figure closes the argument the subsections
+    # above make, so it goes before the robustness coda rather than after
+    # it -- printed the other way round it reads as an illustration of the
+    # bequest sweep, which is not what it plots.
     out.extend(ctx.figure(
         "fig62_uncertain_horizon",
         "What an uncertain lifespan does to the rule, the rate and the "
@@ -8732,6 +8921,8 @@ def section_longevity(ctx: Any) -> List[Flowable]:
         "own best so only the shape is compared; bottom left, ruin under "
         "both aggregations; bottom right, what re-choosing each decision is "
         "worth."))
+
+    out.extend(_bequest_pivot(ctx, f, ranking))
     out.append(ctx.note(
         "What is not modelled: annuities, which are the direct hedge for the "
         "risk this section prices and would dominate part of the grid if "

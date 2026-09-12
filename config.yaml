@@ -1313,6 +1313,14 @@ gate:
 longevity:
   enabled: true
   n_paths: 25000
+  # Bequest weights the ranking is re-read under. The rules here differ in
+  # the estate they leave by construction -- amortisation spends the
+  # portfolio to nothing, a fixed real rule dies with most of it -- so the
+  # comparison between them is exposed to this parameter in a way the
+  # comparison between allocations is not. Nothing is re-simulated: each
+  # weight is another score off the same outcome, exactly as the two
+  # objectives are. The range brackets no bequest motive and a strong one.
+  bequest_grid: [0.0, 1.0, 2.0, 5.0, 10.0]
   # Held constant through retirement. The free-form schedule of section
   # #glide is a different question; this one is about the rule.
   equity_grid: [0.70, 0.80, 0.90, 1.00]

@@ -924,3 +924,210 @@ class TestTheRuinOverstatement:
         assert over["measured"], "the real grid no longer feeds the caveat"
         assert over["median_ratio"] >= 1.0
         assert over["worst_ratio"] >= over["median_ratio"]
+
+
+class TestTheBequestPivot:
+    """The one preference parameter a comparison *between rules* is
+    exposed to by construction.
+
+    A rule that amortises to a horizon spends the portfolio to nothing; a
+    fixed real rule dies with most of it. The estate therefore enters the
+    ranking with a weight no data pins down, and a ranking read at one
+    value of it is conditional on that value. The paper recommends a rule
+    off this ranking, so how firmly it is selected is part of the claim.
+    """
+
+    #: Two rules crossing as the estate is valued more highly: the
+    #: amortising one wins when the bequest is worth little, the hoarding
+    #: one when it is worth a lot.
+    @staticmethod
+    def _frame():
+        # The wide shape the sweep produces: one row per rule, one column
+        # per weight, every column present on every row.
+        wide = []
+        for label, values in (("amortisation at 6%", (1.30, 1.26, 1.22, 1.18)),
+                              ("gompertz", (1.20, 1.25, 1.31, 1.40))):
+            row = {"rule_label": label}
+            for theta, v in zip((0.0, 2.0, 5.0, 10.0), values):
+                row[lv.bequest_column(theta)] = v
+            wide.append(row)
+        return pd.DataFrame.from_records(wide)
+
+    WEIGHTS = (0.0, 2.0, 5.0, 10.0)
+
+    def test_it_names_the_winner_at_each_weight(self) -> None:
+        table = lv.by_bequest(self._frame(), self.WEIGHTS)
+        assert list(table["bequest_weight"]) == list(self.WEIGHTS)
+        assert list(table["winner"]) == ["amortisation at 6%",
+                                         "amortisation at 6%",
+                                         "gompertz", "gompertz"]
+
+    def test_it_reports_the_margin_over_the_runner_up(self) -> None:
+        """Which is the number the recommendation should carry: a winner
+        by four per cent and a winner by a tenth of one are different
+        recommendations."""
+        table = lv.by_bequest(self._frame(), self.WEIGHTS)
+        at_two = table[table["bequest_weight"] == 2.0].iloc[0]
+        assert at_two["margin_pct"] == pytest.approx(100 * (1.26 / 1.25 - 1))
+        assert at_two["runner_up"] == "gompertz"
+
+    def test_it_flags_where_the_winner_changes(self) -> None:
+        table = lv.by_bequest(self._frame(), self.WEIGHTS)
+        assert list(table["winner_changed"]) == [False, False, True, False]
+
+    def test_the_verdict_reports_an_unstable_pick_as_unstable(self) -> None:
+        found = lv.bequest_verdict(
+            lv.by_bequest(self._frame(), self.WEIGHTS), baseline_weight=2.0)
+        assert found["measured"]
+        assert not found["winner_is_stable"]
+        assert found["changes_at"] == pytest.approx(5.0)
+        assert found["changes_to"] == "gompertz"
+        assert found["baseline_winner"] == "amortisation at 6%"
+
+    def test_a_stable_pick_reports_as_stable(self) -> None:
+        wide = pd.DataFrame.from_records([
+            {"rule_label": "amortisation at 6%",
+             **{lv.bequest_column(t): v
+                for t, v in zip(self.WEIGHTS, (1.30, 1.29, 1.28, 1.27))}},
+            {"rule_label": "gompertz",
+             **{lv.bequest_column(t): v
+                for t, v in zip(self.WEIGHTS, (1.10, 1.11, 1.12, 1.13))}}])
+        found = lv.bequest_verdict(lv.by_bequest(wide, self.WEIGHTS), 2.0)
+        assert found["winner_is_stable"]
+        assert "changes_at" not in found
+
+    def test_the_family_claim_is_separate_from_the_member_claim(self) -> None:
+        """The paper's second finding is about the family, its Section 9
+        recommendation about a member. They survive the parameter
+        differently, so the verdict has to report them separately: a pick
+        can be unstable while the family holds."""
+        # Winner unstable *and* family broken: it crosses to another family.
+        crosses = lv.bequest_verdict(
+            lv.by_bequest(self._frame(), self.WEIGHTS), 2.0,
+            family="amortisation")
+        assert not crosses["winner_is_stable"]
+        assert not crosses["family_holds"]
+
+        # Winner unstable *within* one family: the member moves, the
+        # family claim stands. This is the case the paper needs to be able
+        # to report, because its second finding is the family claim.
+        inside = pd.DataFrame.from_records([
+            {"rule_label": "amortisation at 6%",
+             **{lv.bequest_column(t): v
+                for t, v in zip(self.WEIGHTS, (1.30, 1.26, 1.22, 1.18))}},
+            {"rule_label": "amortisation at 2%",
+             **{lv.bequest_column(t): v
+                for t, v in zip(self.WEIGHTS, (1.20, 1.25, 1.31, 1.40))}}])
+        found = lv.bequest_verdict(lv.by_bequest(inside, self.WEIGHTS), 2.0,
+                                   family="amortisation")
+        assert not found["winner_is_stable"]
+        assert found["family_holds"]
+
+    def test_the_divide_the_next_section_uses_is_classified_not_assumed(
+            self) -> None:
+        """Section 10's second finding is not "the fixed real rule never
+        wins" -- it is that whatever wins is on the other side of the
+        can-it-run-out divide from the fixed real rule. A depleting rule
+        that is not the fixed real one would break that reading just as
+        surely, so the verdict classifies the winners rather than reading
+        the absence of one name as proof."""
+        found = lv.bequest_verdict(
+            lv.by_bequest(self._frame(), self.WEIGHTS), 2.0)
+        # amortisation and gompertz both divide by a horizon.
+        assert found["winner_side_known"]
+        assert found["every_winner_survives"]
+        assert found["depleting_winners"] == []
+        assert not found["contrast_ever_wins"]
+
+    def test_a_depleting_winner_that_is_not_the_fixed_real_rule_is_caught(
+            self) -> None:
+        """The gap the previous test exists to close: `endowment` can run
+        out and is not `constant_real`, so a verdict that only looked for
+        the fixed real rule would call this grid safe."""
+        wide = pd.DataFrame.from_records([
+            {"rule_label": "amortisation at 6%",
+             **{lv.bequest_column(t): v
+                for t, v in zip(self.WEIGHTS, (1.30, 1.26, 1.22, 1.18))}},
+            {"rule_label": "endowment",
+             **{lv.bequest_column(t): v
+                for t, v in zip(self.WEIGHTS, (1.20, 1.25, 1.31, 1.40))}}])
+        found = lv.bequest_verdict(lv.by_bequest(wide, self.WEIGHTS), 2.0)
+        assert not found["contrast_ever_wins"]      # no fixed real winner
+        assert found["winner_side_known"]
+        assert not found["every_winner_survives"]   # and yet not safe
+        assert found["depleting_winners"] == ["endowment"]
+
+    def test_an_unrecognised_winner_is_unknown_rather_than_safe(self) -> None:
+        """Defaulting a rule the classification does not know to the
+        convenient side would assert the thing being measured."""
+        wide = pd.DataFrame.from_records([
+            {"rule_label": "a rule invented after this test",
+             **{lv.bequest_column(t): v
+                for t, v in zip(self.WEIGHTS, (1.30, 1.29, 1.28, 1.27))}},
+            {"rule_label": "gompertz",
+             **{lv.bequest_column(t): v
+                for t, v in zip(self.WEIGHTS, (1.10, 1.11, 1.12, 1.13))}}])
+        found = lv.bequest_verdict(lv.by_bequest(wide, self.WEIGHTS), 2.0)
+        assert not found["winner_side_known"]
+        assert not found["every_winner_survives"]
+
+    def test_a_missing_column_is_skipped_not_guessed(self) -> None:
+        table = lv.by_bequest(self._frame(), (0.0, 2.0, 99.0))
+        assert list(table["bequest_weight"]) == [0.0, 2.0]
+
+    def test_an_empty_sweep_is_not_measured(self) -> None:
+        assert not len(lv.by_bequest(pd.DataFrame(), self.WEIGHTS))
+        assert lv.bequest_verdict(pd.DataFrame(), 2.0) == {"measured": False}
+
+    def test_a_weight_off_the_grid_is_not_measured(self) -> None:
+        found = lv.bequest_verdict(
+            lv.by_bequest(self._frame(), self.WEIGHTS), baseline_weight=3.0)
+        assert found == {"measured": False}
+
+    def test_the_sweep_carries_extra_scorers_onto_the_same_outcome(self
+                                                                   ) -> None:
+        """The whole point is that no path is redrawn between weights."""
+        seen = []
+
+        class _Out:
+            ruin = np.zeros(3)
+            consumption = np.ones((3, 4))
+
+        one = _Out()
+
+        def _simulate(combo):
+            seen.append(combo)
+            return one
+
+        combos = [lv.Combination(equity=1.0, domestic=0.1,
+                                 rule="constant_real", rate=0.04)]
+        frame = lv.sweep(_simulate, lambda o: 1.0, lambda o: 1.1,
+                         lambda o: 0.0, combos, log_every=0,
+                         extra={lv.bequest_column(5.0): lambda o: 2.2})
+        assert len(seen) == 1, "the extra scorer re-simulated"
+        assert frame.iloc[0][lv.bequest_column(5.0)] == pytest.approx(2.2)
+
+    def test_the_real_sweep_still_carries_the_columns(self) -> None:
+        import pathlib
+        import yaml
+
+        root = pathlib.Path(__file__).resolve().parents[1]
+        path = root / "results/tables/longevity_sweep.csv"
+        if not path.exists():
+            pytest.skip("the longevity study has not been run")
+        cfg = yaml.safe_load((root / "config.yaml").read_text())
+        weights = [float(x) for x in cfg["longevity"].get("bequest_grid", ())]
+        if not weights:
+            pytest.skip("no bequest grid configured")
+        frame = pd.read_csv(path)
+        for w in weights:
+            assert lv.bequest_column(w) in frame.columns, w
+        found = lv.bequest_verdict(
+            lv.by_bequest(frame, weights),
+            float(cfg["utility"]["bequest_weight"]))
+        assert found["measured"]
+        # The claim the paper's second finding rests on: whatever wins,
+        # it is never the rule that holds a fixed real amount.
+        assert all("constant_real" not in w for w in found["winners"]), (
+            "a fixed real rule now wins at some bequest weight; the "
+            "paper's second finding needs rechecking")

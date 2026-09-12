@@ -4581,7 +4581,32 @@ def step34_longevity(cfg: Dict[str, Any],
     def _ruin(outcome: Any) -> float:
         return float(mrt.probability_of_ruin(outcome, spec, survive))
 
-    swept = lv.sweep(_simulate, _fixed, _mortality, _ruin, combos)
+    # The bequest weight is the one preference parameter a comparison
+    # *between rules* is exposed to by construction: the amortisation
+    # family spends the portfolio to nothing and a fixed real rule dies
+    # with most of it, so the estate enters the same certainty equivalent
+    # the ranking is read from. Re-scoring costs nothing beside
+    # simulating, which is the argument this section already makes for
+    # carrying two objectives, so the weight is swept rather than fixed.
+    thetas = [float(x) for x in block.get("bequest_grid", ())]
+    extra = {lv.bequest_column(t):
+             (lambda o, t=t: mrt.certainty_equivalent(
+                 o, spec, cfg, gamma, survive, bequest_weight=t))
+             for t in thetas}
+    swept = lv.sweep(_simulate, _fixed, _mortality, _ruin, combos,
+                     extra=extra)
+    by_bequest = lv.by_bequest(swept, thetas)
+    bequest_found = lv.bequest_verdict(
+        by_bequest, float(cfg["utility"]["bequest_weight"]))
+    if bequest_found.get("measured"):
+        LOGGER.info("across bequest weights %s the winner is %s; stable: "
+                    "%s; the family holds: %s; the margin at the "
+                    "configured weight is %.2f%% over %s",
+                    bequest_found["weights"], bequest_found["winners"],
+                    bequest_found["winner_is_stable"],
+                    bequest_found["family_holds"],
+                    bequest_found["baseline_margin_pct"],
+                    bequest_found["baseline_runner_up"])
     winners = lv.by_objective(swept)
     shift = lv.ranking_shift(swept)
     ablated = lv.ablation(swept)
@@ -4618,6 +4643,8 @@ def step34_longevity(cfg: Dict[str, Any],
     _save_table(winners, tables, "longevity_optimum")
     _save_table(shift, tables, "longevity_ranking")
     _save_table(ablated, tables, "longevity_ablation")
+    if len(by_bequest):
+        _save_table(by_bequest, tables, "longevity_bequest")
 
     # The peak each rule wants is worked out once, here, and handed to both
     # the figure and the prose that reads it, so the bars and the sentence
@@ -4631,11 +4658,11 @@ def step34_longevity(cfg: Dict[str, Any],
     rp.write_doc_34(
         Path("docs") / "34_uncertain_horizon.md", cfg,
         {"swept": swept, "optimum": winners, "ranking": shift,
-         "ablation": ablated},
+         "ablation": ablated, "bequest": by_bequest},
         figures,
         {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
          "verdict": found, "allocations": len(allocations),
-         "policies": len(plans)})
+         "policies": len(plans), "bequest": bequest_found})
     LOGGER.info("docs/34 written (%.0fs)", elapsed)
     state["longevity_sweep"] = swept
     return state

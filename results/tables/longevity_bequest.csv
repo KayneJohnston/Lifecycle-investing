@@ -1,0 +1,6 @@
+bequest_weight,winner,winner_cec,runner_up,runner_up_cec,margin_pct,winner_changed,winner_front_load
+0.0,amortisation (6% assumed return),1.4160802874841798,amortisation (5% assumed return),1.412744765260542,0.2361022532631818,False,0.07264891149004721
+1.0,amortisation (6% assumed return),1.419729612353713,amortisation (5% assumed return),1.4165215046059385,0.2264778711331239,False,0.07264891149004721
+2.0,amortisation (6% assumed return),1.4232019602170496,amortisation (5% assumed return),1.4201167783602477,0.21724846180355417,False,0.07264891149004721
+5.0,amortisation (6% assumed return),1.4326784087711029,amortisation (5% assumed return),1.4299372044654703,0.1917010269452568,False,0.07264891149004721
+10.0,gompertz,1.4601342943214137,constant_percent,1.4475098318275053,0.8721503796606189,True,0.04598575701368062

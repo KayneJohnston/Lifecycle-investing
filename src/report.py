@@ -10785,6 +10785,54 @@ paths, gamma = {gamma:g}, retiring at {int(notes['retire_age'])}. Tables in
     return _write(path, [intro, body])
 
 
+def _crossing_why(found: Mapping[str, Any]) -> str:
+    """The mechanism behind a change of winner, read off the front-load.
+
+    A weight on the estate should promote the rule that leaves more,
+    which is the rule that draws less in the first year. That is a claim
+    about two numbers; the doc prints the numbers.
+    """
+    if "front_load_before" not in found:
+        return ""
+    before = float(found["front_load_before"])
+    after = float(found["front_load_after"])
+    if found.get("slower_after_the_change"):
+        return (f", and it wins by spending more slowly: {after:.1%} of "
+                f"the balance in the first retirement year against "
+                f"{before:.1%}, so more of the portfolio survives to be "
+                f"left")
+    return (f", and not by spending more slowly: {after:.1%} of the "
+            f"balance in the first retirement year against {before:.1%}, "
+            f"so the weight is rewarding something other than a rule that "
+            f"leaves more")
+
+
+def _bequest_divide(found: Mapping[str, Any]) -> str:
+    """Whether the weight ever moves the winner across the divide that
+    Section 10's second finding rests on.
+
+    Not the same question as "does the fixed real rule ever win": a
+    depleting rule that is not the fixed real one would break the reading
+    just as surely, so the winners are classified rather than checked
+    against one name.
+    """
+    if not found.get("winner_side_known"):
+        return ("Whether every winner across the grid can run the account "
+                "to zero is not established, so this sweep does not settle "
+                "what Section 10 takes from the ranking.")
+    if found.get("every_winner_survives"):
+        return ("What the weight does not touch is the divide the paper's "
+                "second finding rests on: every winner across the grid "
+                "sets its spending from a horizon and so cannot run the "
+                "account to zero, and the fixed real withdrawal, which "
+                "can, is beaten at every weight on the grid.")
+    named = ", ".join(str(w) for w in found.get("depleting_winners", []))
+    return (f"And the weight does move the winner across the divide the "
+            f"paper's second finding rests on: {named} can run the account "
+            f"to zero, so at the weights where it wins the ranking hands "
+            f"Section 10 a rule on the wrong side of its own contrast.")
+
+
 def write_doc_34(
     path: str | Path,
     cfg: Mapping[str, Any],
@@ -10891,6 +10939,48 @@ def write_doc_34(
             f"{'small enough to read the three separately' if found.get('separable') else 'large enough that none of the three can be read on its own'}.")
     else:
         ablation_line = ""
+
+    # How firmly the winner is selected: the margin over the runner-up, and
+    # whether the pick survives the one preference parameter a comparison
+    # between rules is exposed to by construction.
+    bequest = frames.get("bequest")
+    bequest_found = notes.get("bequest", {})
+    bequest_tbl = ""
+    bequest_line = ("The bequest weight was not swept, so how much of the "
+                    "ranking is the parameter is unmeasured.")
+    if bequest is not None and len(bequest):
+        bequest_tbl = md_table(_compact(
+            bequest, ["bequest_weight", "winner", "runner_up",
+                      "margin_pct"],
+            {"bequest_weight": "Bequest weight", "winner": "Winning rule",
+             "runner_up": "Runner-up",
+             "margin_pct": "Margin over the runner-up (%)"}),
+            floatfmt="{:.2f}")
+    if bequest_found.get("measured"):
+        ranked = ranking.sort_values("rank_mortality")
+        margin = (100.0 * (float(ranked.iloc[0][lng.MORTALITY])
+                           / float(ranked.iloc[1][lng.MORTALITY]) - 1.0)
+                  if len(ranked) > 1 else float("nan"))
+        stable = bool(bequest_found["winner_is_stable"])
+        bequest_line = (
+            f"**{ranked.iloc[0]['rule_label']} tops the ranking by "
+            f"{margin:.2f}%** over {ranked.iloc[1]['rule_label']}, which is "
+            f"the same rule at an adjacent setting. What the grid resolves "
+            f"is the family, not the member.\n\n"
+            + (f"**And the pick survives the weight.** The same rule wins "
+               f"at every weight from {min(bequest_found['weights']):g} to "
+               f"{max(bequest_found['weights']):g}."
+               if stable else
+               f"**And the pick does not survive the weight.** The winner "
+               f"changes at "
+               f"{bequest_found.get('changes_at', float('nan')):g}, where "
+               f"{bequest_found.get('changes_to', '')} takes over"
+               + _crossing_why(bequest_found)
+               + f". At the configured "
+                 f"weight of {bequest_found['baseline_weight']:g} the pick "
+                 f"is {bequest_found['baseline_winner']} by "
+                 f"{bequest_found['baseline_margin_pct']:.2f}%.")
+            + "\n\n" + _bequest_divide(bequest_found))
 
     if "front_load_corr" in found:
         corr = float(found["front_load_corr"])
@@ -11120,7 +11210,26 @@ decision, and the last frees all three.
 
 {ablation_line}
 
-## 6. What this changes
+## 6. How firmly the winning rule is selected
+
+The paper reads this section's pick as the rule a retiree should use, which
+raises the standard it has to meet. Two things about the selection are worth
+stating rather than leaving to a reader who checks.
+
+The first is the margin between the winner and the runner-up, which are
+adjacent settings of the same rule. The second is the bequest weight. Every
+rule here differs from a fixed real withdrawal in the estate it leaves *by
+construction* -- the amortisation family spends the portfolio to nothing and
+a fixed real rule dies with most of it -- so the bequest term enters this
+ranking with a weight no data pins down. Scoring is free beside simulating,
+which is the argument this section already makes for carrying two
+objectives, so the weight is swept on the same outcomes.
+
+{bequest_tbl}
+
+{bequest_line}
+
+## 7. What this changes
 
 * The rule comparison in `docs/06` and the joint optimisation in `docs/31`
   both score a horizon nobody faces. This says how much that mattered.
@@ -11130,7 +11239,7 @@ decision, and the last frees all three.
   model with two parameters, and `docs/24` sweeps them; the sweep here is
   held at that section's central calibration.
 
-## 7. What is still not modelled
+## 8. What is still not modelled
 
 * Annuities, which are the direct hedge for the risk this section prices
   and would dominate part of the grid if they were in it.
@@ -11139,11 +11248,11 @@ decision, and the last frees all three.
 * Couples, where the relevant horizon is the second death and the
   distribution is a different shape.
 
-## 8. Figures
+## 9. Figures
 
 {figure_list}
 
-## 9. Reproduction
+## 10. Reproduction
 
 ```bash
 python main.py --steps 34

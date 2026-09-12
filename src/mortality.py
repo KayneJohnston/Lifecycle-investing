@@ -182,10 +182,21 @@ def weights(spec: lc.LifecycleSpec, survive: np.ndarray, beta: float,
 
 def certainty_equivalent(outcome: lc.LifecycleOutcome, spec: lc.LifecycleSpec,
                          cfg: Mapping[str, Any], gamma: float,
-                         survive: np.ndarray) -> float:
-    """Survival-weighted CRRA certainty equivalent, in the usual units."""
+                         survive: np.ndarray,
+                         bequest_weight: float | None = None) -> float:
+    """Survival-weighted CRRA certainty equivalent, in the usual units.
+
+    ``bequest_weight`` overrides the configured one. Withdrawal rules
+    differ in the estate they leave by construction -- a rule that
+    amortises to a horizon spends the portfolio to nothing and a fixed
+    real rule dies with most of it -- so a comparison *between rules* is
+    exposed to this parameter in a way a comparison between allocations
+    is not. Sweeping it is the same free re-scoring the risk aversion
+    already gets.
+    """
     beta = float(cfg["utility"]["discount_factor"])
-    bequest_weight = float(cfg["utility"]["bequest_weight"])
+    bequest_weight = (float(cfg["utility"]["bequest_weight"])
+                      if bequest_weight is None else float(bequest_weight))
     shift = float(cfg["utility"].get("bequest_shift", 1.0))
     floor = float(cfg["utility"].get("consumption_floor", ut.DEFAULT_FLOOR))
     offset, length = window(spec, cfg)

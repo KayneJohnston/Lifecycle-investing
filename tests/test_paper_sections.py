@@ -480,6 +480,51 @@ class TestMovements:
         assert content.movement_span(("introduction",)) == "Section 1"
 
 
+class TestThePhraseTheNextSectionIsChecked:
+    """"The next section" is a claim about the reading order, not a turn
+    of phrase, and the same prose serves two cuts of this study.
+
+    Section `longevity` and Section `ordering` are adjacent in the short
+    paper and four apart in the long one, so a sentence calling `ordering`
+    "the next section" shipped true in one document and false in the
+    other. :func:`content.adjacency` is what the prose goes through now.
+    """
+
+    def test_it_says_the_next_section_only_when_it_is_the_next_one(self
+                                                                   ) -> None:
+        order = list(content.SECTION_ORDER)
+        first, second = order[0], order[1]
+        assert content.adjacency(first, second) == "the next section"
+
+    def test_it_names_a_section_that_is_further_off(self) -> None:
+        order = list(content.SECTION_ORDER)
+        assert content.adjacency(order[0], order[3]) == f"Section #{order[3]}"
+
+    def test_a_caller_may_supply_its_own_distant_wording(self) -> None:
+        order = list(content.SECTION_ORDER)
+        assert content.adjacency(order[0], order[3],
+                                 far="the section that uses it") \
+            == "the section that uses it"
+
+    def test_a_section_the_cut_does_not_carry_is_not_called_adjacent(self
+                                                                     ) -> None:
+        """A key resolved through the companion has no number in this
+        reading order, so it cannot be the next section here."""
+        order = list(content.SECTION_ORDER)
+        assert content.adjacency(order[0], "not_a_section_key") \
+            == "Section #not_a_section_key"
+
+    def test_the_longevity_pointer_is_right_in_both_cuts(self) -> None:
+        """The bug this exists to stop: the long paper called Section 36
+        "the next section" from Section 32."""
+        near = content.section_number("ordering") \
+            == content.section_number("longevity") + 1
+        phrase = content.adjacency("longevity", "ordering",
+                                   far="the section that uses it")
+        assert phrase == ("the next section" if near
+                          else "the section that uses it")
+
+
 class TestReadingOrderDependencies:
     """A section may point forward to say "we return to this", but it must
     not depend on a result the reader has not been given yet."""
@@ -490,19 +535,39 @@ class TestReadingOrderDependencies:
 
     @staticmethod
     def _bodies() -> dict:
+        """Each section's prose, including the private helpers it calls.
+
+        Sliced at the next top-level ``def`` of any kind rather than at the
+        next ``def section_``: a private helper written between two sections
+        was otherwise counted as part of the one above it, which attributed
+        a subsection's cross-references to whichever section happened to
+        precede it in the file. Helpers are then folded into every section
+        that calls them, so the prose is still checked -- it just gets
+        checked against the reader's position in the right section.
+        """
         import re
         from pathlib import Path
 
         src = Path("paper/content.py").read_text()
+        spans = [(m.group(1), m.start()) for m in
+                 re.finditer(r"\ndef ([A-Za-z_][A-Za-z0-9_]*)\(", src)]
+        chunks = {}
+        for i, (name, start) in enumerate(spans):
+            end = spans[i + 1][1] if i + 1 < len(spans) else len(src)
+            chunks[name] = src[start:end]
+
+        helpers = {n: b for n, b in chunks.items()
+                   if n.startswith("_") and not n.startswith("__")}
         out = {}
         for key in content.SECTION_ORDER:
-            m = re.search(rf"\ndef section_{re.escape(key)}\(", src)
-            if not m:
+            body = chunks.get(f"section_{key}")
+            if body is None:
                 continue
-            start = m.start()
-            nxt = re.search(r"\ndef section_", src[start + 1:])
-            end = start + 1 + (nxt.start() if nxt else len(src) - start - 1)
-            out[key] = src[start:end]
+            # One pass of inlining is enough: the helpers here are leaves or
+            # call other helpers the same section also names directly.
+            called = [b for n, b in helpers.items()
+                      if re.search(rf"\b{re.escape(n)}\s*\(", body)]
+            out[key] = body + "".join(called)
         return out
 
     def test_the_spending_sections_do_not_lean_on_later_ones(self) -> None:
@@ -520,9 +585,15 @@ class TestReadingOrderDependencies:
             forward = {r for r in cited
                        if content.section_number(r) > here
                        and r not in self.SIGNPOSTS}
-            # `plan` may point on to the institutional pair as signposting;
-            # nothing here may reach past it.
-            allowed = {"leisure", "tax"} if key == "plan" else set()
+            # `plan` may point on to the institutional pair as signposting,
+            # and `longevity` at the section that consumes its pick -- the
+            # reason its closing subsection exists is that a later section
+            # takes the rule chosen here, so the pointer is the content.
+            # Nothing else may reach past itself. This allows signposting
+            # and leaning alike; the distinction is not one a regex can
+            # draw, so the two allowances are kept narrow and named.
+            allowed = {"plan": {"leisure", "tax"},
+                       "longevity": {"ordering"}}.get(key, set())
             assert not (forward - allowed), f"{key} depends on {forward}"
 
     def test_longevity_sits_with_the_spending_sections(self) -> None:
