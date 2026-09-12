@@ -853,6 +853,37 @@ ABSENT: Tuple[str, ...] = ()
 RENUMBERED: Dict[str, Dict[int, int]] = {}
 
 
+#: Whether the current build carries the appendices. A shorter cut does
+#: not, and "Appendix C" in a document with no appendices is a dangling
+#: pointer of exactly the kind :func:`resolve_sections` exists to prevent
+#: -- it simply was not going through it, because an appendix is named by
+#: a letter rather than by a ``#key``. Two such pointers shipped.
+HAS_APPENDICES: bool = True
+
+
+def section_span(first: str, last: str) -> str:
+    """``Sections 11 to 28``, in a form that survives both being elsewhere.
+
+    Resolving each end separately produces "Sections 11 of the companion
+    study to 28 of the companion study" in a cut that carries neither,
+    which is what shipped. A span is one reference, so it is named once.
+    """
+    if first in _SECTION_NUMBER and last in _SECTION_NUMBER:
+        return f"Sections {section_number(first)} to {section_number(last)}"
+    if COMPANION and first in COMPANION.get("numbers", {}) \
+            and last in COMPANION.get("numbers", {}):
+        return (f"Sections {COMPANION['numbers'][first]} to "
+                f"{COMPANION['numbers'][last]} of {COMPANION['name']}")
+    return f"Sections {section_number(first)} to {section_number(last)}"
+
+
+def appendix(letter: str) -> str:
+    """``Appendix C``, or the companion study's when this build has none."""
+    if HAS_APPENDICES or not COMPANION:
+        return f"Appendix {letter}"
+    return f"Appendix {letter} of {COMPANION['name']}"
+
+
 def resolve_sections(text: str) -> str:
     """Replace every ``#key`` token in ``text`` with its section number.
 
@@ -1111,7 +1142,7 @@ def section_introduction(ctx: Any) -> List[Flowable]:
         "Four appendices give the full parameter set, the country panel, "
         "supplementary tables and the reproduction instructions. Every "
         "figure and table in the paper is regenerated from the pipeline "
-        "described in Appendix D; none is drawn by hand."))
+        f"described in {appendix('D')}; none is drawn by hand."))
 
     return out
 
@@ -1348,8 +1379,8 @@ def section_data(ctx: Any) -> List[Flowable]:
         "Real domestic equity returns by country",
         note="Arithmetic and geometric means are annual real returns "
              "deflated by each country's own consumer price index; AR(1) is "
-             "the first-order autocorrelation of the annual series. Appendix "
-             "B repeats this with excess kurtosis.",
+             f"the first-order autocorrelation of the annual series. "
+             f"{appendix('B')} repeats this with excess kurtosis.",
         font_size=7.0))
 
     out.append(ctx.h2("#data.4 Cross-asset structure"))
@@ -1753,7 +1784,7 @@ def section_methods(ctx: Any) -> List[Flowable]:
         f"(<i>{cfg['bootstrap']['country_draw']}</i>) with probability "
         f"proportional to the length of that country's usable history "
         f"(<i>{cfg['bootstrap']['country_weighting']}</i>). Both choices are "
-        f"varied in Appendix C: redrawing the country at every block, and "
+        f"varied in {appendix('C')}: redrawing the country at every block, and "
         f"weighting countries uniformly, both leave the ranking unchanged. "
         f"The weighting choice has little room to bite here, because every "
         f"country carries between {f.panel['min_years']} and "
@@ -1783,12 +1814,9 @@ def section_methods(ctx: Any) -> List[Flowable]:
                    "bootstrap_kurtosis": lambda v: f2(v, 1)}),
         "Does the bootstrap reproduce the panel it samples from?",
         anchor="bootstrap_fidelity",
-        note="Means agree to within twenty basis points on every series and "
-             "standard deviations to within eight percent. The inflation row "
-             "has an excess kurtosis in the thousands: that is the "
-             "hyperinflation episodes surviving into the simulated paths, "
-             "which is the intended behaviour rather than a defect."))
+        note=_fidelity_note(moments)))
 
+    out.append(_fidelity_caveat(ctx, moments))
     out.append(ctx.p(
         f"The correlation matrix is reproduced to a maximum absolute deviation "
         f"of {f2(_corr_gap(f)['assets'], 3)} across the four asset-to-asset "
@@ -1975,10 +2003,21 @@ def section_methods(ctx: Any) -> List[Flowable]:
         f"is <i>identical</i> across allocation strategies by construction, so "
         f"including it adds a large constant to every strategy's utility and "
         f"compresses the differences that the exercise is about. Where a "
-        f"policy <i>does</i> change working-life consumption — the retirement "
-        f"timing and savings-rate studies of Sections #valuation to #retirement "
-        f"— we switch to "
-        f"the whole-lifetime window and say so explicitly."))
+        f"policy <i>does</i> change working-life consumption — the "
+        f"retirement-timing and savings-rate studies of "
+        f"{section_span('valuation', 'retirement')} — we switch to the "
+        f"whole-lifetime window and say so explicitly."))
+    out.append(ctx.note(
+        "Which is also the answer to a question a reader comparing tables "
+        "will reach: certainty equivalents in this paper are not all on one "
+        "scale, and they are not meant to be. Three things vary between "
+        "sections and each is stated where it applies — the window "
+        "(retirement-only for the allocation comparisons, whole-lifetime "
+        "wherever a policy moves working-life consumption), whether the "
+        "estate is carried, and the path count. Levels are therefore "
+        "comparable within a table and across tables that share those "
+        "three, and not otherwise; every comparison this paper draws is "
+        "within a table for exactly that reason."))
 
     # -- 4.4 comparison discipline ---------------------------------------
     out.append(ctx.h2("#methods.4 The comparison discipline"))
@@ -2037,10 +2076,99 @@ def section_methods(ctx: Any) -> List[Flowable]:
         f"extension in this paper is built on a simulator that is asserted "
         f"equal to the one that produced the baseline."))
     out.append(ctx.p(
-        "Appendix D sets out how the computation is organised, what the test "
+        f"{appendix('D')} sets out how the computation is organised, what the test "
         "suite establishes, and the discipline by which the prose in this "
         "paper is held to the tables it describes."))
     return out
+
+
+#: The four series a portfolio is actually built from. Inflation is sampled
+#: alongside them to keep the joint structure, but every return in this
+#: study is already real, so it is a different kind of row and the fidelity
+#: claim has to be made about the two groups separately.
+ASSET_SERIES: Tuple[str, ...] = ("dom_eq", "intl_eq", "bond", "bill")
+
+
+def _fidelity(moments: pd.DataFrame) -> Dict[str, float]:
+    """The worst gap the bootstrap leaves, assets and inflation apart.
+
+    Written because the hand-typed note under this table claimed means
+    agreeing "to within twenty basis points on every series and standard
+    deviations to within eight percent" while the table beneath it showed
+    inflation off by 74 basis points and reproducing half the volatility.
+    A note that contradicts its own table is worse than no note, so this
+    one is read off the table.
+    """
+    indexed = moments.set_index("series")
+    assets = indexed.loc[[s for s in ASSET_SERIES if s in indexed.index]]
+    found = {
+        "worst_mean_bp": float(assets["mean_gap_bp"].abs().max()),
+        "worst_std_pct": float(
+            100.0 * (assets["std_ratio"] - 1.0).abs().max()),
+    }
+    if "inflation" in indexed.index:
+        row = indexed.loc["inflation"]
+        found["inflation_mean_bp"] = float(row["mean_gap_bp"])
+        found["inflation_std_ratio"] = float(row["std_ratio"])
+        found["inflation_kurtosis"] = float(row["bootstrap_kurtosis"])
+    return found
+
+
+def _fidelity_note(moments: pd.DataFrame) -> str:
+    """The table note, in the table's own numbers."""
+    at = _fidelity(moments)
+    note = (f"Across the four asset series the means agree to within "
+            f"{at['worst_mean_bp']:.0f} basis points and the standard "
+            f"deviations to within {at['worst_std_pct']:.0f} percent. ")
+    if "inflation_mean_bp" in at:
+        note += (f"The inflation row does not: its mean is "
+                 f"{at['inflation_mean_bp']:.0f} basis points out and it "
+                 f"reproduces {at['inflation_std_ratio']:.2f} of the panel's "
+                 f"standard deviation, with an excess kurtosis of "
+                 f"{at['inflation_kurtosis']:,.0f}. The text below says what "
+                 f"that does and does not reach.")
+    return note
+
+
+def _fidelity_caveat(ctx: Any, moments: pd.DataFrame) -> Paragraph:
+    """What the inflation row's poor fidelity can and cannot touch.
+
+    The honest answer is narrow, and narrow is worth saying: every return
+    series in this study is deflated country-by-country and year-by-year
+    before it is sampled, so the simulated investor never converts a
+    nominal quantity into a real one and never reads the inflation series
+    at all -- with one exception, which is named rather than glossed.
+    """
+    at = _fidelity(moments)
+    if "inflation_std_ratio" not in at:
+        return ctx.p("The bootstrap's fidelity to the panel is reported "
+                     "above.")
+    return ctx.p(
+        f"<b>The inflation row is the one place the sampler does not "
+        f"reproduce its panel, and it is worth being exact about the "
+        f"reach of that.</b> The mean is "
+        f"{abs(at['inflation_mean_bp']):.0f} basis points low and the "
+        f"standard deviation is {at['inflation_std_ratio']:.2f} of the "
+        f"panel's — a shortfall no reader should have to discover from the "
+        f"table. Two things follow, and they point in different "
+        f"directions. The first is that it cannot touch the levels or the "
+        f"orderings reported anywhere in this paper: every series is "
+        f"deflated by its own country's price index in its own year "
+        f"<i>before</i> the sampler sees it, so returns, contributions, "
+        f"withdrawals and consumption are real throughout and no quantity "
+        f"in the objective is ever converted from nominal terms. Inflation "
+        f"is carried to preserve the joint draw, not to deflate anything. "
+        f"The second is that one withdrawal rule does read it — the "
+        f"Guyton–Klinger guardrail freezes its nominal payment after a "
+        f"down year, which is a real cut of the realised inflation rate — "
+        f"so that rule's position in the ranking of Section "
+        f"#longevity is measured on an inflation series that is too tame. "
+        f"It is not in Section #ordering's menu and it is not the "
+        f"paper's baseline, so nothing else moves; a study that made the "
+        f"guardrail its subject would have to fix the sampler first. The "
+        f"kurtosis in the thousands is the hyperinflations surviving into "
+        f"the paths, which is the intended behaviour and part of why the "
+        f"variance ratio reads as it does.")
 
 
 def _corr_gap(f: Any) -> Dict[str, float]:
@@ -2329,7 +2457,7 @@ def section_baseline(ctx: Any) -> List[Flowable]:
         f"simulated life, and neither is obviously right. A lifetime's "
         f"domestic country can be drawn once and held, or redrawn at every "
         f"block; and countries can be weighted by the length of their recorded "
-        f"history or treated as equally likely. Appendix C reports both "
+        f"history or treated as equally likely. {appendix('C')} reports both "
         f"variants in full. Neither reverses a ranking."))
     out.append(ctx.p(
         f"The weighting choice has little room to bite, because every country "
@@ -7245,6 +7373,201 @@ def section_plan(ctx: Any) -> List[Flowable]:
     return out
 
 
+def _gate_correction(ctx: Any, f: Any, pension_age: int,
+                     safety_net: float) -> List[Flowable]:
+    """The 2x2 above, re-read at a date the eligibility gate can reach.
+
+    The decomposition solves each arm for its own best retirement date. Two
+    arms land on the pension age, and there the gate is exactly slack -- a
+    household retiring on the birthday the pension arrives on is in the
+    same position with a gate as without one. So those two arms run the
+    same simulation, their agreement is an identity, and the interaction,
+    being the joint arm less the two singles, is minus the timing effect by
+    arithmetic. None of it is evidence about the gate.
+
+    Step 38 of the pipeline re-scores the same four arms at every date on
+    the grid. This reports what that finds, because a conclusion drawn from
+    a blind comparison should not be left standing on it even when the
+    conclusion turns out to be right.
+    """
+    out: List[Flowable] = []
+    try:
+        square = f.table("gate_held_still")
+    except (FileNotFoundError, OSError):
+        return out
+    if not len(square):
+        return out
+
+    from src import gate as gt
+
+    best = int(square.loc[square["cec_both"].idxmax(), "retire_age"])
+    found = gt.gate_verdict(square, pension_age, best)
+    if not found.get("measured"):
+        return out
+
+    out.append(ctx.p(
+        f"<b>That last sentence was read at the one date where it could not "
+        f"have come out otherwise.</b> Both the joint arm and the "
+        f"formula-only arm solve to {best}, which is the pension's own "
+        f"eligibility age, and a household retiring on the birthday the "
+        f"pension arrives on is in the same position whether or not there is "
+        f"a gate in front of it. The two arms are the same simulation there: "
+        f"their certainty equivalents agree to every digit the sweep "
+        f"resolves, and the interaction row, being the joint arm less the "
+        f"two singles, is then minus the timing effect by arithmetic. "
+        f"Neither number is a measurement, and an ablation that solves each "
+        f"arm for its own argmax will do this whenever the argmax lands "
+        f"where a feature is slack."))
+    out.extend(ctx.table(
+        [["Retires at", "Gate alone", "Means test alone", "Interaction",
+          "Can the gate bind?"]]
+        + [[f"{int(r['retire_age'])}",
+            f"{r['timing_effect']:+.4f}",
+            f"{r['formula_effect']:+.4f}",
+            f"{r['interaction']:+.4f}",
+            "no" if bool(r["arms_coincide"]) else "yes"]
+           for _, r in square.iterrows()],
+        "The same 2×2 read at every retirement date rather than at "
+        "each arm's own best. Effects are against the baseline arm in "
+        "certainty-equivalent consumption.",
+        anchor="gate_held_still",
+        note=f"A household that has already reached {pension_age} is paid "
+             f"the same with an eligibility gate as without one, so the two "
+             f"gated arms reproduce the two ungated ones and the date can "
+             f"say nothing about the gate. Those rows are marked."))
+
+    lines: List[str] = []
+    if "timing_where_it_bites" in found:
+        lines.append(
+            f"<b>Read where the gate can operate, the original conclusion "
+            f"survives — and now on evidence.</b> Across the "
+            f"{found['informative_dates']} dates below {pension_age} the "
+            f"means test moves the certainty equivalent by "
+            f"{found['formula_median_where_it_bites']:+.4f} at the median "
+            f"against the gate's {found['timing_median_where_it_bites']:+.4f}"
+            f", a factor of {found.get('formula_over_timing', float('nan')):.0f}"
+            f". The interaction there is "
+            f"{found['interaction_median_where_it_bites']:+.4f} rather than "
+            f"the arithmetic echo the argmax version produced. So it is "
+            f"still how the benefit is worked out and not when it starts; "
+            f"what has changed is that the comparison saying so is one the "
+            f"gate could have failed. It is also, as the next table shows, "
+            f"a comparison that holds at the payment this model makes "
+            f"before the pension age and not at every payment it might "
+            f"have made.")
+        lines.append(
+            f"The gate is not uniformly small, and the shape is worth a "
+            f"sentence. Its largest effect is "
+            f"{found['timing_where_it_bites']:+.4f} at age "
+            f"{int(found['timing_widest_age'])} and it is <i>positive</i>: "
+            f"an arm that pays on a fixed birthday also pays without an "
+            f"actuarial reduction, and for a household stopping seventeen "
+            f"years early the forgiven reduction is worth more than the "
+            f"years of partial payment cost. That is the same offset the "
+            f"paragraph above names, measured rather than asserted — "
+            f"and the next table takes it apart.")
+    for line in lines:
+        out.append(ctx.p(line))
+
+    # -- and the parameter the offset is made of --------------------------
+    try:
+        bridge = f.table("gate_bridge")
+    except (FileNotFoundError, OSError):
+        return out
+    if not len(bridge):
+        return out
+    # The date the gate study nominates, not the last one below the gate.
+    # A household retiring at sixty-five spends two years bridged and the
+    # parameter barely reaches them; the question is about one the gap
+    # actually costs something.
+    below = bridge[bridge["retire_age"] < pension_age]
+    if not len(below):
+        return out
+    wanted = int(f.cfg.get("gate", {}).get("reference_age", 0))
+    reference_age = (wanted if wanted in set(below["retire_age"])
+                     else int(below.loc[below["timing_effect"].abs().idxmax(),
+                                        "retire_age"]))
+    found_b = gt.bridge_verdict(bridge, pension_age, reference_age)
+    if not found_b.get("measured"):
+        return out
+
+    at_ref = bridge[bridge["retire_age"] == reference_age]
+    out.extend(ctx.table(
+        [["Paid before the pension age", "Gate arm's effect"]]
+        + [[f"{100.0 * float(r['bridge']):.0f}% of the rate",
+            f"{r['timing_effect']:+.4f}"]
+           for _, r in at_ref.sort_values("bridge").iterrows()],
+        f"What the pre-eligibility payment does to the gate arm, at a "
+        f"retirement age of {reference_age}.",
+        anchor="gate_bridge",
+        note=f"At the full rate the pension is paid identically on both "
+             f"sides of {pension_age}, so there is no gate left and what "
+             f"survives is the other thing this arm carries: a benefit not "
+             f"actuarially reduced for stopping early.")) 
+
+    # How the gate arm compares with the means test at the same date, so
+    # the claim about which feature dominates can be checked at the bottom
+    # of the bridge grid and not only at the calibration.
+    at_date = square[square["retire_age"] == reference_age]
+    formula_here = (float(at_date.iloc[0]["formula_effect"])
+                    if len(at_date) else float("nan"))
+    outweighs = bool(np.isfinite(formula_here) and formula_here
+                     and abs(found_b["at_lowest_share"]) > abs(formula_here))
+
+    body = (
+        f"<b>The gate arm is very largely made of the bridge, and the "
+        f"calibration sits almost exactly where it vanishes.</b> At "
+        f"{reference_age} the arm is worth "
+        f"{found_b['at_lowest_share']:+.4f} when nothing is paid before the "
+        f"pension age and {found_b['at_highest_share']:+.4f} when the full "
+        f"rate is. The second of those is the forgiven actuarial reduction "
+        f"on its own, because a pension paid identically on both sides of a "
+        f"birthday is not gated at all; the rest, "
+        f"{found_b['bridge_only']:+.4f}, is the bridge.")
+    if found_b.get("ends_disagree") and "cancels_at_share" in found_b:
+        body += (
+            f" The two run opposite ways and cross at "
+            f"{100.0 * float(found_b['cancels_at_share']):.0f}% of the "
+            f"rate; this model pays {100.0 * safety_net:.0f}%, just past "
+            f"the crossing. So the finding that the start date does not "
+            f"matter is, at this date, a statement about where a "
+            f"hand-chosen parameter sits relative to that zero.")
+    if outweighs:
+        body += (
+            f" And it does not survive moving the parameter. With nothing "
+            f"paid before the pension age the gate is worth "
+            f"{found_b['at_lowest_share']:+.4f} against the means test's "
+            f"{formula_here:+.4f} at the same date \u2014 "
+            f"{abs(found_b['at_lowest_share']) / abs(formula_here):.1f} "
+            f"times as large, and the larger of the two features rather "
+            f"than the negligible one. What survives the sweep is the "
+            f"narrower claim: at a bridge in the range a real unemployment "
+            f"payment would supply, the formula dominates. What does not "
+            f"survive is the claim without that condition. The section's "
+            f"other conclusions are untouched, because they turn on the "
+            f"formula, and the formula is large at every date and every "
+            f"bridge.")
+    else:
+        body += (
+            f" The comparison with the means test holds throughout: even "
+            f"with no bridge at all the gate is worth "
+            f"{found_b['at_lowest_share']:+.4f} against the formula's "
+            f"{formula_here:+.4f}, so which feature dominates does not "
+            f"depend on the parameter.")
+    out.append(ctx.p(body))
+    out.append(ctx.note(
+        f"The pre-eligibility share is not a statutory quantity and no data "
+        f"pins it down; it stands in for the income-tested unemployment "
+        f"payment an early retiree would claim, which is assessed on a "
+        f"different basis. It is reported here, and in the calibration "
+        f"table of Section #pension.1, because it is a floor under "
+        f"consumption in a study whose mechanism is that floors decide the "
+        f"portfolio — and because a certainty equivalent at this "
+        f"curvature is unbounded below without one, which is a reason to "
+        f"sweep a parameter rather than to trust it."))
+    return out
+
+
 def section_leisure(ctx: Any) -> List[Flowable]:
     f = ctx.f
     swept = f.table("leisure_sweep")
@@ -7623,6 +7946,11 @@ def section_leisure(ctx: Any) -> List[Flowable]:
                 f"non-additivity.) "
                 f"Once the means test has taken the pension away, the "
                 f"birthday it would have arrived on stops mattering."))
+        # Which is true, and was measured where it could not have been
+        # false. The correction sits here rather than in a section of its
+        # own because a reader meeting the claim should meet its standing
+        # at the same time.
+        out.extend(_gate_correction(ctx, f, pension_age, safety_net))
         if bite:
             out.append(ctx.p(
                 f"<b>And the formula does so much because this household is "
@@ -9291,7 +9619,9 @@ def section_conclusion(ctx: Any) -> List[Flowable]:
 REFERENCES = [
     "Anarkulova, A., Cederburg, S., and O'Doherty, M. S. (2023). "
     "\"Beyond the Status Quo: A Critical Assessment of Lifecycle Investment "
-    "Advice.\" Working paper.",
+    "Advice.\" Working paper, University of Arizona. The replication target "
+    "of this study; every comparison labelled a replication is against this "
+    "version, and a reader checking the numbers should use the same one.",
     "Anarkulova, A., Cederburg, S., and O'Doherty, M. S. (2022). "
     "\"Stocks for the Long Run? Evidence from a Broad Sample of Developed "
     "Markets.\" <i>Journal of Financial Economics</i>, 143(1), 409–433.",
@@ -9951,6 +10281,11 @@ def section_pension(ctx: Any) -> List[Flowable]:
     total = saving + net
     cut_out = params["pension_free_area"] + (params["pension_full_rate"]
                                              / params["pension_taper"])
+    # Read from the block that actually applies them, so the table cannot
+    # drift from the simulation the way it did while they were absent.
+    _lei = cfg.get("leisure", {})
+    gate_age = int(_lei.get("age_pension_age", 67))
+    bridge = float(_lei.get("pre_pension_safety_net", 0.0))
 
     def _row(key: str, column: str) -> float:
         return (float(rows.loc[key, column]) if key in rows.index
@@ -10012,12 +10347,28 @@ def section_pension(ctx: Any) -> List[Flowable]:
          ["Cut-out (homeowner)", "$722,000", f"{cut_out:.3f}"],
          ["Superannuation Guarantee",
           f"{sg:.0%} of earnings, taxed {sg_tax:.0%} on entry",
-          f"{net:.3f} reaching the fund"]],
+          f"{net:.3f} reaching the fund"],
+         # Two parameters that shipped in the code and in no table. The
+         # eligibility age is the subject of a whole section's timing arm,
+         # and the pre-eligibility share is a consumption floor in a paper
+         # whose mechanism is consumption floors.
+         ["Eligibility age",
+          f"{gate_age}, for anyone born after 1 January 1957",
+          "—"],
+         ["Paid before that age",
+          f"{bridge:.0%} of the means-tested rate",
+          f"{bridge * params['pension_full_rate']:.3f} at the full rate"]],
         "The Age Pension for a single retiree, March 2026 indexation, with "
         "assets-test thresholds from July 2026, against Australian average "
         "weekly ordinary time earnings of $2,051.10 (ABS, November 2025).",
         note="Rates are held as multiples of economy-wide average earnings so "
-             "the schedule travels across the panel’s currencies unchanged."))
+             "the schedule travels across the panel’s currencies "
+             "unchanged. The last row is not a statutory quantity: it stands "
+             "in for the income-tested unemployment payment a retiree who "
+             "stops before the eligibility age would claim, and it is a "
+             "judgement rather than a measurement. Section #leisure.5 "
+             "sweeps it from nothing to the full rate, because a floor "
+             "chosen by hand in a study about floors has to be."))
     out.append(ctx.p(
         f"<b>The guarantee is a second contribution stream, not a larger "
         f"first one.</b> The worker still saves this paper’s own "

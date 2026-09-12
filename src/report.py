@@ -12483,3 +12483,237 @@ Runtime {float(notes['elapsed_seconds']):.0f}s at {int(notes['n_paths']):,}
 paths, gamma = {gamma:g}. Tables in `results/tables/ceiling_*.csv`.
 """
     return _write(path, [intro, body])
+
+
+def write_doc_38(
+    path: str | Path,
+    cfg: Mapping[str, Any],
+    frames: Mapping[str, pd.DataFrame],
+    figures: Sequence[str],
+    notes: Mapping[str, Any],
+) -> Path:
+    """Whether the pension's start date was ever given a chance to matter.
+
+    `docs/32` crosses two features of Australia's Age Pension -- the means
+    test and the eligibility age -- solves each arm for its own best
+    retirement date, and concludes that the formula does the work and the
+    date does not. Two of its four rows come out identical to six figures,
+    and that is the tell: both land on the pension age, where the gate is
+    slack, so the comparison could not have seen the gate whatever it did.
+    """
+    found = notes["verdict"]
+    bridge_found = notes.get("bridge", {})
+    gamma = float(notes["gamma"])
+    gate_age = int(notes["gate_age"])
+    reference = int(notes["reference_age"])
+
+    intro = _header(
+        "38 - The Pension Gate, Held Still",
+        "`docs/32` reads a feature decomposition at each arm's own optimum. "
+        "Two arms land on the pension age, where the eligibility gate cannot "
+        "bind, so their agreement is an identity rather than a measurement. "
+        "This re-reads the square at every date, and sweeps the partial "
+        "benefit paid before the gate.") + f"""
+## 1. Why the original comparison could not see the gate
+
+An ablation compares four arms: neither feature, each alone, and both. The
+leisure study solves each arm for the retirement date that suits it and sets
+the four optima side by side. That confounds what a feature *does* with where
+it moves the argmax, and here the confounding is total rather than partial.
+
+The joint arm and the formula-only arm both solve to age {gate_age}, which is
+the pension's own eligibility age. A household retiring on the birthday the
+pension arrives on is in exactly the same position whether or not there is a
+gate in front of it. The two arms are therefore the same simulation, their
+certainty equivalents agree to every digit, and the interaction -- being the
+joint arm less the two singles -- is forced to equal minus the timing effect.
+Neither number is evidence about anything.
+
+That does not touch what the study found about the *formula*, which is large
+at every date on the grid. It touches the standing of what it found about the
+gate, which is that the gate does nothing.
+
+## 2. The square at every date
+
+The fix is the standard one: read the ablation at a common date. It costs
+nothing extra here, because all four arms are already scored across the whole
+grid.
+"""
+
+    square = frames.get("square")
+    if square is None or not len(square):
+        return _write(path, [intro, "\nThe sweep produced nothing to read.\n"])
+
+    square_tbl = md_table(_compact(
+        square, ["retire_age", "cec_baseline", "cec_timing", "cec_formula",
+                 "cec_both", "timing_effect", "formula_effect",
+                 "interaction", "arms_coincide"],
+        {"retire_age": "Retires at", "cec_baseline": "Neither",
+         "cec_timing": "Gate only", "cec_formula": "Means test only",
+         "cec_both": "Both", "timing_effect": "Gate effect",
+         "formula_effect": "Means-test effect",
+         "interaction": "Interaction",
+         "arms_coincide": "Arms coincide"}), floatfmt="{:.4f}")
+
+    binds = int(found.get("informative_dates", 0))
+    slack = int(found.get("slack_dates", 0))
+    blind = bool(found.get("argmax_was_blind", False))
+    verdict_line = (
+        f"**The gate binds at {binds} of the {int(found['dates'])} dates and "
+        f"is slack at the other {slack}.** Every date at or past "
+        f"{gate_age} is an identity: a household that has already reached the "
+        f"eligibility age is paid the same with a gate as without one, so the "
+        f"gate-only arm reproduces the baseline and the joint arm reproduces "
+        f"the means-test arm."
+        + (f" The leisure study's decomposition is read at "
+           f"{int(found['joint_best_age'])}, which is one of those dates, so "
+           f"its timing row was zero by construction."
+           if blind else
+           f" The leisure study's decomposition is read at "
+           f"{int(found.get('joint_best_age', gate_age))}, where the gate "
+           f"does operate, so its timing row is a measurement after all."))
+
+    if "timing_where_it_bites" in found:
+        ratio = found.get("formula_over_timing", float("nan"))
+        bites_line = (
+            f"**Where the gate does bind it is not nothing, and it is still "
+            f"much the smaller of the two.** Across the {binds} dates below "
+            f"the eligibility age the gate moves the certainty equivalent by "
+            f"{found['timing_median_where_it_bites']:+.4f} at the median and "
+            f"{found['timing_where_it_bites']:+.4f} at its widest (age "
+            f"{int(found['timing_widest_age'])}), against a means-test effect "
+            f"of {found['formula_median_where_it_bites']:+.4f} at the median "
+            f"-- a factor of {ratio:.1f}. So the leisure study's conclusion "
+            f"survives, but it survives on evidence it did not previously "
+            f"have: the comparison it drew that conclusion from was blind, "
+            f"and this one is not.")
+    else:
+        bites_line = ("No date on the grid falls below the eligibility age, "
+                      "so this sweep cannot separate the two features either.")
+
+    interaction_line = ""
+    if "interaction_median_where_it_bites" in found:
+        interaction_line = (
+            f"The interaction at a date the gate reaches runs "
+            f"{found['interaction_median_where_it_bites']:+.4f} at the "
+            f"median, which is a real number rather than the arithmetic "
+            f"echo the argmax version produced.")
+
+    bridge = frames.get("bridge")
+    bridge_tbl = ""
+    bridge_line = ("The bridge was not swept, so the timing arm's dependence "
+                   "on it is unmeasured.")
+    if bridge is not None and len(bridge):
+        at_ref = bridge[bridge["retire_age"] == reference]
+        bridge_tbl = md_table(_compact(
+            at_ref, ["bridge", "cec_baseline", "cec_timing",
+                     "timing_effect"],
+            {"bridge": "Bridge (share of the rate)",
+             "cec_baseline": "Neither", "cec_timing": "Gate only",
+             "timing_effect": "Gate effect"}), floatfmt="{:.4f}")
+    if bridge_found.get("measured"):
+        bridge_line = (
+            f"**The gate effect is largely made of the bridge, which is the "
+            f"point of disclosing it.** At age {reference} the timing arm "
+            f"runs {bridge_found['at_lowest_share']:+.4f} when nothing is "
+            f"paid before the eligibility age and "
+            f"{bridge_found['at_highest_share']:+.4f} when the full rate is, "
+            f"a span of {bridge_found['span']:.4f} across a parameter no "
+            f"data pins down."
+            + (" The movement is monotone in the share."
+               if bridge_found.get("monotone")
+               else " The movement is not monotone in the share, which the "
+                    "mechanism does not predict and which is worth a look."))
+        if bridge_found.get("isolates_penalty"):
+            bridge_line += (
+                f"\n\nThe top of that grid does more than bound the "
+                f"sweep: it separates the two halves of the feature. A "
+                f"pension paying the full rate on both sides of its "
+                f"eligibility age is not gated at all, so what survives at "
+                f"a full bridge is the *other* thing the timing arm carries "
+                f"-- a benefit that is not actuarially reduced for stopping "
+                f"work early. That residual is "
+                f"{bridge_found['penalty_only']:+.4f}, and the bridge's own "
+                f"contribution is the remainder, "
+                f"{bridge_found['bridge_only']:+.4f}. The "
+                f"{bridge_found['dominant']} is the larger of the two.")
+            if bridge_found.get("ends_disagree"):
+                where = bridge_found.get("cancels_at_share")
+                bridge_line += (
+                    f" They also pull in opposite directions, so there is a "
+                    f"share at which they cancel"
+                    + (f" -- {100.0 * float(where):.0f}%, which is close "
+                       f"enough to the calibration `docs/32` uses that its "
+                       f"finding of no timing effect should be read as that "
+                       f"cancellation rather than as a property of pension "
+                       f"design." if where is not None else ".")
+                    + " The two halves are not the same size -- the "
+                      "bridge dominates the sweep and the penalty is the "
+                      "small residual -- so the crossing is where the "
+                      "shrinking bridge finally gives way to it, not two "
+                      "large effects cancelling.")
+
+    body = f"""
+{square_tbl}
+
+{verdict_line}
+
+{bites_line}
+
+{interaction_line}
+
+## 3. The bridge, which is a floor nobody disclosed
+
+The years between stopping work and the eligibility age are bridged in this
+model by a partial payment at {100.0 * float(cfg.get('leisure', {}).get('pre_pension_safety_net', 0.0)):.0f}% of
+the means-tested rate. That number appears in no table of the paper, and it is
+not an innocent default: it is a *floor under consumption* in a study whose
+whole mechanism is that floors decide the portfolio, it sits in the arm whose
+subject is the timing of that floor, and a constant-relative-risk-aversion
+objective is unbounded below without one. A parameter chosen because the
+objective is acutely sensitive to it has to be swept rather than set.
+
+{bridge_tbl}
+
+{bridge_line}
+
+## 4. What this changes in `docs/32`
+
+* The formula effect stands. It is present at every date and at every
+  bridge, and nothing in either sweep moves it.
+* Whether it *dominates* the gate is conditional on the bridge, which was
+  the point of sweeping the bridge. At the calibration `docs/32` uses it
+  dominates comfortably; with nothing paid before the eligibility age the
+  gate is the larger of the two. The claim to keep is the conditional one.
+* The timing row of that decomposition should not be read as a measurement.
+  It is zero because the argmax landed on the eligibility age, and it would
+  have been zero for any gate at all.
+* The interaction row should not be read either: with the joint arm equal to
+  the formula arm, it is minus the timing effect by construction.
+* The pre-eligibility share belongs in the paper's calibration table
+  alongside the rate, the free areas and the taper.
+
+## 5. What is still not modelled
+
+* The bridge is a flat share of the means-tested rate rather than the
+  income-tested unemployment payment an Australian would actually receive,
+  which is assessed differently and on a different threshold.
+* The gate arm still carries the removal of the actuarial reduction along
+  with the eligibility age, because a pension arriving on a fixed birthday
+  has no claiming decision to adjust. Splitting them would model a system
+  nobody lives under, and `src.leisure` says so; the consequence is that
+  "the gate" here means the gate and the absent penalty together.
+* Leisure is held at no value throughout. The date grid is scored once
+  rather than eleven times, because the value of a retired year is the
+  leisure study's dial and not this section's question.
+
+## 6. Reproduction
+
+```bash
+python main.py --steps 38
+```
+
+Runtime {float(notes['elapsed_seconds']):.0f}s at {int(notes['n_paths']):,}
+paths, gamma = {gamma:g}. Tables in `results/tables/gate_*.csv`.
+"""
+    return _write(path, [intro, body])

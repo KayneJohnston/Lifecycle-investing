@@ -29,6 +29,7 @@ from src import cohorts as coh
 from src import data_loader as dl
 from src import fees as fee
 from src import franking as fk
+from src import gate as gt
 from src import glidepath as gp
 from src import hedging as hg
 from src import housing as hsg
@@ -5087,6 +5088,7 @@ def step36_ordering(cfg: Dict[str, Any],
     intervals = pd.DataFrame()
     pseudo = pd.DataFrame()
     bias_found: Dict[str, Any] = {"measured": False}
+    split_found: Dict[str, Any] = {"measured": False}
     precision: Dict[str, Any] = {"measured": False}
     loo_systems = [str(x) for x in block.get("influence_systems", systems)]
     if block.get("influence_enabled", False):
@@ -5125,6 +5127,23 @@ def step36_ordering(cfg: Dict[str, Any],
                         bias_found["bias_estimate"],
                         bias_found.get("others_worst_bias", float("nan")),
                         bias_found.get("isolated"))
+        # Where the deletions sit against *zero*, which is not where the
+        # diagnostic above puts them against the point estimate. A draft
+        # read the second as the first and reported that essentially no
+        # fifteen-country subsample reproduced the reversal, when half of
+        # them did.
+        split_found = odr.sign_split(
+            influence, gapped, baseline_rule,
+            str(found.get("contender_system", "")))
+        if split_found.get("measured"):
+            LOGGER.info("the contested cell's sign holds in %d of %d "
+                        "deletions and flips in %d; the furthest mover is "
+                        "%s at %+.2f (%+.2f against the point)",
+                        split_found["sign_holds"], split_found["deletions"],
+                        split_found["sign_flips"],
+                        split_found["largest_flip"],
+                        split_found["largest_flip_value"],
+                        split_found["largest_flip_swing"])
         precision = odr.precision_verdict(
             intervals, baseline_rule,
             baseline_system=str(found.get("baseline_system", "")),
@@ -5163,6 +5182,30 @@ def step36_ordering(cfg: Dict[str, Any],
                         *difference_found["widest_ci"],
                         difference_found["resolved"],
                         difference_found["comparisons"])
+
+    # -- which institution the reversal belongs to ------------------------
+    # A three-system grid compared an American household saving 10% with an
+    # Australian one saving 20.2% and called the difference the benefit
+    # formula. The contribution rate is what carries a household past the
+    # assets test, so it is half the treatment rather than a detail of it.
+    # The 2x2 holds one still at a time.
+    matched: Dict[str, Any] = {"measured": False}
+    factorial = dict(block.get("factorial", {}))
+    if factorial:
+        matched = odr.matched_contrast(gapped, factorial, baseline_rule)
+        if matched.get("measured"):
+            LOGGER.info("at matched voluntary contributions the pension "
+                        "formula moves the lead %+.2f pp and the "
+                        "contribution rate moves it %+.2f pp; the "
+                        "confounded diagonal is %+.2f pp and the "
+                        "means-tested cell is %+.2f%% (reverses: %s)",
+                        matched["pension_effect_voluntary"],
+                        matched["contribution_effect_earnings_related"],
+                        matched["confounded"], matched["matched_tested"],
+                        matched["reverses_at_matched"])
+        elif matched.get("missing"):
+            LOGGER.warning("the 2x2 is short of %s; the headline stays "
+                           "confounded", matched["missing"])
 
     # -- and the same gaps on a real lifespan -----------------------------
     objectives = pd.DataFrame()
@@ -5215,6 +5258,10 @@ def step36_ordering(cfg: Dict[str, Any],
             _save_table(pseudo, tables, "ordering_pseudo")
     if len(differences):
         _save_table(differences, tables, "ordering_differences")
+    if factorial:
+        square = odr.factorial_table(gapped, factorial)
+        if len(square):
+            _save_table(square, tables, "ordering_factorial")
     if len(by_gamma):
         _save_table(by_gamma, tables, "ordering_by_gamma")
     if len(objectives):
@@ -5226,15 +5273,165 @@ def step36_ordering(cfg: Dict[str, Any],
         Path("docs") / "36_ordering.md", cfg,
         {"swept": swept, "gaps": gapped, "intervals": intervals,
          "differences": differences, "by_gamma": by_gamma,
-         "pseudo": pseudo, "objectives": objectives},
+         "pseudo": pseudo, "objectives": objectives,
+         "factorial": odr.factorial_table(gapped, factorial) if factorial
+         else pd.DataFrame()},
         figures,
         {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
          "verdict": found, "baseline_rule": baseline_rule,
          "precision": precision, "difference": difference_found,
          "gamma_check": gamma_found, "bias": bias_found,
+         "split": split_found, "matched": matched,
          "objective": objective_found, "levels": level_found})
     LOGGER.info("docs/36 written (%.0fs)", elapsed)
     state["ordering_gaps"] = gapped
+    return state
+
+
+def step38_gate(cfg: Dict[str, Any],
+                state: Dict[str, Any]) -> Dict[str, Any]:
+    """Re-read the pension's feature 2x2 at a date the gate can reach."""
+    block = cfg.get("gate", {})
+    if not block.get("enabled", False):
+        LOGGER.info("gate study disabled; skipping step 38")
+        return state
+    LOGGER.info("=== STEP 38: the pension gate, held still ===")
+    started = time.perf_counter()
+
+    panel = state.get("panel") or dl.build_panel(cfg)
+    spec = state.get("spec") or lc.spec_from_config(cfg)
+    gamma = float(cfg["utility"]["baseline_risk_aversion"])
+    lei_cfg = cfg.get("leisure", {})
+    n_paths = int(block.get("n_paths", lei_cfg.get("n_paths", 100000)))
+    ages = [int(a) for a in block.get("ages", le.DEFAULT_AGES)]
+    key = str(block.get("strategy", lei_cfg.get("strategy",
+                                                "balanced_all_equity")))
+    gate_age = int(lei_cfg.get("age_pension_age", 67))
+    reference = int(block.get("reference_age", 60))
+    shares = [float(x) for x in block.get("bridge_grid", (0.0, 1.0))]
+
+    for chunk in bs.from_config(panel, cfg).chunks(n_paths, n_paths):
+        paths = chunk
+    shocks = lc.draw_income_shocks(
+        n_paths, spec.horizon, np.random.default_rng(int(cfg["run"]["seed"])))
+
+    # The same builder the leisure study uses, so a row here is the same
+    # simulation as a row there and the two sections can be set beside each
+    # other rather than merely compared in words.
+    def build(overrides: Mapping[str, Any]) -> Any:
+        def simulate(age: int, factor: float) -> Any:
+            aged = dataclasses.replace(pl.spec_for(spec, age), **overrides,
+                                       ss_claim_factor=float(factor))
+            income = lc.simulate_income(
+                aged, n_paths, shocks=shocks, dom_eq=paths.dom_eq,
+                intl_eq=paths.intl_eq)
+            strategy = lc.build_strategies(cfg, aged)[key]
+            return lc.simulate_all(paths, {key: strategy}, aged, income)[key]
+        return simulate
+
+    beta = float(cfg["utility"]["discount_factor"])
+    survive = mrt.survival(spec,
+                           float(lei_cfg.get("mortality_modal_age", 88.0)),
+                           float(lei_cfg.get("mortality_dispersion", 10.0)))
+    factors = le.fair_claim_factor(spec, survive, beta,
+                                   int(lei_cfg.get("claim_reference_age",
+                                                   63)), ages)
+
+    def _arm_rows(overrides: Mapping[str, Any], adjusted: bool,
+                  extra: Mapping[str, Any]) -> List[Dict[str, Any]]:
+        """One row per date, at no value on leisure.
+
+        Leisure is the leisure study's dial and is not this section's
+        question; scoring the whole grid again would multiply the cost by
+        eleven to report the same square eleven times.
+        """
+        simulate = build(overrides)
+        out: List[Dict[str, Any]] = []
+        for age in ages:
+            factor = float(factors[int(age)]) if adjusted else 1.0
+            aged = pl.spec_for(spec, int(age))
+            row = le.score(simulate(int(age), factor), aged, cfg, gamma,
+                           1.0, survive)
+            row["retire_age"] = int(age)
+            row["claim_factor"] = factor
+            row.update(extra)
+            out.append(row)
+        return out
+
+    # -- the square, at every date rather than at each arm's own best -----
+    rows: List[Dict[str, Any]] = []
+    for arm in gt.ARMS:
+        overrides, adjusted = le.feature_overrides(arm, cfg)
+        LOGGER.info("--- feature arm %s at %d dates ---", arm, len(ages))
+        rows += _arm_rows(overrides, adjusted, {"arm": arm})
+    swept = pd.DataFrame.from_records(rows)
+    square = gt.held_still(swept)
+
+    # The date the leisure study's own decomposition lands on, so this
+    # section audits that comparison rather than one of its own devising.
+    joint_best = None
+    if len(square):
+        joint_best = int(square.loc[square["cec_both"].idxmax(),
+                                    "retire_age"])
+    found = gt.gate_verdict(square, gate_age, joint_best)
+    if found.get("measured"):
+        LOGGER.info("the gate binds at %d of %d dates; at the joint arm's "
+                    "own best (%s) the two arms coincide: %s, so the "
+                    "argmax comparison was blind to the gate: %s",
+                    found["informative_dates"], found["dates"],
+                    found.get("joint_best_age"),
+                    found.get("coincide_at_joint_best"),
+                    found.get("argmax_was_blind"))
+        if "timing_where_it_bites" in found:
+            LOGGER.info("where it does bind the timing effect reaches "
+                        "%+.4f at age %d against a formula effect of "
+                        "%+.4f at the median (%.1fx)",
+                        found["timing_where_it_bites"],
+                        found["timing_widest_age"],
+                        found["formula_median_where_it_bites"],
+                        found.get("formula_over_timing", float("nan")))
+
+    # -- and the bridge, which is a floor nobody disclosed ----------------
+    # Only the gated arms move with it: an arm with no eligibility age pays
+    # the same benefit whatever the share before one would have been.
+    bridge_rows: List[Dict[str, Any]] = []
+    for share in shares:
+        for arm in gt.ARMS:
+            overrides, adjusted = le.feature_overrides(arm, cfg)
+            if "pre_eligibility_benefit_share" in overrides:
+                overrides = dict(overrides,
+                                 pre_eligibility_benefit_share=float(share))
+            LOGGER.info("--- bridge %.0f%%, arm %s ---", 100.0 * share, arm)
+            bridge_rows += _arm_rows(overrides, adjusted,
+                                     {"arm": arm, "bridge": float(share)})
+    bridged = pd.DataFrame.from_records(bridge_rows)
+    bridge = gt.bridge_table(bridged)
+    bridge_found = gt.bridge_verdict(bridge, gate_age, reference)
+    if bridge_found.get("measured"):
+        LOGGER.info("at age %d the timing effect runs %+.4f at a %.0f%% "
+                    "bridge to %+.4f at %.0f%%, a span of %.4f; monotone: "
+                    "%s; vanishes at a full bridge: %s", reference,
+                    bridge_found["at_lowest_share"],
+                    100.0 * bridge_found["lowest_share"],
+                    bridge_found["at_highest_share"],
+                    100.0 * bridge_found["highest_share"],
+                    bridge_found["span"], bridge_found["monotone"],
+                    bridge_found.get("vanishes_at_full_bridge"))
+
+    tables = Path(cfg["run"]["table_dir"])
+    _save_table(swept, tables, "gate_sweep")
+    if len(square):
+        _save_table(square, tables, "gate_held_still")
+    if len(bridge):
+        _save_table(bridge, tables, "gate_bridge")
+    elapsed = time.perf_counter() - started
+    rp.write_doc_38(
+        Path("docs") / "38_gate.md", cfg,
+        {"swept": swept, "square": square, "bridge": bridge}, [],
+        {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
+         "gate_age": gate_age, "reference_age": reference,
+         "verdict": found, "bridge": bridge_found})
+    LOGGER.info("docs/38 written (%.0fs)", elapsed)
     return state
 
 
@@ -5386,11 +5583,12 @@ STEPS = {1: step1_dataset, 2: step2_bootstrap, 3: step3_lifecycle,
          32: step32_leisure, 33: step33_tax,
          34: step34_longevity,
          35: step35_incidence,
-         36: step36_ordering, 37: step37_ceiling}
+         36: step36_ordering, 37: step37_ceiling,
+         38: step38_gate}
 
 
 def run(config_path: str = "config.yaml",
-        steps: Sequence[int] = tuple(range(1, 38)),
+        steps: Sequence[int] = tuple(range(1, 39)),
         quick: bool = False) -> Dict[str, Any]:
     """Execute the pipeline and return the accumulated state."""
     cfg = dl.load_config(config_path)
@@ -5420,8 +5618,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--steps", nargs="+", type=int,
-                        default=list(range(1, 38)),
-                        choices=list(range(1, 38)))
+                        default=list(range(1, 39)),
+                        choices=list(range(1, 39)))
     parser.add_argument("--quick", action="store_true",
                         help="small N for smoke tests")
     parser.add_argument("--verbose", action="store_true")

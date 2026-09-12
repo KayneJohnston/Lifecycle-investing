@@ -716,3 +716,113 @@ class TestTheRecommendedRule:
             pd.read_csv(root / "ordering_gaps.csv"),
             "australia_as_legislated")
         assert found["measured"], "the two studies no longer name the same rule"
+
+
+class TestTheSignSplit:
+    """Where the deletions sit against *zero*, which is not where they sit
+    against the point estimate.
+
+    The bug this exists to prevent: a draft read a skewed ``below_point``
+    count as evidence that essentially no fifteen-country subsample
+    reproduced the paper's reversal. Half of them did. The two counts
+    answer different questions and the paper needs the one about the sign.
+    """
+
+    #: Point -2. Four deletions below it, and yet six of ten still negative
+    #: -- exactly the shape that misled the draft.
+    GAPS = pd.DataFrame([{"system": "au", "rule": "fixed_real", "gap_pct": -2.0}])
+    INFLUENCE = pd.DataFrame([
+        {"dropped": d, "system": "au", "rule": "fixed_real", "gap_pct": v}
+        for d, v in (("AAA", -5.0), ("BBB", -4.0), ("CCC", -3.0),
+                     ("DDD", -2.5), ("EEE", -1.5), ("FFF", -0.5),
+                     ("GGG", 0.5), ("HHH", 1.0), ("III", 3.0),
+                     ("JJJ", 9.0))])
+
+    def _found(self):
+        return odr.sign_split(self.INFLUENCE, self.GAPS, "fixed_real", "au")
+
+    def test_it_counts_the_deletions_that_keep_the_sign(self) -> None:
+        found = self._found()
+        assert found["deletions"] == 10
+        assert found["sign_holds"] == 6
+        assert found["sign_flips"] == 4
+        assert found["holds_share"] == pytest.approx(0.6)
+        assert not found["unanimous"]
+
+    def test_it_disagrees_with_the_below_point_count(self) -> None:
+        """The whole reason it exists. Four deletions fall below the point
+        estimate and six keep its sign; a paper that reads the first as the
+        second says the opposite of the truth."""
+        found = self._found()
+        pseudo = odr.pseudo_values(self.INFLUENCE, self.GAPS)
+        assert int(pseudo.iloc[0]["below_point"]) == 4
+        assert found["sign_holds"] == 6
+
+    def test_it_names_the_country_that_moves_it_furthest(self) -> None:
+        found = self._found()
+        assert found["largest_flip"] == "JJJ"
+        assert found["largest_flip_swing"] == pytest.approx(11.0)
+        assert found["largest_hold"] == "AAA"
+        assert found["largest_hold_swing"] == pytest.approx(-3.0)
+
+    def test_the_two_lists_partition_the_deletions(self) -> None:
+        found = self._found()
+        assert set(found["flippers"]) & set(found["holders"]) == set()
+        assert len(found["flippers"]) + len(found["holders"]) == 10
+
+    def test_a_positive_cell_reads_the_extremes_the_other_way(self) -> None:
+        """The mover that matters is the one heading *toward* zero, which
+        is the low end for a positive cell and the high end for a negative
+        one."""
+        gaps = pd.DataFrame([{"system": "au", "rule": "amort",
+                              "gap_pct": 20.0}])
+        inf = pd.DataFrame([
+            {"dropped": d, "system": "au", "rule": "amort", "gap_pct": v}
+            for d, v in (("AAA", -1.0), ("BBB", 18.0), ("CCC", 30.0))])
+        found = odr.sign_split(inf, gaps, "amort", "au")
+        assert found["sign_holds"] == 2 and found["sign_flips"] == 1
+        assert found["largest_flip"] == "AAA"
+        assert found["largest_hold"] == "CCC"
+
+    def test_a_unanimous_cell_says_so(self) -> None:
+        gaps = pd.DataFrame([{"system": "au", "rule": "amort",
+                              "gap_pct": 20.0}])
+        inf = pd.DataFrame([
+            {"dropped": d, "system": "au", "rule": "amort", "gap_pct": v}
+            for d, v in (("AAA", 18.0), ("BBB", 21.0), ("CCC", 25.0))])
+        found = odr.sign_split(inf, gaps, "amort", "au")
+        assert found["unanimous"] and found["sign_flips"] == 0
+        assert found["flippers"] == []
+
+    def test_a_missing_cell_is_not_measured(self) -> None:
+        assert not odr.sign_split(self.INFLUENCE, self.GAPS,
+                                  "nope", "au").get("measured")
+        assert not odr.sign_split(pd.DataFrame(), pd.DataFrame(),
+                                  "fixed_real", "au").get("measured")
+
+    def test_a_zero_point_is_not_measured(self) -> None:
+        """A sign split around a cell with no sign is not a quantity."""
+        gaps = pd.DataFrame([{"system": "au", "rule": "r", "gap_pct": 0.0}])
+        inf = pd.DataFrame([{"dropped": "AAA", "system": "au", "rule": "r",
+                             "gap_pct": 1.0}])
+        assert not odr.sign_split(inf, gaps, "r", "au").get("measured")
+
+    def test_the_real_contested_cell_is_split_in_half(self) -> None:
+        """The correction itself, on the live tables. If a rerun ever makes
+        the reversal unanimous the paper's wording has to change again, and
+        this is where that surfaces."""
+        import pathlib
+
+        root = pathlib.Path(__file__).resolve().parents[1] / "results/tables"
+        if not (root / "ordering_influence.csv").exists():
+            pytest.skip("the ordering study has not been run")
+        found = odr.sign_split(
+            pd.read_csv(root / "ordering_influence.csv"),
+            pd.read_csv(root / "ordering_gaps.csv"),
+            "fixed_real_rule", "australia_as_legislated")
+        assert found["measured"]
+        assert found["sign_flips"] > 0, (
+            "the reversal now survives every deletion; the paper says it "
+            "does not")
+        assert found["sign_holds"] > 0, (
+            "no sub-panel reproduces the reversal; the paper says half do")

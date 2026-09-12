@@ -525,6 +525,198 @@ def bias_verdict(table: pd.DataFrame, baseline_rule: str, system: str,
     return found
 
 
+#: The 2x2 the headline contrast has to be read off, as ``{pension:
+#: {contribution: system key}}``. Named in the config rather than here, but
+#: the shape is fixed: two benefit formulas crossed with two contribution
+#: rates, which is the only way to say which of the two moves a sign.
+FACTORIAL_PENSIONS: Tuple[str, str] = ("earnings_related", "means_tested")
+FACTORIAL_RATES: Tuple[str, str] = ("voluntary", "compulsory")
+
+
+def matched_contrast(gapped: pd.DataFrame,
+                     factorial: Mapping[str, Mapping[str, str]],
+                     rule: str, column: str = "gap_pct") -> Dict[str, Any]:
+    """Which of two institutions moves the portfolio ordering, holding the other.
+
+    Australia differs from the United States in the benefit formula *and*
+    in the compulsory contribution, and the two arrive together in any
+    row headed "Australia as legislated". A draft of this paper compared
+    an American household saving 10% against an Australian one saving
+    20.2% and described the difference as the benefit formula alone. It is
+    not: the contribution rate is what puts a household past the assets
+    test, which is the treatment.
+
+    The 2x2 separates them. Each cell is an all-equity lead over the
+    target-date fund under one pension and one contribution rate, so a
+    difference along a row is the contribution and a difference down a
+    column is the pension, in the manner of any ablation.
+
+    :param gapped: the gap table, one row per system and rule.
+    :param factorial: ``{pension: {rate: system}}`` naming the four cells.
+    :param rule: the withdrawal rule to read the 2x2 at.
+    :returns: ``measured`` false when a cell is missing; otherwise the four
+        ``cells``, the ``pension_effect`` at each contribution rate, the
+        ``contribution_effect`` under each pension, the ``interaction``,
+        the ``confounded`` diagonal a three-system grid would have
+        reported, and ``sign_survives_matching`` -- whether the
+        means-tested cell keeps its sign once the contribution rate is
+        held still, which is the question the confound left open.
+    """
+    if not len(gapped):
+        return {"measured": False}
+    at = {}
+    for pension in FACTORIAL_PENSIONS:
+        arm = dict(factorial.get(pension, {}))
+        for rate in FACTORIAL_RATES:
+            key = arm.get(rate)
+            hit = gapped[(gapped["system"] == key)
+                         & (gapped["rule"] == rule)] if key else gapped.iloc[:0]
+            if not len(hit):
+                return {"measured": False, "missing": f"{pension}/{rate}"}
+            at[(pension, rate)] = float(hit.iloc[0][column])
+
+    er, mt = FACTORIAL_PENSIONS
+    vol, com = FACTORIAL_RATES
+    pension_vol = at[(mt, vol)] - at[(er, vol)]
+    pension_com = at[(mt, com)] - at[(er, com)]
+    contrib_er = at[(er, com)] - at[(er, vol)]
+    contrib_mt = at[(mt, com)] - at[(mt, vol)]
+    # What the three-system grid reported: the diagonal of the square,
+    # which moves both institutions at once.
+    confounded = at[(mt, com)] - at[(er, vol)]
+
+    found: Dict[str, Any] = {
+        "measured": True, "rule": rule,
+        "cells": {f"{p}/{r}": at[(p, r)]
+                  for p in FACTORIAL_PENSIONS for r in FACTORIAL_RATES},
+        "systems": {f"{p}/{r}": factorial[p][r]
+                    for p in FACTORIAL_PENSIONS for r in FACTORIAL_RATES},
+        "pension_effect_voluntary": pension_vol,
+        "pension_effect_compulsory": pension_com,
+        "contribution_effect_earnings_related": contrib_er,
+        "contribution_effect_means_tested": contrib_mt,
+        "interaction": confounded - pension_vol - contrib_er,
+        "confounded": confounded,
+        # The cell the corrected headline is made of, and whether it still
+        # says what the paper said.
+        "matched_tested": at[(mt, vol)],
+        "matched_reference": at[(er, vol)],
+        "sign_survives_matching": bool(
+            np.sign(at[(mt, vol)]) == np.sign(at[(mt, com)])),
+        "reverses_at_matched": bool(at[(mt, vol)] < 0.0),
+        "reverses_as_legislated": bool(at[(mt, com)] < 0.0),
+    }
+    # How much of the diagonal each institution accounts for. Reported as a
+    # share only when the diagonal is large enough for a share to mean
+    # anything; near zero it is two big numbers cancelling.
+    if abs(confounded) > 1e-9:
+        found["pension_share"] = pension_vol / confounded
+        found["contribution_share"] = contrib_er / confounded
+    found["dominant"] = (
+        "pension" if abs(pension_vol) >= abs(contrib_er) else "contribution")
+    return found
+
+
+def factorial_table(gapped: pd.DataFrame,
+                    factorial: Mapping[str, Mapping[str, str]],
+                    rules: Sequence[str] | None = None,
+                    column: str = "gap_pct") -> pd.DataFrame:
+    """The 2x2 laid out as rows, one per pension, contribution rate and rule.
+
+    :func:`matched_contrast` returns the attribution for one rule; this is
+    the square itself, so a reader can see the four numbers the attribution
+    was read off rather than take the differences on trust.
+    """
+    if not len(gapped):
+        return pd.DataFrame()
+    keys = list(rules) if rules is not None else list(
+        dict.fromkeys(str(r) for r in gapped["rule"]))
+    rows: List[Dict[str, Any]] = []
+    for rule in keys:
+        for pension in FACTORIAL_PENSIONS:
+            for rate in FACTORIAL_RATES:
+                system = dict(factorial.get(pension, {})).get(rate)
+                hit = gapped[(gapped["system"] == system)
+                             & (gapped["rule"] == rule)] if system \
+                    else gapped.iloc[:0]
+                if not len(hit):
+                    continue
+                rows.append({"rule": rule, "pension": pension,
+                             "contribution": rate, "system": str(system),
+                             column: float(hit.iloc[0][column])})
+    return pd.DataFrame.from_records(rows)
+
+
+def sign_split(influence_frame: pd.DataFrame, gapped: pd.DataFrame,
+               rule: str, system: str,
+               column: str = "gap_pct") -> Dict[str, Any]:
+    """How many delete-one panels reproduce a cell's sign, and which do not.
+
+    :func:`pseudo_values` reports where the deletions sit relative to the
+    *point estimate*, which is what a jackknife standard error is built on.
+    That is a different question from where they sit relative to *zero*,
+    which is what a claim about a sign is made of, and the two answers can
+    point in opposite directions: a cell whose deletions almost all lie
+    above its point estimate may still have half of them on the estimate's
+    own side of zero.
+
+    Conflating the two is not hypothetical. A draft of this paper read a
+    skewed ``below_point`` count as evidence that "essentially no
+    fifteen-country subsample reproduces the reversal", when in fact half
+    of them did. So the count against zero is measured here rather than
+    inferred from the bias diagnostic, and the movers are named: a reader
+    learns more from *which* countries carry a sign than from how wide an
+    interval around it is.
+
+    :returns: ``measured`` false when the cell is absent; otherwise
+        ``deletions``, ``sign_holds`` and ``sign_flips`` counting the
+        sub-panels either side of zero, ``holds_share``, and the two
+        extreme movers (``largest_flip``/``largest_hold`` with the country
+        and the swing against the point estimate).
+    """
+    if not len(influence_frame) or not len(gapped):
+        return {"measured": False}
+    hit = gapped[(gapped["system"] == system) & (gapped["rule"] == rule)]
+    block = influence_frame[(influence_frame["system"] == system)
+                            & (influence_frame["rule"] == rule)]
+    if not len(hit) or not len(block):
+        return {"measured": False}
+    point = float(hit.iloc[0][column])
+    values = block[["dropped", column]].dropna()
+    if not len(values) or not np.isfinite(point) or point == 0.0:
+        return {"measured": False}
+
+    same = np.sign(values[column].to_numpy(dtype=float)) == np.sign(point)
+    swing = values[column].to_numpy(dtype=float) - point
+    names = [str(x) for x in values["dropped"]]
+    n = int(len(values))
+    found: Dict[str, Any] = {
+        "measured": True,
+        "system": system, "rule": rule, "point": point,
+        "deletions": n,
+        "sign_holds": int(same.sum()),
+        "sign_flips": int(n - same.sum()),
+        "holds_share": float(same.sum()) / float(n),
+        "unanimous": bool(same.all()),
+    }
+    # The country whose removal moves the cell furthest, and the one whose
+    # removal drives it furthest the other way. Between them they say what
+    # kind of a cross-section this is.
+    order = np.argsort(swing)
+    low, high = int(order[0]), int(order[-1])
+    away = high if np.sign(point) < 0 else low
+    toward = low if np.sign(point) < 0 else high
+    found["largest_flip"] = names[away]
+    found["largest_flip_value"] = float(values[column].iloc[away])
+    found["largest_flip_swing"] = float(swing[away])
+    found["largest_hold"] = names[toward]
+    found["largest_hold_value"] = float(values[column].iloc[toward])
+    found["largest_hold_swing"] = float(swing[toward])
+    found["flippers"] = [names[i] for i in range(n) if not same[i]]
+    found["holders"] = [names[i] for i in range(n) if same[i]]
+    return found
+
+
 def by_objective(frame: pd.DataFrame, pair: Tuple[str, str] = HEADLINE,
                  columns: Sequence[str] = ("cec", "cec_survival"),
                  tie: float = TIE_BAND) -> pd.DataFrame:

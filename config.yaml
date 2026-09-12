@@ -1150,9 +1150,26 @@ ordering:
   # Keys from the pension study's own factorial design, so this section
   # audits the headline on the headline's own household rather than on the
   # leisure study's, which defines Australia differently.
-  systems: [us_social_security, age_pension_untested, australia_as_legislated]
+  # The pension study's *whole* factorial rather than a corner of it. A
+  # three-system grid ran the American arm at 10% saving and the Australian
+  # one at 20.2%, so the headline contrast changed the benefit formula and
+  # the contribution rate together -- exactly the confound the pension
+  # study's own crossing exists to avoid, reintroduced in the table that
+  # carries the paper's headline. Five systems close it: the formula is
+  # crossed with the contribution rate, and `age_pension_untested` stays as
+  # the floor-against-taper control at the baseline rate.
+  systems: [us_social_security, us_matched_saving, age_pension_untested,
+            age_pension_matched, australia_as_legislated]
   baseline_system: us_social_security
   contender_system: australia_as_legislated
+  # The 2x2 inside those five, named here rather than inferred from the
+  # keys, so a reader can see which cell is which and the code does not
+  # hardcode a system name it would have to be grepped for.
+  factorial:
+    earnings_related: {voluntary: us_social_security,
+                       compulsory: us_matched_saving}
+    means_tested: {voluntary: age_pension_matched,
+                   compulsory: australia_as_legislated}
   strategies: [balanced_all_equity, target_date_fund, sixty_forty,
                domestic_equity, international_equity]
   # The rule the rest of the paper spends by, a percentage of the current
@@ -1163,10 +1180,14 @@ ordering:
   # Delete-one-country intervals on every cell of the gap table. The
   # headline is a change of sign, sixteen developed markets are not sixteen
   # independent draws, and a sign whose interval straddles zero is not a
-  # finding. Restricted to the two systems the headline compares: the full
-  # cross would be 384 runs to put an interval on two numbers.
+  # finding. Restricted to the three systems that carry a headline: the two
+  # the paper opened with, plus the means-tested arm at *matched*
+  # contributions, which is the contrast that survives the confound above
+  # and therefore needs an interval of its own. The remaining two are read
+  # off the point estimates.
   influence_enabled: true
-  influence_systems: [us_social_security, australia_as_legislated]
+  influence_systems: [us_social_security, age_pension_matched,
+                      australia_as_legislated]
   # The same path count as the point estimate. A cheaper one would fold the
   # Monte Carlo difference between two path counts into the interval, which
   # is precisely the error the jackknife is there to exclude.
@@ -1257,6 +1278,37 @@ ceiling:
   # which is not enough to say anything about a shape across it.
   balance_grid: [0.015, 0.03, 0.05, 0.07, 0.09, 0.11, 0.13, 0.15,
                  0.17, 0.20, 0.25, 0.35, 0.60, 1.00]
+
+# ---------------------------------------------------------------------------
+# Step 38 - the pension gate, held still
+# ---------------------------------------------------------------------------
+# The feature 2x2 of the leisure study solves each arm for its own best
+# retirement date and compares the optima. The joint arm and the
+# formula-only arm both land on the pension age, where the eligibility gate
+# is exactly slack -- so the two are the same simulation and their agreement
+# is an identity rather than a measurement. This section re-reads the square
+# at every date instead, and sweeps the partial payment made before the
+# pension age, which is an undisclosed consumption floor in a paper about
+# consumption floors.
+gate:
+  enabled: true
+  # Matched to the leisure study's count so a row here can be set beside a
+  # row there. The comparison is between arms on the same draws, so the
+  # differences are far better resolved than the levels.
+  n_paths: 100000
+  strategy: balanced_all_equity
+  # The leisure study's own date grid, for the same reason.
+  ages: [50, 52, 55, 58, 60, 62, 63, 65, 67, 70]
+  # Where the 2x2 is read when one date has to be picked. The baseline arm's
+  # own optimum, which is below the pension age and therefore a date at
+  # which the gate can operate at all.
+  reference_age: 60
+  # The share of the means-tested rate paid before the pension age. The
+  # leisure study fixes this at 0.60 without reporting it; here it runs from
+  # nothing to the full rate. One is the control: a gate that pays the same
+  # on both sides is not a gate, and the timing effect must vanish.
+  bridge_grid: [0.00, 0.30, 0.60, 1.00]
+
 
 longevity:
   enabled: true

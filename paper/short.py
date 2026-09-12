@@ -139,10 +139,17 @@ def renumbered():
     """
     original = ct._SECTION_NUMBER
     ct._SECTION_NUMBER = {k: i + 1 for i, k in enumerate(SHORT_ORDER)}
+    # And this cut carries no appendices, so a reference to one has to be
+    # sent to the companion for the same reason a reference to an absent
+    # section is. Two shipped pointing at appendices this paper does not
+    # have, because a letter does not go through the `#key` resolver.
+    had = ct.HAS_APPENDICES
+    ct.HAS_APPENDICES = False
     try:
         yield
     finally:
         ct._SECTION_NUMBER = original
+        ct.HAS_APPENDICES = had
 
 
 def _resolvable(ctx: Any, text: str) -> Paragraph:
@@ -171,6 +178,11 @@ def front(ctx: Any) -> List[Flowable]:
     au_base = au_rows[au_rows["rule"] == baseline_rule]
     us_base = us_rows[us_rows["rule"] == baseline_rule]
     au_best = au_rows.loc[au_rows["gap_pct"].idxmax()]
+    # How many fifteen-country panels reproduce the contested sign, which
+    # is not the count the bias diagnostic reports and was once confused
+    # with it. Counted rather than typed, so a rerun cannot leave the
+    # sentence behind.
+    split = _split_found(f, baseline_rule)
     # The rule Section #longevity selects rather than the best cell of
     # the grid. Leading with the maximiser would make that section
     # decorative at the one place its answer should bind, so the
@@ -203,41 +215,65 @@ def front(ctx: Any) -> List[Flowable]:
         Paragraph("This version: 11 September 2026", s["subtitle"]),
         Paragraph("Abstract", s["h1_plain"]),
     ]
+    matched = _matched(f, baseline_rule)
+    mt_iv = (_interval_for(f, matched["systems"]["means_tested/voluntary"],
+                           baseline_rule)
+             if matched.get("measured") else {"measured": False})
     out.append(ctx.p(
         f"An all-equity lifecycle portfolio is said to dominate the "
         f"age-declining glide path of a target-date fund. We show that the "
         f"prescription is conditional on the retiree's institutions rather "
         f"than on the return process. On a 16-country panel of real "
-        f"returns spanning 1890\u20132020, crossing three public pension "
-        f"systems with eight withdrawal rules on common simulated "
+        f"returns spanning 1890\u20132020, crossing five public pension "
+        f"regimes with eight withdrawal rules on common simulated "
         f"lifetimes, the all-equity portfolio leads the target-date fund "
         f"by {us_base_gap:+.2f}% in certainty-equivalent retirement "
         f"consumption under an earnings-related pension and "
-        f"{au_base_gap:+.2f}% under a means-tested one. That reversal "
-        f"needs three things at once \u2014 the asset test, a fixed real "
-        f"withdrawal, and a household risk-averse enough to pay for a "
-        f"floor \u2014 and a delete-one-country jackknife cannot separate "
-        f"its sign from zero. What the panel does resolve is the "
-        f"interaction: the withdrawal rule moves the same comparison by "
-        f"{abs(widest_pp):.0f} points, and the mechanism is the loss of an "
-        f"unconditional floor rather than the means test's taper. Near the "
-        f"test, the drawdown default and the portfolio default are one "
-        f"decision."))
+        f"{matched['cells']['means_tested/voluntary']:+.2f}% under a "
+        f"means-tested one paid to the same household on the same "
+        f"contributions \u2014 a reversal whose sign holds in all sixteen "
+        f"delete-one-country sub-panels. It needs two further things: a "
+        f"fixed real withdrawal, and a household risk-averse enough to pay "
+        f"for a floor. The mechanism is the loss of an unconditional floor "
+        f"rather than the means test's taper, and either of the two "
+        f"institutions a country can change \u2014 a compulsory "
+        f"contribution, worth "
+        f"{matched['contribution_effect_means_tested']:+.1f} points here, "
+        f"or a withdrawal rule that cannot deplete, worth "
+        f"{abs(widest_pp):.0f} \u2014 offsets most of it. Near the test, "
+        f"the drawdown default and the portfolio default are one decision."
+        if matched.get("measured") else
+        f"An all-equity lifecycle portfolio is said to dominate the "
+        f"age-declining glide path of a target-date fund. We show that the "
+        f"prescription is conditional on the retiree's institutions rather "
+        f"than on the return process. On a 16-country panel of real "
+        f"returns spanning 1890\u20132020, the all-equity portfolio leads "
+        f"the target-date fund by {us_base_gap:+.2f}% under an "
+        f"earnings-related pension and {au_base_gap:+.2f}% under a "
+        f"means-tested one."))
     out.append(ctx.p(
         f"<b>What the paper shows.</b> (i) Replacing an earnings-related "
-        f"pension with a means-tested one reverses the portfolio ordering "
-        f"under the withdrawal rule the literature assumes, and under no "
-        f"other rule in an eight-rule menu. (ii) The mechanism is the "
-        f"floor, not the taper: paying the same pension unconditionally "
-        f"leaves the all-equity portfolio ahead by {flat_gap:+.2f}%, and "
+        f"pension with a means-tested one, holding contributions fixed, "
+        f"reverses the portfolio ordering under the withdrawal rule the "
+        f"literature assumes, and under no other rule in an eight-rule "
+        f"menu. (ii) The mechanism is the "
+        f"floor, not the taper: paying the <i>same</i> flat pension to the "
+        f"same household without testing it leaves the all-equity portfolio "
+        f"ahead by {flat_gap:+.2f}% against "
+        f"{matched['cells']['means_tested/voluntary']:+.2f}% with the test "
+        f"applied \u2014 the rate, the contributions and the panel all held "
+        f"\u2014 and "
         f"{float(legis['share_above_cutoff']):.0%} of these households are "
-        f"past the cut-off before the test applies. (iii) A withdrawal "
+        f"past the cut-off before the test applies, so the taper reaches "
+        f"them only in the left tail. (iii) A withdrawal "
         f"rule that cannot deplete restores the ordering: under the rule "
         f"Section {SHORT_ORDER.index('longevity') + 1} selects the "
         f"Australian lead is {rec_gap}, and every rate in the family "
         f"restores it. (iv) "
-        f"Sixteen countries resolve the rule effect and not the reversal. "
-        f"(v) Who pays for compulsory saving changes lifetime consumption "
+        f"Sixteen countries resolve the reversal at matched contributions "
+        f"and the rule effect, and not the net of the two institutions "
+        f"Australia combines. (v) Who pays for compulsory saving changes "
+        f"lifetime consumption "
         f"by {abs(cost):.1f}% and the retiree's problem not at all. (vi) On "
         f"a household the test does bind, the wanted equity share is a "
         f"property of the withdrawal rule rather than of the pension."))
@@ -269,6 +305,11 @@ def introduction(ctx: Any) -> List[Flowable]:
     us_rows = gapped[gapped["system"] == "us_social_security"]
     us_base = us_rows[us_rows["rule"] == baseline_rule]
     au_best = au_rows.loc[au_rows["gap_pct"].idxmax()]
+    # How many fifteen-country panels reproduce the contested sign, which
+    # is not the count the bias diagnostic reports and was once confused
+    # with it. Counted rather than typed, so a rerun cannot leave the
+    # sentence behind.
+    split = _split_found(f, baseline_rule)
     # The rule Section #longevity selects rather than the best cell of
     # the grid. Leading with the maximiser would make that section
     # decorative at the one place its answer should bind, so the
@@ -349,39 +390,77 @@ def introduction(ctx: Any) -> List[Flowable]:
         f"{SHORT_ORDER.index('incidence') + 1} reaches them by scaling "
         f"the balance rather than by pretending this one is among them."))
     out.append(ctx.h2("#introduction.1 What we find"))
+    matched = _matched(f, baseline_rule)
+    mt_iv = (_interval_for(f, matched["systems"]["means_tested/voluntary"],
+                           baseline_rule)
+             if matched.get("measured") else {"measured": False})
+    if matched.get("measured") and mt_iv.get("measured"):
+        out.append(ctx.p(
+            f"<b>The ordering reverses under an asset-tested pension.</b> "
+            f"The all-equity portfolio's lead over the target-date fund, "
+            f"{matched['cells']['earnings_related/voluntary']:+.2f}% under "
+            f"the American schedule, becomes "
+            f"{matched['cells']['means_tested/voluntary']:+.2f}% when that "
+            f"schedule is replaced by a means-tested one paid to the same "
+            f"household on the same contributions, and the de-risking glide "
+            f"path takes first place. Nothing about the return panel "
+            f"changes between those two runs; the objective function does. "
+            f"That sign is one the cross-section resolves: the delete-one "
+            f"interval is [{mt_iv['ci'][0]:+.2f}, {mt_iv['ci'][1]:+.2f}] "
+            f"and the ordering is the same in all sixteen sub-panels."))
+        out.append(ctx.p(
+            f"<b>Australia's own combination is a different and smaller "
+            f"number, because a second institution pushes back.</b> The "
+            f"Superannuation Guarantee doubles the contribution rate, and "
+            f"under a means-tested pension that is worth "
+            f"{matched['contribution_effect_means_tested']:+.1f} points "
+            f"— a bigger balance is a partial substitute for the floor "
+            f"the test removed. As legislated the two land at "
+            f"{au_base_gap:+.2f}%, and that residual is the one cell of "
+            f"the table this cross-section cannot sign. We report both, in "
+            f"that order: the first is a statement about pension design "
+            f"and is what the mechanism sections are about; the second is "
+            f"a statement about one country and is the more fragile of the "
+            f"two."))
     out.append(ctx.p(
-        f"<b>The ordering reverses under an asset-tested pension.</b> The "
-        f"all-equity portfolio's lead over the target-date fund, "
-        f"{us_base_gap:+.2f}% under the American schedule, becomes "
-        f"{au_base_gap:+.2f}% when that schedule is replaced by "
-        f"Australia's, and the de-risking glide path takes first place. "
-        f"Nothing about the return panel changes between those two runs; the "
-        f"objective function does. Two qualifications belong with that "
-        f"sentence rather than after it. The reversal holds under "
+        f"Two qualifications belong with those sentences rather than after "
+        f"them. The reversal holds under "
         f"{int((au_rows['gap_pct'] < 0).sum())} of the "
         f"{int(len(au_rows))} withdrawal rules we run; under every other "
         f"one the all-equity portfolio leads in Australia too. And the "
-        f"reversal is the one cell of the table this cross-section cannot "
+        f"legislated cell is the one this cross-section cannot "
         f"resolve: a delete-one-country jackknife over the sixteen markets "
         f"puts a standard error of "
         f"{float(contested['standard_error']):.1f} points on a point "
         f"estimate of {float(contested['gap_pct']):+.2f}%, and the sign "
-        f"changes when eight of the sixteen are removed one at a time. "
-        f"Every other cell in that table has a standard error between 2 and "
-        f"5 points and an interval excluding zero."))
+        f"changes when {_spelled(int(split['sign_flips']))} of the "
+        f"{_spelled(int(split['deletions']))} are removed one at a time. "
+        f"Every other "
+        f"cell in that table has a standard error between 2 and 5 points "
+        f"and an interval excluding zero."
+        if split.get("measured") else
+        f"estimate of {float(contested['gap_pct']):+.2f}%, and the interval "
+        f"contains zero. Every other cell in that table has a standard "
+        f"error between 2 and 5 points and an interval excluding zero."))
     if gamma_walk:
         out.append(ctx.p(
             f"<b>A third condition is the risk aversion.</b> Re-scoring "
             f"the same simulated lifetimes at risk aversions of "
-            f"{gamma_list}, the contested "
-            f"cell runs {gamma_walk}: the reversal is absent at the "
-            f"lowest of the three and deepens through the other two, "
-            f"while every other withdrawal rule stays positive at all "
-            f"three. So the failure of the all-equity prescription is "
-            f"located precisely — an asset-tested pension, a fixed real "
-            f"withdrawal, and a household risk-averse enough to pay for "
-            f"the floor — and two of those three are chosen by whoever "
-            f"sets the defaults."))
+            f"{gamma_list}, the matched means-tested cell runs "
+            f"{_gamma_walk(f, baseline_rule, matched['systems']['means_tested/voluntary'])[1] or gamma_walk}"
+            f" and the legislated one runs {gamma_walk}: in both the "
+            f"reversal is absent at the lowest of the three and deepens "
+            f"through the other two, while every other withdrawal rule "
+            f"stays positive at all three. So the failure of the "
+            f"all-equity prescription is located precisely — an "
+            f"asset-tested pension, a fixed real withdrawal, and a "
+            f"household risk-averse enough to pay for the floor — "
+            f"and two of those three are chosen by whoever sets the "
+            f"defaults."
+            if matched.get("measured") else
+            f"<b>A third condition is the risk aversion.</b> Re-scoring "
+            f"the same simulated lifetimes at risk aversions of "
+            f"{gamma_list}, the contested cell runs {gamma_walk}."))
     out.append(ctx.p(
         "<b>The mechanism is the floor, not the taper.</b> A means test is "
         "usually discussed as an implicit tax on wealth, and Australia's is "
@@ -459,12 +538,16 @@ def introduction(ctx: Any) -> List[Flowable]:
         f"claiming it."))
     out.append(ctx.p(
         "First, the <i>conditionality</i>: the prescription is a property "
-        "of the pension the investor retires onto, and we can say which "
-        "feature of the pension by paying the same benefit "
-        "unconditionally, which leaves the all-equity portfolio ahead by "
-        f"{flat_gap:+.2f}%. Withdrawing a pension at the "
-        f"margin and paying a smaller one are different interventions, and "
-        f"only the first reorders portfolios. Second, the <i>mechanism</i>: "
+        "of the pension the investor retires onto, and the design says "
+        "which feature of the pension it is. Paying the Age Pension's own "
+        "flat rate to the same household on the same contributions, but "
+        "without testing it, leaves the all-equity portfolio ahead by "
+        f"{flat_gap:+.2f}%; applying the test to that identical benefit "
+        f"takes it to "
+        f"{matched['cells']['means_tested/voluntary']:+.2f}%. Withdrawing "
+        f"a pension at the margin and paying a smaller one are different "
+        f"interventions, and only the first reorders portfolios. Second, "
+        f"the <i>mechanism</i>: "
         f"Section {SHORT_ORDER.index('model') + 1} writes the retiree's "
         f"budget line as three regimes and shows that inside the taper band "
         f"a means test is insurance rather than a wealth tax. That "
@@ -675,12 +758,25 @@ def model(ctx: Any) -> List[Flowable]:
         "&part;<i>x</i>/&part;<i>R</i> below the free area, "
         "(1 + <i>&tau;</i>)&part;<i>x</i>/&part;<i>R</i> &minus; "
         "<i>&tau;W</i> inside the band, and &part;<i>x</i>/&part;<i>R</i> "
-        "again above the cut-off. The guaranteed part of consumption goes "
-        "<i>b</i>, then <i>b</i> + <i>&tau;A</i>, then nothing. So inside "
-        "the band the household faces strictly less exposure than below the "
-        "free area and stands on a strictly higher floor; above the cut-off "
-        "it faces the same exposure as below the free area and stands on no "
-        "floor at all."))
+        "again above the cut-off. The part of consumption that does not "
+        "move with the return goes <i>b</i>, then <i>b</i> + "
+        "<i>&tau;A</i>, then nothing. So inside the band the household "
+        "faces strictly less exposure than below the free area and carries "
+        "a strictly larger riskless component; above the cut-off it faces "
+        "the same exposure as below the free area and carries none at all."))
+    out.append(ctx.p(
+        "Two words are worth avoiding here, and the reason is a real "
+        "objection rather than fastidiousness. It is tempting to call "
+        "<i>b</i> + <i>&tau;A</i> a <i>floor</i>, and it is not one: "
+        "consumption inside the band is <i>decreasing</i> in the return, so "
+        "that quantity is the intercept of a downward-sloping line and is "
+        "attained at the top of the band rather than guaranteed across it. "
+        "What the algebra delivers is the riskless component of "
+        "consumption, which is the quantity the endowment result is about "
+        "and which does rise. Elsewhere in this paper “floor” "
+        "means the unconditional pension — a payment that arrives "
+        "whatever the portfolio does — and that is a floor in the "
+        "ordinary sense."))
     out.append(ctx.p(
         "For an investor with constant relative risk aversion, a larger "
         "riskless component of consumption raises the optimal share of the "
@@ -714,7 +810,7 @@ def model(ctx: Any) -> List[Flowable]:
         f"how large the non-monotonicity is, or whether it is there at "
         f"all, because that depends on the return distribution, the "
         f"horizon and the risk aversion. Section "
-        f"{SHORT_ORDER.index('incidence') + 1}.4 finds it is not there: "
+        f"{SHORT_ORDER.index('incidence') + 1}.5 finds it is not there: "
         f"under either withdrawal rule wanted equity turns out to be "
         f"monotone in wealth, and the hump this section predicts does not "
         f"appear once the grid is wide enough to show one. Nor does "
@@ -728,7 +824,7 @@ def model(ctx: Any) -> List[Flowable]:
         "those two omissions, and worth flagging here rather than letting "
         "it arrive as a surprise. One period of accounting says the "
         "curvature of the objective scales the effect; Section "
-        "#ordering.4 finds that over the range of risk aversions "
+        "#ordering.5 finds that over the range of risk aversions "
         "commonly used it changes the effect's <i>sign</i>. Nothing in "
         "the algebra above rules that out — the floor and the exposure "
         "move in opposite directions across the band, and which "
@@ -787,9 +883,23 @@ def incidence(ctx: Any) -> List[Flowable]:
         f"{float(free_end['median_wealth']):.1f} times average earnings at "
         f"the all-equity portfolio this sweep holds, against a cut-off of "
         f"{cut:.1f} -- so the means test at the centre of the paper never "
-        f"binds it. (Balances differ a little between sections because the "
-        f"portfolio differs; every one of them is several times the "
-        f"cut-off, which is the only part that matters for the objection.)"))
+        f"binds it."))
+    # m5 of the referee report. Three balances are quoted in three places
+    # and the old parenthetical called the difference "a little", which is
+    # not what 13.8 against 36.4 is.
+    out.append(ctx.note(
+        f"Three balances at retirement appear in this paper and they are "
+        f"not the same household measured three ways. Section "
+        f"{SHORT_ORDER.index('leisure') + 1}.1's is the fixed-contribution "
+        f"household of that section's 2×2, which saves only this "
+        f"paper's own 10% because holding contributions still is what "
+        f"separates the pension's timing from its formula. Section "
+        f"{SHORT_ORDER.index('incidence') + 1}'s carries the Superannuation "
+        f"Guarantee and holds the all-equity portfolio this sweep is run "
+        f"on. Section {SHORT_ORDER.index('introduction') + 1}'s is the same "
+        f"household at the portfolio the headline compares. Each is stated "
+        f"where it is used; what they share, and all the objection above "
+        f"needs, is that every one of them is several times the cut-off."))
     out.append(ctx.p(
         "The tempting move is to answer both at once: charge the "
         "guarantee, watch the balance fall, and let the household walk "
@@ -894,7 +1004,7 @@ def incidence(ctx: Any) -> List[Flowable]:
             f"position, below the free area, inside the band and past the "
             f"cut-off alike \u2014 at least, because that is the top of "
             f"this grid and Section "
-            f"{SHORT_ORDER.index('incidence') + 1}.4 shows the household "
+            f"{SHORT_ORDER.index('incidence') + 1}.5 shows the household "
             f"would take more if it were offered. The swing between the "
             f"two rules averages "
             f"{100 * abs(float(base_arm['equity'].mean()) - float(rule_arm['equity'].mean())):.0f} "
@@ -959,6 +1069,11 @@ def incidence(ctx: Any) -> List[Flowable]:
                     f"therefore a statement about this panel and not only "
                     f"about the means test, and we report the span rather "
                     f"than the central value alone."))
+    # The other half of the promise made in the model section: a corner at
+    # zero under an objective that is unbounded below is exactly the kind
+    # of answer to distrust, so it is re-scored against the curvature and
+    # against a floor before it is reported.
+    out += _corner_robustness(ctx, f)
     if _has(f, "ceiling_optimum"):
         lev_opt = f.table("ceiling_optimum")
         cheap = float(lev_opt["spread"].min())
@@ -967,7 +1082,7 @@ def incidence(ctx: Any) -> List[Flowable]:
         bands = f.table("ceiling_by_band") \
             if _has(f, "ceiling_by_band") else None
         if len(free):
-            out.append(ctx.h2("#incidence.4 Whether the other corner is a "
+            out.append(ctx.h2("#incidence.5 Whether the other corner is a "
                               "corner at all"))
             out.append(ctx.p(
                 f"The zero is not at a grid edge in any sense that "
@@ -1023,8 +1138,8 @@ def incidence(ctx: Any) -> List[Flowable]:
                     note="A holding above 1.00\u00d7 is borrowing against "
                          "the sleeve. Zero is the cheapest borrowing there "
                          "is and therefore the hardest test for the "
-                         "unlevered corner; the text reports what a real "
-                         "price does to it.")
+                         "unlevered corner; the paragraph after next prices "
+                         "it properly.")
             lo = float(free["leverage"].min())
             hi = float(free["leverage"].max())
             out.append(ctx.p(
@@ -1117,6 +1232,7 @@ def incidence(ctx: Any) -> List[Flowable]:
                         "another, and a plan sponsor who sets a glide "
                         "path without setting a drawdown default has not "
                         "chosen between them."))
+            out += _borrowing_price(ctx, f)
             out.append(ctx.p(
                 f"Two things keep this from overturning the section rather "
                 f"than qualifying it. The borrowing is worth little: "
@@ -1191,11 +1307,19 @@ def ordering(ctx: Any) -> List[Flowable]:
     au_eq_base = au_eq[au_eq["rule"] == baseline_rule].iloc[0]
     au_eq_best = au_eq.loc[au_eq["cec"].idxmax()]
     cec_ratio = float(au_eq_best["cec"]) / float(au_eq_base["cec"])
-    order = [x for x in ("us_social_security", "age_pension_untested",
+    # The whole factorial, read down the contribution rate and across the
+    # benefit formula, so the headline contrast is a difference in one
+    # institution rather than in two. A three-column version of this table
+    # compared a 10%-saving American household with a 20.2%-saving
+    # Australian one and called it the pension.
+    order = [x for x in ("us_social_security", "us_matched_saving",
+                         "age_pension_untested", "age_pension_matched",
                          "australia_as_legislated")
              if x in set(gapped["system"])]
-    label = {"us_social_security": "United States",
+    label = {"us_social_security": "United States, 10% saving",
+             "us_matched_saving": "United States, 20.2% saving",
              "age_pension_untested": "Age Pension, no means test",
+             "age_pension_matched": "Means-tested, 10% saving",
              "australia_as_legislated": "Australia as legislated"}
 
     out: List[Flowable] = [
@@ -1231,12 +1355,38 @@ def ordering(ctx: Any) -> List[Flowable]:
         f"cell is scored twice \u2014 once over the fixed horizon the rest "
         f"of the paper uses, once weighted by the survival curve Section "
         f"{SHORT_ORDER.index('longevity') + 1} argues for. Section "
-        f"{SHORT_ORDER.index('ordering') + 1}.5 reports what the second "
+        f"{SHORT_ORDER.index('ordering') + 1}.6 reports what the second "
         f"objective does; the tables below are the first, because that is "
         f"the objective Sections "
         f"{SHORT_ORDER.index('baseline') + 1} and "
         f"{SHORT_ORDER.index('pension') + 1} report and the one a reader "
         f"comparing them will expect."))
+    # m3 and m9 of the referee report: the eight rules here are drawn from
+    # the twenty-four ranked two sections earlier, and one of them is run
+    # at a rate that section rejects. Both are defensible and neither was
+    # stated.
+    out.append(ctx.p(
+        f"The rule menu needs the same treatment, because it is eight rules "
+        f"where Section {SHORT_ORDER.index('longevity') + 1} ranks "
+        f"{_spelled(int(len(f.table('longevity_ranking'))))}. It is not a "
+        f"sample of them. It is the rule the literature assumes and this "
+        f"paper spends by, the amortisation family across every assumed "
+        f"return the grid carries — which is the family that supplies "
+        f"its own floor, and therefore the whole of the mechanism being "
+        f"tested — and one percentage-of-balance rule as the "
+        f"representative of the rules that scale with the portfolio without "
+        f"amortising. Running all "
+        f"{int(len(f.table('longevity_ranking')))} against three pension "
+        f"systems, five portfolios and sixteen deletions would cost a great "
+        f"deal to populate rows nothing in the argument reads. The "
+        f"percentage rule is run at "
+        f"{float(f.cfg['ordering']['percent_rate']):.0%} rather than at the "
+        f"{float(_best_percent_rate(f)):.0%} Section "
+        f"{SHORT_ORDER.index('longevity') + 1} finds best for it, because "
+        f"here it stands in for the four-per-cent convention the "
+        f"withdrawal-rate literature is written about; at its own best rate "
+        f"it would be a second amortisation-like rule rather than the "
+        f"contrast it is included to provide."))
     rows = [["Withdrawal rule"] + [label.get(x, x) for x in order]]
     for rule in dict.fromkeys(gapped["rule"]):
         cells = [rule_label(str(rule))]
@@ -1267,7 +1417,17 @@ def ordering(ctx: Any) -> List[Flowable]:
             f"American system and {float(au_base['gap_pct'].iloc[0]):+.2f}% "
             f"in the Australian one, on the same regimes and the same path "
             f"count as Section "
-            f"{SHORT_ORDER.index('pension') + 1}."))
+            f"{SHORT_ORDER.index('pension') + 1} — "
+            f"{int(f.cfg['ordering']['n_paths']):,} lifetimes rather than "
+            f"the {int(f.cfg['bootstrap']['n_paths']):,} of Section "
+            f"{SHORT_ORDER.index('baseline') + 1}, which is why the same "
+            f"American comparison reads "
+            f"{f.advantage('balanced_all_equity', 'target_date_fund'):.1f}% "
+            f"there and {float(us_base['gap_pct'].iloc[0]):.2f}% here. The "
+            f"two are the same quantity at two Monte Carlo sample sizes and "
+            f"neither is the sampling error that matters, which is the "
+            f"panel's and is measured in Section "
+            f"{SHORT_ORDER.index('ordering') + 1}.3."))
         out.append(ctx.p(
             f"These are not the percentages in that section's own table, "
             f"and the difference is a labelling one worth stating rather "
@@ -1320,7 +1480,10 @@ def ordering(ctx: Any) -> List[Flowable]:
         f"points. A plan sponsor choosing a portfolio default without also "
         f"choosing a drawdown default is choosing on an axis that explains "
         f"less than the one they left open."))
-    out.append(ctx.h2("#ordering.1 The reversal lives in the worst cell of "
+    # The 2x2 inside the five columns, which is what lets the headline be
+    # about one institution rather than two.
+    out += _matched_factorial(ctx, f, baseline_rule)
+    out.append(ctx.h2("#ordering.2 The reversal lives in the worst cell of "
                       "the table"))
     out.append(ctx.p(
         f"One column of the table deserves to be read against the rest, "
@@ -1395,7 +1558,7 @@ def ordering(ctx: Any) -> List[Flowable]:
         "spends a fixed real amount. Which of those a household is doing is "
         "a choice, and on this evidence it matters more than the portfolio "
         "choice it is usually treated as subordinate to."))
-    out.append(ctx.h2("#ordering.2 How precisely the panel resolves each "
+    out.append(ctx.h2("#ordering.3 How precisely the panel resolves each "
                       "sign"))
     out.append(ctx.p(
         "Every claim in this paper is a claim about a sign, and the panel "
@@ -1483,14 +1646,13 @@ def ordering(ctx: Any) -> List[Flowable]:
                     f"carries an implied bias beyond {worst:.1f} points \u2014 "
                     f"the same machinery, the same panel, the same "
                     f"sixteen deletions, well behaved everywhere the sign "
-                    f"is not in dispute. So the reading to take from the "
-                    f"reversal is not that sixteen countries measure it "
-                    f"imprecisely. It is that the reversal is a property "
-                    f"of the sixteen-country panel taken whole, which "
-                    f"essentially no fifteen-country subsample of it "
-                    f"reproduces. That is a narrower claim than the "
-                    f"interval makes and a more useful one, and it is the "
-                    f"reason we lead with the rule effect."))
+                    f"is not in dispute."))
+            # What the skew does *not* license. A draft read the count
+            # above as a count of sub-panels that reverse, and reported
+            # that essentially none of them do. Half of them do, and the
+            # two counts answer different questions -- one about the point
+            # estimate, one about zero. So the second is measured too.
+            out += _sign_split(ctx, f, baseline_rule)
             out.append(ctx.p(
                 "It also settles what weight the interval can carry. The "
                 "standard error rests on pseudo-values behaving, and here "
@@ -1500,7 +1662,7 @@ def ordering(ctx: Any) -> List[Flowable]:
                 "the sign \u2014 the interval is the weakest and the "
                 "count is the strongest. We report all three rather than "
                 "the flattering one."))
-    out.append(ctx.h2("#ordering.3 The interval on the difference, which "
+    out.append(ctx.h2("#ordering.4 The interval on the difference, which "
                       "is the claim"))
     out.append(ctx.p(
         "The claim the evidence does support is a difference rather than a "
@@ -1555,7 +1717,7 @@ def ordering(ctx: Any) -> List[Flowable]:
             f"one would expect, and is worth having established rather than "
             f"assumed."))
     if spread is not None and len(spread):
-        out.append(ctx.h2("#ordering.4 And the same grid at other risk "
+        out.append(ctx.h2("#ordering.5 And the same grid at other risk "
                           "aversions"))
         out.append(ctx.p(
             f"The interval above is what the panel costs in precision. It "
@@ -1632,7 +1794,7 @@ def ordering(ctx: Any) -> List[Flowable]:
             flips = int(((np.sign(wide["cec"].round(6))
                           != np.sign(wide["cec_survival"].round(6)))).sum())
             key = ("australia_as_legislated", baseline_rule)
-            out.append(ctx.h2("#ordering.5 And the same grid on a real "
+            out.append(ctx.h2("#ordering.6 And the same grid on a real "
                               "lifespan"))
             out.append(ctx.p(
                 f"One objection remains, and it is one this paper raises "
@@ -1665,7 +1827,7 @@ def ordering(ctx: Any) -> List[Flowable]:
                 f"{'no sign changes' if not flips else f'{flips} signs change'} "
                 f"\u2014 the dial here is the horizon, and the one that "
                 f"does move a sign is the risk aversion of Section "
-                f"{SHORT_ORDER.index('ordering') + 1}.4. "
+                f"{SHORT_ORDER.index('ordering') + 1}.5. "
                 + (f"The contested cell goes "
                    f"{float(wide.loc[key, 'cec']):+.2f}% to "
                    f"{float(wide.loc[key, 'cec_survival']):+.2f}%. "
@@ -1704,7 +1866,7 @@ def limitations(ctx: Any) -> List[Flowable]:
     # `panel_influence` for several drafts, which is the leave-one-out on
     # the all-international-against-50/50 comparison: a different quantity,
     # positive in all sixteen deletions, and therefore a sentence claiming
-    # robustness that Section #ordering.2 spends two pages denying.
+    # robustness that Section #ordering.3 spends two pages denying.
     baseline_rule = str(f.cfg["lifecycle"]["retirement"]["rule"])
     band = f.table("ordering_intervals") \
         if _has(f, "ordering_intervals") else None
@@ -1734,14 +1896,28 @@ def limitations(ctx: Any) -> List[Flowable]:
         "The panel is sixteen developed markets, and they are not sixteen "
         "independent draws: equity returns co-move, and the twentieth "
         "century happened to all of them at once. Section "
-        f"#ordering.2 recomputes every cell of the ordering table sixteen "
+        f"#ordering.3 recomputes every cell of the ordering table sixteen "
         "times, once with each country's history removed, and the answer "
         "is not uniform across the table \u2014 which is why this paper "
-        "reports the rule effect as its finding and the reversal as a "
-        "point estimate.")
+        "separates the institutional effects it can sign from the "
+        "residual it cannot.")
+    _matched_here = _matched(f, str(f.cfg["lifecycle"]["retirement"]["rule"]))
+    _mt_iv = (_interval_for(
+        f, _matched_here["systems"]["means_tested/voluntary"],
+        str(f.cfg["lifecycle"]["retirement"]["rule"]))
+        if _matched_here.get("measured") else {"measured": False})
+    if _mt_iv.get("measured") and _mt_iv.get("excludes_zero"):
+        line += (
+            f" The reversal itself, measured against a household matched "
+            f"on contributions, is one of the cells it settles: "
+            f"{_mt_iv['gap_pct']:+.2f}% with an interval of "
+            f"[{_mt_iv['ci'][0]:+.2f}, {_mt_iv['ci'][1]:+.2f}] and the same "
+            f"ordering in all sixteen sub-panels.")
     if contested is not None:
         line += (
-            f" The contested cell is {float(contested['gap_pct']):+.2f}% "
+            f" What it does not settle is Australia's own combination of "
+            f"two institutions that offset. That cell is "
+            f"{float(contested['gap_pct']):+.2f}% "
             f"with a delete-one standard error of "
             f"{float(contested['standard_error']):.2f} and an interval of "
             f"[{float(contested['ci_low']):+.2f}, "
@@ -1762,12 +1938,26 @@ def limitations(ctx: Any) -> List[Flowable]:
             f" And the interval is the weaker half of that. Only "
             f"{int(seat['below_point'])} of {int(seat['deletions'])} "
             f"deletions fall below the contested estimate and the mean "
-            f"deletion is {float(seat['loo_mean']):+.2f}%, so the average "
-            f"fifteen-country panel does not reverse the ordering at all. "
-            f"Section #ordering.2 gives the arithmetic; the short form is "
-            f"that the reversal is a property of these sixteen countries "
-            f"taken together rather than a quantity measured imprecisely, "
-            f"and no wider panel is available to say which.")
+            f"deletion is {float(seat['loo_mean']):+.2f}%, so the estimate "
+            f"is not a typical member of its own sub-panels and the "
+            f"standard error built on them carries less than it looks like "
+            f"it does.")
+    split = (_split_found(f, str(f.cfg["lifecycle"]["retirement"]["rule"]))
+             if _has(f, "ordering_influence") else {"measured": False})
+    if split.get("measured"):
+        line += (
+            f" That is a statement about the estimator and not about how "
+            f"many countries reverse: {_spelled(int(split['sign_holds']))} of "
+            f"{int(split['deletions'])} fifteen-country panels still put the "
+            f"target-date fund ahead and "
+            f"{_spelled(int(split['sign_flips']))} do not, with removing "
+            f"{COUNTRY_NAME.get(str(split['largest_flip']), str(split['largest_flip']))} "
+            f"alone moving the cell "
+            f"{split['largest_flip_swing']:+.1f} points. Section "
+            f"#ordering.3 gives the arithmetic; the short form is that the "
+            f"reversal is carried by a handful of identifiable markets in "
+            f"this panel, and no wider panel is available to say whether "
+            f"they are representative.")
     line += (
         " Nothing in this paper should be read as a point estimate, and "
         "every claim it makes is a claim about a sign.")
@@ -1845,6 +2035,11 @@ def conclusion(ctx: Any) -> List[Flowable]:
     au_rows = gapped[gapped["system"] == "australia_as_legislated"]
     us_rows = gapped[gapped["system"] == "us_social_security"]
     au_best = au_rows.loc[au_rows["gap_pct"].idxmax()]
+    # How many fifteen-country panels reproduce the contested sign, which
+    # is not the count the bias diagnostic reports and was once confused
+    # with it. Counted rather than typed, so a rerun cannot leave the
+    # sentence behind.
+    split = _split_found(f, baseline_rule)
     # The rule Section #longevity selects rather than the best cell of
     # the grid. Leading with the maximiser would make that section
     # decorative at the one place its answer should bind, so the
@@ -1877,6 +2072,10 @@ def conclusion(ctx: Any) -> List[Flowable]:
                     & (iv["rule"] == baseline_rule)]
         contested = _hit.iloc[0] if len(_hit) else None
     gamma_list, gamma_walk = _gamma_walk(f, baseline_rule)
+    matched = _matched(f, baseline_rule)
+    mt_iv = (_interval_for(f, matched["systems"]["means_tested/voluntary"],
+                           baseline_rule)
+             if matched.get("measured") else {"measured": False})
     au_base_gap = float(
         au_rows[au_rows["rule"] == baseline_rule]["gap_pct"].iloc[0])
     flat = gapped[(gapped["system"] == "age_pension_untested")
@@ -1892,24 +2091,52 @@ def conclusion(ctx: Any) -> List[Flowable]:
         f"the return process. Give an "
         f"investor an earnings-related pension and a fixed real withdrawal "
         f"and the all-equity portfolio leads the target-date fund by "
+        f"{us_base_gap:+.2f}%. Change the pension to an asset-tested one, "
+        f"holding the household and its contributions still, and the lead "
+        f"becomes "
+        f"{matched['cells']['means_tested/voluntary']:+.2f}%: the "
+        f"de-risking glide path, the design the literature spends its "
+        f"length arguing against, wins. Change the withdrawal rule instead "
+        f"and it does not."
+        if matched.get("measured") else
+        f"and the all-equity portfolio leads the target-date fund by "
         f"{us_base_gap:+.2f}%. Change the pension to an asset-tested one "
-        f"and the lead becomes {au_base_gap:+.2f}%: the de-risking glide "
-        f"path, the design the literature spends its length arguing "
-        f"against, wins. Change the withdrawal rule instead and it does "
-        f"not."))
+        f"and the lead becomes {au_base_gap:+.2f}%."))
+    if mt_iv.get("measured") and mt_iv.get("excludes_zero"):
+        out.append(ctx.p(
+            f"That sign the panel can carry: the delete-one interval is "
+            f"[{mt_iv['ci'][0]:+.2f}, {mt_iv['ci'][1]:+.2f}] and the "
+            f"ordering is the same in all sixteen sub-panels. What it "
+            f"cannot carry is the number an Australian actually faces. "
+            f"Australia pairs the means test with a compulsory "
+            f"contribution, which under that test is worth "
+            f"{matched['contribution_effect_means_tested']:+.1f} points "
+            f"because a larger balance is a partial substitute for the "
+            f"floor the test removed; the two nearly cancel, the system as "
+            f"legislated lands at {float(contested['gap_pct']):+.2f}%, and "
+            f"sixteen countries put a standard error of "
+            f"{float(contested['standard_error']):.1f} points on that "
+            f"remainder — the sign changes when "
+            f"{_spelled(int(split['sign_flips'])) if split.get('measured') else 'half'} "
+            f"of the "
+            f"{int(split['deletions']) if split.get('measured') else 'sixteen'} "
+            f"markets are removed one at a time. A cross-section of "
+            f"sixteen can sign an institution and cannot sign the "
+            f"difference between two of them that happen to offset."))
+    else:
+        out.append(ctx.p(
+            f"We would not have a reader stop at that sentence, because "
+            f"the panel does not support it. Sixteen countries put a "
+            f"standard error of "
+            f"{float(contested['standard_error']):.1f} points on a gap of "
+            f"{float(contested['gap_pct']):+.2f}%."))
     out.append(ctx.p(
-        f"We would not have a reader stop at that sentence, because the "
-        f"panel does not support it. Sixteen countries put a standard error "
-        f"of {float(contested['standard_error']):.1f} points on a gap of "
-        f"{float(contested['gap_pct']):+.2f}%, and the sign changes when "
-        f"eight of the sixteen are removed one at a time. The reversal is a "
-        f"point estimate this cross-section cannot separate from zero. What "
-        f"it can separate from zero, comfortably and in every cell, is the "
-        f"withdrawal rule's effect: within the Australian system alone the "
-        f"rule moves the all-equity lead by "
+        f"The other thing the panel resolves comfortably, and in every "
+        f"cell, is the withdrawal rule's effect: within the Australian "
+        f"system alone the rule moves the all-equity lead by "
         f"{float(au_rows['gap_pct'].max() - au_rows['gap_pct'].min()):.0f} "
-        f"percentage points, an order of magnitude larger than the gap in "
-        f"dispute."))
+        f"percentage points, larger than either institutional effect and "
+        f"an order of magnitude larger than the remainder in dispute."))
     if gamma_walk:
         out.append(ctx.p(
             f"A second check points the same way from a different "
@@ -1930,7 +2157,7 @@ def conclusion(ctx: Any) -> List[Flowable]:
         f"certainty-equivalent consumption against the best rule in the "
         f"same menu and runs out "
         + (f"{100 * ruin_gap_lived:.1f} percentage points more often over "
-           f"a real lifespan \u2014 {100 * ruin_gap:.0f} if ruin is "
+           f"a real lifespan \u2014 {100 * ruin_gap:.1f} if ruin is "
            f"counted to a terminal age nobody is promised. "
            if ruin_gap_lived == ruin_gap_lived else
            f"{100 * ruin_gap:.0f} percentage points more often. ")
@@ -1944,12 +2171,21 @@ def conclusion(ctx: Any) -> List[Flowable]:
         f"tempting to attribute the reversal to the means test's taper, "
         f"which is steep enough to act as a wealth tax. It cannot be that: "
         f"this household is past the cut-off before the test applies. It is "
+        f"the loss of the floor, and the cleanest evidence for that is a "
+        f"pair of cells differing in one thing. Paying the Age Pension's "
+        f"own flat rate to this household without testing it leaves the "
+        f"all-equity portfolio ahead by {flat_gap:+.2f}%; testing that "
+        f"identical benefit, on the same contributions and the same "
+        f"panel, takes it to "
+        f"{matched['cells']['means_tested/voluntary']:+.2f}%. Nothing else "
+        f"moves between those two runs — not the rate, not the saving "
+        f"rate, not a single simulated return. Withdrawing a pension at "
+        f"the margin and paying a smaller one are different "
+        f"interventions, and only the first reorders portfolios."
+        if matched.get("measured") else
         f"the loss of the floor. Paying the same pension to everyone, with "
         f"no test at all, leaves the all-equity portfolio ahead by "
-        f"{flat_gap:+.2f}% even though it pays this "
-        f"household less than the American schedule does. Withdrawing a "
-        f"pension at the margin and paying a smaller one are different "
-        f"interventions, and only the first reorders portfolios."))
+        f"{flat_gap:+.2f}%."))
     out.append(ctx.p(
         f"The second finding qualifies the first and should travel with it. "
         f"A withdrawal rule that cannot deplete the portfolio supplies the "
@@ -2214,13 +2450,414 @@ def _gamma_walk(f: Any, rule: str,
 _NUMBER_WORDS: Dict[int, str] = {
     0: "no", 1: "one", 2: "two", 3: "three", 4: "four", 5: "five",
     6: "six", 7: "seven", 8: "eight", 9: "nine", 10: "ten",
-    11: "eleven", 12: "twelve",
+    11: "eleven", 12: "twelve", 13: "thirteen", 14: "fourteen",
+    15: "fifteen", 16: "sixteen", 17: "seventeen", 18: "eighteen",
+    19: "nineteen", 20: "twenty",
 }
 
 
 def _spelled(n: int) -> str:
-    """``five`` for 5, ``24`` for 24 -- spelled up to twelve, then digits."""
+    """``five`` for 5, ``24`` for 24 -- spelled to twenty, then digits.
+
+    The panel's own size is sixteen and it turns up in sentences beside
+    spelled counts ("eight of the sixteen"), so stopping at twelve put a
+    numeral next to a word for the same kind of quantity.
+    """
     return _NUMBER_WORDS.get(int(n), str(int(n)))
+
+
+def _borrowing_price(ctx: Any, f: Any) -> List[Flowable]:
+    """What a real borrowing spread does to the levered corner.
+
+    A corner found at a zero spread is found at a price nobody is offered,
+    so it establishes that the unlevered answer was the grid's and not that
+    a retiree should borrow. The sweep prices the margin loan; reporting
+    only the free end would be reporting the flattering half of a check
+    this paper ran.
+    """
+    if not _has(f, "ceiling_optimum") or not _has(f, "ceiling_sweep"):
+        return []
+    optima = f.table("ceiling_optimum")
+    if not len(optima) or "spread" not in optima:
+        return []
+    from src import ceiling as cl
+
+    even = cl.break_even_spread(optima)
+    spreads = sorted(float(x) for x in optima["spread"].unique())
+    if len(spreads) < 2:
+        return []
+    top = optima[np.isclose(optima["spread"], spreads[-1])]
+    unlevered = int((~top["levered"].astype(bool)).sum())
+    by_spread = ", ".join(
+        f"{100.0 * sp:.0f}% → {float(optima[np.isclose(optima['spread'], sp)]['leverage'].median()):.2f}×"
+        for sp in spreads)
+
+    if np.isfinite(even):
+        closing = (
+            f"The unlevered portfolio comes back at a spread of "
+            f"{100.0 * float(even):.0f}%, which is inside the range a "
+            f"retail margin loan is written at. So the levered corner is "
+            f"real at a price no household is offered and gone at one they "
+            f"are, and the practical reading of this subsection is the "
+            f"bound rather than the level.")
+    else:
+        closing = (
+            f"The sweep does not reach the price at which the last balance "
+            f"stops borrowing: at {100.0 * spreads[-1]:.0f}% the median is "
+            f"{float(top['leverage'].median()):.2f}× and "
+            f"{unlevered} of {len(top)} balances want exactly the unlevered "
+            f"portfolio, but one still does not. The break-even is "
+            f"therefore above {100.0 * spreads[-1]:.0f}% and this paper "
+            f"does not say where — which is the honest form of the "
+            f"result, and enough for the claim being made: the corner "
+            f"reported above is the grid's, and a household paying a real "
+            f"price for leverage is close to the unlevered portfolio "
+            f"rather than far above it.")
+
+    return [ctx.p(
+        f"<b>And at a price a household would actually pay, most of the "
+        f"borrowing goes away.</b> The spread over the realised bill "
+        f"return is swept as well as the leverage, and the median wanted "
+        f"holding falls with it: {by_spread}. {closing}")]
+
+
+#: Country codes as a reader would rather see them. Only the markets that
+#: turn up in the sign split need naming; the rest of the paper refers to
+#: the panel collectively.
+COUNTRY_NAME: Dict[str, str] = {
+    "AUS": "Australia", "BEL": "Belgium", "CHE": "Switzerland",
+    "DEU": "Germany", "DNK": "Denmark", "ESP": "Spain", "FIN": "Finland",
+    "FRA": "France", "GBR": "the United Kingdom", "ITA": "Italy",
+    "JPN": "Japan", "NLD": "the Netherlands", "NOR": "Norway",
+    "PRT": "Portugal", "SWE": "Sweden", "USA": "the United States",
+}
+
+
+def _best_percent_rate(f: Any, rule: str = "constant_percent") -> float:
+    """The rate the longevity sweep picks for the percentage-of-balance rule.
+
+    Quoted so the ordering grid can say plainly that it runs the rule at a
+    different one, and why. A paper that sweeps a dial in one section and
+    pins it in the next owes the reader that sentence.
+    """
+    if not _has(f, "longevity_sweep"):
+        return float("nan")
+    swept = f.table("longevity_sweep")
+    hit = swept[swept["rule"] == rule]
+    if not len(hit) or "rate" not in hit:
+        return float("nan")
+    return float(hit.loc[hit["cec_mortality"].idxmax(), "rate"])
+
+
+def _matched(f: Any, rule: str) -> Dict[str, Any]:
+    """The 2x2 of pension formula against contribution rate, at one rule."""
+    if not _has(f, "ordering_gaps"):
+        return {"measured": False}
+    factorial = dict(f.cfg.get("ordering", {}).get("factorial", {}))
+    if not factorial:
+        return {"measured": False}
+    from src import ordering as odr
+    return odr.matched_contrast(f.table("ordering_gaps"), factorial, rule)
+
+
+def _interval_for(f: Any, system: str, rule: str) -> Dict[str, Any]:
+    """One cell's delete-one interval, or nothing measured."""
+    if not _has(f, "ordering_intervals"):
+        return {"measured": False}
+    table = f.table("ordering_intervals")
+    hit = table[(table["system"] == system) & (table["rule"] == rule)]
+    if not len(hit):
+        return {"measured": False}
+    row = hit.iloc[0]
+    return {"measured": True,
+            "gap_pct": float(row["gap_pct"]),
+            "se": float(row["standard_error"]),
+            "ci": (float(row["ci_low"]), float(row["ci_high"])),
+            "excludes_zero": bool(row["ci_excludes_zero"]),
+            "sign_survives": bool(row["sign_survives_every_deletion"])}
+
+
+def _matched_factorial(ctx: Any, f: Any, rule: str) -> List[Flowable]:
+    """Which institution moves the ordering, holding the other still.
+
+    Australia differs from the United States in the benefit formula *and*
+    in the compulsory contribution, and a row headed "Australia as
+    legislated" carries both. An earlier draft of this paper compared an
+    American household saving 10% with an Australian one saving 20.2% and
+    attributed the difference to the pension. The contribution rate is
+    what carries a household past the assets test, which is the treatment
+    rather than a detail of it, so the two have to be crossed -- which is
+    what the pension section's own design does and what this table had
+    stopped doing.
+    """
+    found = _matched(f, rule)
+    if not found.get("measured"):
+        return []
+    cells, systems = found["cells"], found["systems"]
+    er, mt = "earnings_related", "means_tested"
+    vol, com = "voluntary", "compulsory"
+
+    out: List[Flowable] = [
+        ctx.h2("#ordering.1 Which institution the reversal belongs to")]
+    out.append(ctx.p(
+        f"Two of the columns above move two things at once. Australia's "
+        f"pension is means-tested <i>and</i> its contribution is "
+        f"compulsory, so a comparison between the first column and the "
+        f"last changes the benefit formula and doubles the saving rate in "
+        f"the same step. That is not a detail of the treatment: Section "
+        f"{SHORT_ORDER.index('leisure') + 1}.1 shows the guarantee is what "
+        f"carries this household past the assets test in the first place. "
+        f"The five columns are a 2×2 with a control, and read as one "
+        f"they say something the three-column version could not."))
+    out.extend(ctx.table(
+        [["All-equity lead over the target-date fund",
+          "Saving 10%", "Saving 20.2%", "Contribution effect"],
+         ["Earnings-related pension",
+          f"{cells[f'{er}/{vol}']:+.2f}%", f"{cells[f'{er}/{com}']:+.2f}%",
+          f"{found['contribution_effect_earnings_related']:+.2f} pp"],
+         ["Means-tested pension",
+          f"{cells[f'{mt}/{vol}']:+.2f}%", f"{cells[f'{mt}/{com}']:+.2f}%",
+          f"{found['contribution_effect_means_tested']:+.2f} pp"],
+         ["Pension effect",
+          f"{found['pension_effect_voluntary']:+.2f} pp",
+          f"{found['pension_effect_compulsory']:+.2f} pp",
+          f"{found['interaction']:+.2f} pp"]],
+        f"The benefit formula crossed with the contribution rate, under a "
+        f"{rule_label(rule)} withdrawal. Each cell is the all-equity "
+        f"portfolio's lead over the target-date fund; the margins are "
+        f"differences along a row and down a column, and the corner is "
+        f"their interaction.",
+        anchor="ordering_factorial",
+        note="Same simulated lifetimes in every cell. The bottom-right "
+             "cell of the body is the row headed ‘Australia as "
+             "legislated’ above; the top-left is ‘United States, "
+             "10% saving’."))
+
+    iv = _interval_for(f, systems[f"{mt}/{vol}"], rule)
+    legislated = _interval_for(f, systems[f"{mt}/{com}"], rule)
+    out.append(ctx.p(
+        f"<b>Held apart, both institutions are large and they work against "
+        f"each other.</b> Replacing an earnings-related pension with a "
+        f"means-tested one, at the same contribution rate, moves the lead "
+        f"{found['pension_effect_voluntary']:+.2f} points. Doubling the "
+        f"contribution rate, under the same means-tested pension, moves it "
+        f"{found['contribution_effect_means_tested']:+.2f} the other way. "
+        f"The Australian system does both, and what a single "
+        f"Australia-against-America row reports is the residual: "
+        f"{found['confounded']:+.2f} points, which is smaller than either "
+        f"piece it is made of. The interaction is "
+        f"{found['interaction']:+.2f} points, and it has the sign the "
+        f"paper's mechanism predicts — compulsory saving is worth more "
+        f"under a means test than under an unconditional pension, because "
+        f"a larger balance is a partial substitute for a floor that has "
+        f"been withdrawn."))
+
+    if iv.get("measured"):
+        out.append(ctx.p(
+            f"<b>And the reversal, held apart, is a sign this panel can "
+            f"resolve.</b> At matched contributions the means-tested "
+            f"household's all-equity lead is {iv['gap_pct']:+.2f}% with a "
+            f"delete-one standard error of {iv['se']:.2f}, an interval of "
+            f"[{iv['ci'][0]:+.2f}, {iv['ci'][1]:+.2f}]"
+            + (f" that excludes zero, and the sign holds in every one of "
+               f"the sixteen deletions."
+               if iv["excludes_zero"] and iv["sign_survives"] else
+               f", which still contains zero.")
+            + (f" The cell this paper opened with \u2014 the system as "
+               f"legislated, at {legislated['gap_pct']:+.2f}% with an "
+               f"interval of [{legislated['ci'][0]:+.2f}, "
+               f"{legislated['ci'][1]:+.2f}] \u2014 is still not "
+               f"resolvable, and now there is a reason for that rather "
+               f"than a shrug. It is what is left when an institutional "
+               f"effect of {found['pension_effect_voluntary']:+.1f} points "
+               f"and one of "
+               f"{found['contribution_effect_means_tested']:+.1f} points "
+               f"are allowed to offset inside a single row. The panel can "
+               f"sign the cell those two are measured from; it cannot sign "
+               f"the remainder."
+               if legislated.get("measured")
+               and not legislated["excludes_zero"] else "")))
+        out.append(ctx.p(
+            f"That is the form the paper's first finding should be stated "
+            f"in. A means test reverses the portfolio ordering under a "
+            f"fixed real withdrawal — measured against a matched "
+            f"household, signed, and robust to dropping any one market. "
+            f"Whether an <i>Australian</i> ends up on the wrong side of "
+            f"the ordering depends on a second institution pushing back, "
+            f"and on this panel the two nearly cancel. The first is a "
+            f"statement about pension design and is what the rest of this "
+            f"paper is about; the second is a statement about one country's "
+            f"particular combination, and it is the one that cannot be "
+            f"signed."))
+    return out
+
+
+def _split_found(f: Any, rule: str,
+                 system: str = "australia_as_legislated") -> Dict[str, Any]:
+    """:func:`src.ordering.sign_split` on this paper's contested cell."""
+    if not (_has(f, "ordering_influence") and _has(f, "ordering_gaps")):
+        return {"measured": False}
+    from src import ordering as odr
+    return odr.sign_split(f.table("ordering_influence"),
+                          f.table("ordering_gaps"), rule, system)
+
+
+def _sign_split(ctx: Any, f: Any, rule: str,
+                system: str = "australia_as_legislated") -> List[Flowable]:
+    """How many sub-panels reproduce the contested sign, and which do not.
+
+    Two counts are easy to run together and a draft of this paper ran them
+    together. ``below_point`` asks where the deletions sit relative to the
+    *point estimate*, which is what a jackknife standard error is built on
+    and what the bias diagnostic reads. Whether a deletion reproduces the
+    *reversal* is a question about zero. In this cell the answers differ
+    sharply -- four of sixteen deletions fall below the point estimate and
+    eight of sixteen stay negative -- and the draft reported the first as
+    though it were the second, concluding that essentially no
+    fifteen-country subsample reproduces the reversal when half of them do.
+
+    So the count against zero is measured here, and the movers are named.
+    Which countries carry a sign is more useful to a reader than how wide
+    an interval around it is, and it is the same arithmetic.
+    """
+    if not (_has(f, "ordering_influence") and _has(f, "ordering_gaps")):
+        return []
+    from src import ordering as odr
+
+    found = odr.sign_split(f.table("ordering_influence"),
+                           f.table("ordering_gaps"), rule, system)
+    if not found.get("measured"):
+        return []
+    name = lambda c: COUNTRY_NAME.get(str(c), str(c))
+    holds, flips = int(found["sign_holds"]), int(found["sign_flips"])
+    n = int(found["deletions"])
+
+    out = [ctx.p(
+        f"<b>That is a statement about where the deletions sit relative to "
+        f"the point estimate, and it is not the same as how many of them "
+        f"reverse.</b> The two are easy to run together and they part "
+        f"company here. Of the {n} fifteen-country panels, {_spelled(holds)} "
+        f"still put the target-date fund ahead and {_spelled(flips)} do not: "
+        f"the reversal is reproduced by half the subsamples of the panel it "
+        f"was found in, not by none of them and not by all. The skew the "
+        f"paragraph above reports is real and it is a statement about the "
+        f"estimator, not a licence to say the reversal belongs to the whole "
+        f"panel alone.")]
+
+    out.append(ctx.p(
+        f"Which countries do it is the more useful fact, and the deletions "
+        f"give it directly. Removing {name(found['largest_flip'])} moves the "
+        f"cell from {found['point']:+.2f}% to "
+        f"{found['largest_flip_value']:+.2f}%, a swing of "
+        f"{found['largest_flip_swing']:+.2f} points and more than any other "
+        f"market; removing {name(found['largest_hold'])} moves it the other "
+        f"way, to {found['largest_hold_value']:+.2f}%. The markets whose "
+        f"removal overturns the reversal are "
+        f"{_join([name(c) for c in found['flippers']])}. Two of the largest "
+        f"movers among them are the panel's weakest equity markets over the "
+        f"period, which is the mechanism rather than a coincidence: the "
+        f"all-equity portfolio is hurt more by a century-long domestic "
+        f"underperformance than a glide path is, so dropping one helps it. "
+        f"The reversal is carried by the left tail of the country "
+        f"cross-section, and a panel that happened to exclude Italy or "
+        f"Portugal would not have reported it."))
+
+    out.append(ctx.p(
+        f"We take three things from that rather than one. The sign is not "
+        f"resolved: {flips} of {n} sub-panels overturn it and the interval "
+        f"contains zero. The estimate is not a typical member of its own "
+        f"deletions either, which is what the bias diagnostic says and why "
+        f"the interval is the weakest of the three statistics here. And the "
+        f"reversal has an identifiable source in the cross-section rather "
+        f"than being noise about a point — which is a fact a wider "
+        f"panel could confirm or destroy, and the most useful thing sixteen "
+        f"countries can say about it."))
+    return out
+
+
+def _corner_robustness(ctx: Any, f: Any) -> List[Flowable]:
+    """The zero corner re-scored against the curvature and against a floor.
+
+    Section 2 warns that a corner at zero is exactly the answer to
+    distrust, because a constant-relative-risk-aversion objective with a
+    consumption floor near zero is unbounded below: a handful of
+    near-starvation years can move a certainty equivalent further than a
+    decade of ordinary ones, and a portfolio chosen to avoid them is
+    choosing against the aggregator rather than for the household. It then
+    promises this check. The promise went unkept in a draft, which is the
+    worse of the two ways to handle a caveat one has already thought of.
+    """
+    if not _has(f, "incidence_robustness"):
+        return []
+    table = f.table("incidence_robustness")
+    if not len(table):
+        return []
+    bands = [c for c in ("below the free area", "inside the taper band",
+                         "above the cut-off") if c in table.columns]
+    if not bands:
+        return []
+
+    def label(row: str) -> str:
+        if row == "cec":
+            return "the baseline objective"
+        if row.startswith("cec_gamma"):
+            return f"\u03b3 = {row[len('cec_gamma'):]}"
+        if row.startswith("cec_floor"):
+            return f"a consumption floor of {float(row[len('cec_floor'):]):.2f}"
+        return row
+
+    out: List[Flowable] = [
+        ctx.h2("#incidence.4 And the corner against the objective")]
+    out.append(ctx.p(
+        f"The deletions above vary the panel. They do not touch the second "
+        f"objection, which Section {SHORT_ORDER.index('model') + 1}.2 raises "
+        f"against this result rather than waiting for a reader to: a corner "
+        f"at zero equity is the kind of answer a "
+        f"constant-relative-risk-aversion objective produces when the "
+        f"objective, not the household, cannot tolerate the left tail. "
+        f"Scoring an outcome again costs nothing beside producing it, so the "
+        f"same balance sweep is re-read under "
+        f"{_spelled(len(table))} objectives: the baseline, two other risk "
+        f"aversions, and two consumption floors below which the aggregator "
+        f"is not allowed to look."))
+    out.extend(ctx.table(
+        [["Scored under"] + [b.capitalize() for b in bands]]
+        + [[label(str(r["scoring"]))]
+           + [f"{float(r[b]):.0%}" for b in bands]
+           for _, r in table.iterrows()],
+        "The equity share a means-tested retiree wants under a fixed real "
+        "withdrawal, by position against the assets test, under five "
+        "objectives.",
+        anchor="incidence_robustness",
+        note="A floor replaces consumption below it before the felicity "
+             "function is applied, which is what removes the unboundedness "
+             "the corner would otherwise be exploiting."))
+
+    values = table[bands].to_numpy(dtype=float)
+    unchanged = bool((values == values[0, 0]).all())
+    if unchanged:
+        out.append(ctx.p(
+            f"<b>The corner is not the aggregator's.</b> Every one of the "
+            f"{values.size} cells is {values[0, 0]:.0%}: the answer does not "
+            f"move at half the baseline risk aversion, at twice it, or with "
+            f"the aggregator forbidden to look below a floor. Whatever else "
+            f"is true of a certainty equivalent at this curvature, the "
+            f"finding here is not made of it. The mechanism in the paragraph "
+            f"above — that a fixed real rule converts a good return "
+            f"into assessable assets and never into consumption — is "
+            f"arithmetic on the budget line and does not consult a felicity "
+            f"function, which is what one would expect to survive this and "
+            f"is what does."))
+    else:
+        out.append(ctx.p(
+            f"<b>The corner does depend on the objective.</b> Across the "
+            f"{len(table)} scorings the wanted share runs "
+            f"{values.min():.0%} to {values.max():.0%}, so the result "
+            f"reported above is conditional on the aggregator as well as on "
+            f"the panel, and Section {SHORT_ORDER.index('model') + 1}.2's "
+            f"caution was warranted. We report the span rather than the "
+            f"baseline alone."))
+    return out
 
 
 def _recommended(f: Any, system: str = "australia_as_legislated"

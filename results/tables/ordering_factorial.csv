@@ -1,0 +1,33 @@
+rule,pension,contribution,system,gap_pct
+fixed_real_rule,earnings_related,voluntary,us_social_security,11.086182249895549
+fixed_real_rule,earnings_related,compulsory,us_matched_saving,15.136982862659497
+fixed_real_rule,means_tested,voluntary,age_pension_matched,-13.062279469971372
+fixed_real_rule,means_tested,compulsory,australia_as_legislated,-2.0753243036764513
+constant_percent at 4%,earnings_related,voluntary,us_social_security,17.9232692563996
+constant_percent at 4%,earnings_related,compulsory,us_matched_saving,24.284648640231964
+constant_percent at 4%,means_tested,voluntary,age_pension_matched,13.260965152759475
+constant_percent at 4%,means_tested,compulsory,australia_as_legislated,18.43113667591294
+amortisation at 0%,earnings_related,voluntary,us_social_security,16.38889125298626
+amortisation at 0%,earnings_related,compulsory,us_matched_saving,19.876900127887364
+amortisation at 0%,means_tested,voluntary,age_pension_matched,11.041088756740347
+amortisation at 0%,means_tested,compulsory,australia_as_legislated,14.41473955516679
+amortisation at 2%,earnings_related,voluntary,us_social_security,18.214137207387758
+amortisation at 2%,earnings_related,compulsory,us_matched_saving,22.141079685685416
+amortisation at 2%,means_tested,voluntary,age_pension_matched,13.676525253005334
+amortisation at 2%,means_tested,compulsory,australia_as_legislated,17.555558455234156
+amortisation at 4%,earnings_related,voluntary,us_social_security,19.601366301885736
+amortisation at 4%,earnings_related,compulsory,us_matched_saving,23.93560254436762
+amortisation at 4%,means_tested,voluntary,age_pension_matched,16.895581896496424
+amortisation at 4%,means_tested,compulsory,australia_as_legislated,21.43204182893157
+amortisation at 6%,earnings_related,voluntary,us_social_security,20.244360414136864
+amortisation at 6%,earnings_related,compulsory,us_matched_saving,24.906443687402778
+amortisation at 6%,means_tested,voluntary,age_pension_matched,19.693332594128865
+amortisation at 6%,means_tested,compulsory,australia_as_legislated,24.867443673409674
+amortisation at 8%,earnings_related,voluntary,us_social_security,19.971778171737277
+amortisation at 8%,earnings_related,compulsory,us_matched_saving,24.819167423405197
+amortisation at 8%,means_tested,voluntary,age_pension_matched,21.089771786586596
+amortisation at 8%,means_tested,compulsory,australia_as_legislated,26.629322447139913
+amortisation at 10%,earnings_related,voluntary,us_social_security,18.826847455709927
+amortisation at 10%,earnings_related,compulsory,us_matched_saving,23.670207910675668
+amortisation at 10%,means_tested,voluntary,age_pension_matched,20.840029032112064
+amortisation at 10%,means_tested,compulsory,australia_as_legislated,26.373926413618598

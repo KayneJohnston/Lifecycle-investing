@@ -140,7 +140,9 @@ is the read-through; the table below is the build.
 | [`docs/36_ordering.md`](docs/36_ordering.md) | The portfolio comparison crossed with the pension system and the withdrawal rule, because the project's headline (two portfolios) and its second finding (two countries) had been glossed as the same quantity -- with delete-one-country intervals on every cell, on the differences between them, and the same grid re-scored at three risk aversions |
 | [`docs/37_ceiling.md`](docs/37_ceiling.md) | Whether the retiree's corner is the household's or the grid's: the balance sweep re-run with room above the whole portfolio, which finds the 100% censored by the ceiling it was chosen from, the predicted shape across the assets test refuted in the part that distinguishes it, and the price borrowing would have to reach before the unlevered corner comes back |
 
-All thirty-seven are **generated** by `main.py` from live pipeline objects --
+| [`docs/38_gate.md`](docs/38_gate.md) | Whether the pension's start date was ever given a chance to matter: the feature 2x2 of `docs/32` re-read at every retirement date rather than at each arm's own optimum -- two of which land on the eligibility age, where the gate is slack and the arms are the same simulation -- plus a sweep of the partial benefit paid before that age, an undisclosed consumption floor the timing arm turns out to be largely made of |
+
+All thirty-eight are **generated** by `main.py` from live pipeline objects --
 edit `src/report.py`, not the Markdown.
 
 ## How much of this data is real
@@ -653,7 +655,7 @@ pip install numpy pandas scipy matplotlib pyyaml openpyxl pytest
 
 python main.py --quick      # ~1 min smoke run at reduced N
 python main.py              # ~1 h full run: N = 100,000 plus sweeps and searches
-python -m pytest tests/ -q  # 1662 tests
+python -m pytest tests/ -q  # 1692 tests
 ```
 
 Selected steps and alternative configurations:
@@ -692,13 +694,14 @@ python main.py --steps 34           # the rule when the horizon is not known
 python main.py --steps 35           # who pays for the guarantee, and who the test binds
 python main.py --steps 36           # which portfolio wins, and under what
 python main.py --steps 37           # is the retiree's corner the grid's?
+python main.py --steps 38           # was the pension gate ever given a chance?
 python main.py --config other.yaml  # a different parameterisation
 ```
 
 ## Layout
 
 ```
-├── docs/                 # generated analysis documents (37 files)
+├── docs/                 # generated analysis documents (38 files)
 ├── data/
 │   ├── raw/              # primary source files, unmodified
 │   ├── processed/        # standardised real return panels (.csv and .npz)
