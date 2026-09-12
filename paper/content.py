@@ -9167,6 +9167,11 @@ def section_ordering(ctx: Any) -> List[Flowable]:
         "system and every withdrawal rule. Positive means the all-equity "
         "portfolio wins.",
         note="Every cell is scored on the same simulated lifetimes. The "
+             "certainty equivalent is over the retirement window, as "
+             "everywhere in this paper and for the reason Section #methods "
+             "gives, so a comparison down a column that changes the saving "
+             "rate carries the retiree's side of that change and not the "
+             "worker's; Section #incidence prices the other side. The "
              "estate is included, because an amortisation rule spends the "
              "portfolio to zero by construction and a fixed real rule does "
              "not.")

@@ -1081,6 +1081,65 @@ class TestTheObjectiveIsNotSwitchedSilently:
         assert found["measured"] and not found["insulated"]
 
 
+class TestTheContributionMarginNamesItsWindow:
+    """Every certainty equivalent in this paper is over the retirement
+    window, which is right for a comparison between portfolios and makes
+    the 2x2's *contribution* margin a gross quantity.
+
+    Doubling the saving rate is forty years of consumption the household
+    did not have, and on the retirement window none of that is in the
+    number. The paper prices it -- Section 8's incidence dial reports the
+    lifetime cost -- but Section 10.1 reported the margin without saying
+    which measure it was on, which is where a reader would take it for a
+    welfare gain.
+    """
+
+    def test_the_window_is_what_the_pipeline_actually_uses(self) -> None:
+        """The premise. If this ever changed to the full lifetime the
+        paragraph below would be wrong rather than merely unnecessary."""
+        import yaml
+
+        cfg = yaml.safe_load(open("config.yaml"))
+        assert cfg["utility"]["consumption_window"] == "retirement"
+
+    def test_the_factorial_says_which_measure_its_margin_is_on(self
+                                                               ) -> None:
+        source = (PAPER / "short.py").read_text()
+        block = source[source.index("def _contribution_has_a_cost_side"):
+                       source.index("def _matched_factorial")]
+        assert "retirement window" in block
+        assert "#incidence" in block
+
+    def test_it_is_printed_beside_the_factorial_and_not_orphaned(self
+                                                                 ) -> None:
+        source = (PAPER / "short.py").read_text()
+        block = source[source.index("def _matched_factorial"):]
+        assert "_contribution_has_a_cost_side(ctx, f)" in block
+
+    def test_the_lifetime_cost_is_read_and_not_asserted(self) -> None:
+        """The two numbers the paragraph quotes come off the incidence
+        sweep, so they cannot drift from Section 8's own."""
+        source = (PAPER / "short.py").read_text()
+        block = source[source.index("def _contribution_has_a_cost_side"):
+                       source.index("def _matched_factorial")]
+        assert 'f.table("incidence_optimum")' in block
+        assert "cec_lifetime" in block
+        assert "mean_working_consumption" in block
+
+    def test_the_ordering_table_note_names_the_window_in_both_cuts(self
+                                                                   ) -> None:
+        """A reader meets the numbers at the table, not at the paragraph
+        three pages on, and the long paper has the table without the
+        paragraph."""
+        for name in ("short.py", "content.py"):
+            source = (PAPER / name).read_text()
+            head = source.index(
+                "The all-equity portfolio's lead over the target-date "
+                "fund, in ")
+            note = source[head:head + 1800]
+            assert "retirement window" in note, name
+
+
 class TestRuinIsReportedOnBothMeasures:
     """Section 9 objects to counting a portfolio exhausted at ninety-one as
     a failed retirement for a household that most likely died before then.

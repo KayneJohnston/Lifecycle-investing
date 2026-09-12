@@ -1459,7 +1459,13 @@ def ordering(ctx: Any) -> List[Flowable]:
         "portfolio wins.",
         note="Every cell is scored on the same simulated lifetimes, so a "
              "difference between two cells is the system, the rule or the "
-             "portfolio and never a different draw of returns. The estate "
+             "portfolio and never a different draw of returns. The "
+             "certainty equivalent is over the retirement window, as "
+             "everywhere in this paper and for the reason Section #methods "
+             "gives, so a comparison between two columns saving at "
+             "different rates carries the retiree's side of that "
+             "difference and not the worker's; Section #incidence prices "
+             "the other side. The estate "
              "is included, because an amortisation rule spends the "
              "portfolio to zero by construction and a fixed real rule does "
              "not.")
@@ -2671,6 +2677,55 @@ def _interval_for(f: Any, system: str, rule: str) -> Dict[str, Any]:
             "sign_survives": bool(row["sign_survives_every_deletion"])}
 
 
+def _contribution_has_a_cost_side(ctx: Any, f: Any) -> List[Flowable]:
+    """What the contribution effect is not, said where it is reported.
+
+    Every certainty equivalent in this paper is over the retirement
+    window, for the reason Section #methods gives: with a fixed savings
+    rate, working-life consumption is identical across allocations, so it
+    is the retirement window that discriminates between portfolios. That
+    makes the *contribution* margin of the 2x2 a gross quantity. Doubling
+    the saving rate is not free to the household -- it is forty years of
+    consumption -- and on the retirement window that cost is not in the
+    number. Section #incidence already prices it on the lifetime measure;
+    what was missing was a pointer at the one place a reader is most
+    likely to take the margin for a welfare gain.
+    """
+    out: List[Flowable] = []
+    try:
+        optimum = f.table("incidence_optimum")
+    except (FileNotFoundError, OSError):
+        return out
+    if len(optimum) < 2 or "cec_lifetime" not in optimum.columns:
+        return out
+    free_end, paid_end = optimum.iloc[0], optimum.iloc[-1]
+    lifetime = 100.0 * (float(paid_end["cec_lifetime"])
+                        / float(free_end["cec_lifetime"]) - 1.0)
+    retirement = 100.0 * (float(paid_end["cec"])
+                          / float(free_end["cec"]) - 1.0)
+    working = 100.0 * (float(paid_end["mean_working_consumption"])
+                       / float(free_end["mean_working_consumption"]) - 1.0)
+    out.append(ctx.p(
+        f"<b>The contribution margin is a gross quantity, and the column "
+        f"heading is where to say so.</b> Every certainty equivalent in "
+        f"this paper is taken over the retirement window, for the reason "
+        f"Section #methods gives, so doubling the saving rate enters that "
+        f"margin with its benefit and not its price: forty years of "
+        f"consumption the household did not have. Section #incidence "
+        f"prices it on the other measure and the two do not agree, which "
+        f"is the point. Charging the contribution to wages costs "
+        f"{abs(working):.1f}% of mean consumption during the working years "
+        f"and {abs(lifetime):.1f}% of a lifetime certainty equivalent, "
+        f"and moves the retirement-window one by {abs(retirement):.4f}% "
+        f"\u2014 it cannot move it, because the balance at the pension "
+        f"age is identical either way. So the contribution effect above "
+        f"is what compulsory saving is worth <i>to the retiree</i>. That "
+        f"is the quantity a comparison between portfolios needs, and it "
+        f"is not the quantity a comparison between systems as social "
+        f"arrangements would use."))
+    return out
+
+
 def _matched_factorial(ctx: Any, f: Any, rule: str) -> List[Flowable]:
     """Which institution moves the ordering, holding the other still.
 
@@ -2745,6 +2800,7 @@ def _matched_factorial(ctx: Any, f: Any, rule: str) -> List[Flowable]:
         f"under a means test than under an unconditional pension, because "
         f"a larger balance is a partial substitute for a floor that has "
         f"been withdrawn."))
+    out.extend(_contribution_has_a_cost_side(ctx, f))
 
     if iv.get("measured"):
         out.append(ctx.p(
