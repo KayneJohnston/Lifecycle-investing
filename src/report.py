@@ -11068,7 +11068,8 @@ def write_doc_34(
         else:
             return_line = (
                 f"**The assumed return has an interior optimum too.** "
-                f"{found['best_return_rule']} wants "
+                f"The rule that takes one, {found['best_return_rule']}, "
+                f"wants "
                 f"{float(found['best_return']):.0%} inside a grid running "
                 f"{span[1:-1]}, so over-assuming does start to cost, and "
                 f"the sweep can see where. This is the dial the earlier "
@@ -11088,8 +11089,9 @@ def write_doc_34(
     if split.get("measured"):
         split_line = (
             f"**The rate a rule wants spans {split['spread_pp']:.1f} "
-            f"percentage points.** {split['top_rule']} wants "
-            f"{split['top_rate']:.1%} and {split['bottom_rule']} wants "
+            f"percentage points.** At the top, {split['top_rule']} wants "
+            f"{split['top_rate']:.1%}; at the bottom, "
+            f"{split['bottom_rule']} wants "
             f"{split['bottom_rate']:.1%}, across {int(split['rules'])} rules "
             f"that set a rate at all. ")
         if split["separates"]:
@@ -11980,7 +11982,7 @@ def write_doc_36(
             f"{found['recovering_rule']} it leads by "
             f"{found['recovering_gap_pct']:+.2f}% in the Australian system, "
             f"against {found['contender_gap_pct']:+.2f}% under {base}. "
-            f"{len(found.get('recovering_rules', []))} of "
+            f"In all, {len(found.get('recovering_rules', []))} of "
             f"{int(found.get('rules', 0))} rules in the menu return the "
             f"lead. So the sentence 'a rule that supplies its own floor "
             f"restores the all-equity ordering' is a statement about "

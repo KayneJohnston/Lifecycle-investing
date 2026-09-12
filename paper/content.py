@@ -802,6 +802,12 @@ def _compact_strategy(key: str) -> str:
 #: columns of prose labels, and once in the middle of a sentence.
 RULE_LABELS: Dict[str, str] = {
     "fixed_real_rule": "fixed real",
+    # The same policy under the spending module's own name. `from_spec`
+    # maps `fixed_real_rule` onto `ConstantRealRule`, so a document that
+    # calls one "fixed real" and the other "constant real" is giving one
+    # rule two names -- which is what both papers did, "fixed real" in the
+    # ordering tables and "constant real" three pages earlier.
+    "constant_real": "fixed real",
     "constant_percent": "percentage of balance",
     "amortisation": "amortisation",
 }
@@ -818,6 +824,21 @@ def rule_label(name: str) -> str:
         if name.startswith(key):
             return shown + name[len(key):]
     return name.replace("_", " ")
+
+
+def opens(text: str) -> str:
+    """``text`` with its first letter raised, for a sentence that begins
+    with one of this paper's own labels.
+
+    Rule labels, country names and spelled counts are common nouns and
+    numbers -- "amortisation", "percentage of balance", "seven" -- so
+    they are correctly lower case inside a table and inside a sentence,
+    and wrong at the start of one. Three sentences in each built document
+    opened with one. Only the first character is touched: "amortisation
+    (6% assumed return)" must not become "Amortisation (6% Assumed
+    Return)".
+    """
+    return text[:1].upper() + text[1:] if text else text
 
 
 def section_number(key: str) -> int:
@@ -8785,7 +8806,7 @@ def section_longevity(ctx: Any) -> List[Flowable]:
         else:
             out.append(ctx.p(
                 f"<b>The assumed return has an interior optimum too.</b> "
-                f"{found['best_return_rule']} wants "
+                f"{opens(rule_label(str(found['best_return_rule'])))} wants "
                 f"{float(found['best_return']):.0%} inside a grid running "
                 f"{span}, so over-assuming does begin to cost and the sweep "
                 f"can see where it starts. This is a dial the rule "
@@ -8801,9 +8822,9 @@ def section_longevity(ctx: Any) -> List[Flowable]:
         body = (
             f"<b>The rate a rule wants spans "
             f"{split['spread_pp']:.1f} percentage points.</b> "
-            f"{str(split['top_rule']).replace('_', ' ')} wants "
+            f"{opens(rule_label(str(split['top_rule'])))} wants "
             f"{split['top_rate']:.1%} and "
-            f"{str(split['bottom_rule']).replace('_', ' ')} wants "
+            f"{rule_label(str(split['bottom_rule']))} wants "
             f"{split['bottom_rate']:.1%}, across "
             f"{int(split['rules'])} rules that set a rate at all. ")
         if split["separates"]:
@@ -8813,7 +8834,7 @@ def section_longevity(ctx: Any) -> List[Flowable]:
                 "every rule that can, because a percentage of a falling "
                 "balance is never a shortfall, only a smaller cheque.")
         else:
-            crossing = str(split.get("crossing_rule", "")).replace("_", " ")
+            crossing = rule_label(str(split.get("crossing_rule", "")))
             body += (
                 f"The tempting explanation is that the rules which cannot "
                 f"run out want the high rates, and it is nearly right but "

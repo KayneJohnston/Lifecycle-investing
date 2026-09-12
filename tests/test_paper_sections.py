@@ -1330,6 +1330,57 @@ class TestNoFloatIsCitedByANumber:
         assert named <= declared, sorted(named - declared)
 
 
+class TestNoSentenceOpensInLowerCase:
+    """Rule labels, country names and spelled counts are common nouns and
+    numbers, so they are right in lower case inside a table and wrong at
+    the start of a sentence.
+
+    Three sentences in each built document opened with one -- "amortisation
+    (6% assumed return) wants 6%", "constant percent wants 8.0%", "seven of
+    eight rules in the menu return the lead" -- because the label was
+    interpolated straight after a full stop. :func:`content.opens` is what
+    those go through now, and this reads the built documents rather than
+    the source, because the leak was never in one place.
+
+    Table cells flatten into the same text stream and legitimately carry
+    lower-case fragments after an abbreviated header ("Dom. equity", "Geo.
+    mean", "S.d. annualised"), as does an abbreviation in prose ("i.i.d.
+    returns", "p.a."). Those are matched on the token before the stop and
+    skipped, so what is left is prose.
+    """
+
+    #: The token before the full stop, where a lower-case word after it is
+    #: not a sentence opening: an abbreviation, or a table column header
+    #: that the PDF text layer runs into the next cell.
+    NOT_A_SENTENCE_END = frozenset({
+        "i.i.d", "e.g", "i.e", "cf", "p.a", "s.d", "dom", "intl", "geo",
+        "excl", "eq", "no", "vs", "approx", "est", "pct", "ann", "corr",
+        "cons", "med", "avg", "min", "max", "yr", "yrs", "fig", "tbl",
+        "unle", "leverag",
+    })
+
+    def test_neither_document_opens_a_sentence_in_lower_case(self) -> None:
+        import re
+
+        from pypdf import PdfReader
+
+        for name in ("floor_beneath_the_portfolio.pdf",
+                     "lifecycle_asset_allocation.pdf"):
+            path = PAPER / name
+            if not path.exists():
+                continue
+            text = "\n".join((page.extract_text() or "")
+                              for page in PdfReader(str(path)).pages)
+            flat = re.sub(r"\s+", " ", text)
+            bad = []
+            for m in re.finditer(
+                    r"([A-Za-z.]+)\.\s+([a-z][a-z'\-]+)", flat):
+                if m.group(1).lower().strip(".") in self.NOT_A_SENTENCE_END:
+                    continue
+                bad.append(f"...{flat[max(0, m.start() - 60):m.end()]}")
+            assert not bad, f"{name}: " + "\n".join(bad)
+
+
 class TestRuleLabels:
     """Withdrawal rules reach the results tables under the key the pipeline
     runs them by, and three of them are Python identifiers. They were
@@ -1354,6 +1405,18 @@ class TestRuleLabels:
 
     def test_an_unknown_rule_loses_its_underscores(self) -> None:
         assert content.rule_label("some_new_rule") == "some new rule"
+
+    def test_one_rule_under_two_keys_gets_one_name(self) -> None:
+        """`spending.from_spec` maps `fixed_real_rule` onto the same
+        `ConstantRealRule` the spending module keys as `constant_real`, so
+        a document calling one "fixed real" and the other "constant real"
+        is giving one policy two names. Both papers did."""
+        from src import spending as spg
+
+        assert isinstance(spg.from_spec("fixed_real_rule", 0.04),
+                          spg.REGISTRY["constant_real"])
+        assert content.rule_label("constant_real") \
+            == content.rule_label("fixed_real_rule")
 
     def test_both_papers_print_no_rule_key(self) -> None:
         """The check that matters: no identifier reaches a page. Read off

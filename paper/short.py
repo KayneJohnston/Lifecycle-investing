@@ -1508,8 +1508,10 @@ def ordering(ctx: Any) -> List[Flowable]:
             f"fixed real rule. The family spans "
             f"{float(au['gap_pct'].drop(au['gap_pct'].idxmin()).min()):+.2f}% "
             f"to {float(au_best['gap_pct']):+.2f}%, so nothing here turns "
-            f"on which rate is picked. {_spelled(len(winners))} of "
-            f"{_spelled(len(au))} rules in the menu return the lead. A rule that supplies its own floor "
+            f"on which rate is picked. "
+            f"{ct.opens(_spelled(len(winners)))} of {_spelled(len(au))} "
+            f"rules in the menu return the lead. A rule that supplies "
+            f"its own floor "
             f"restores the all-equity prescription, and that is a claim "
             f"about portfolios rather than an inference from one about "
             f"countries."))
