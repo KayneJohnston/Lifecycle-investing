@@ -384,10 +384,11 @@ def introduction(ctx: Any) -> List[Flowable]:
         f"the pension and the returns fixed and changing only the rule, the "
         f"all-equity lead in the Australian system moves from "
         f"{au_base_gap:+.2f}% to {float(au_best['gap_pct']):+.2f}% under "
-        f"{au_best['rule']}, so "
+        f"{rule_label(str(au_best['rule']))}, so "
         f"{'the portfolio ordering reverses a second time' if recovers else 'the target-date fund keeps the lead even then'}. "
-        f"The all-equity prescription is conditional on two institutions "
-        f"rather than one."))
+        f"The all-equity prescription is therefore conditional on two "
+        f"institutions rather than one \u2014 and, as the next paragraph "
+        f"but one reports, on a preference as well."))
     out.append(ctx.p(
         "It is worth being exact about what that sentence compares, because "
         "two orderings are easy to run together. One is between "
@@ -417,9 +418,10 @@ def introduction(ctx: Any) -> List[Flowable]:
         f"earnings, so we scale the arriving balance until it sits inside "
         f"the taper band and ask again. Spending a fixed real amount, it "
         f"wants no equity at any balance the test can reach; spending a "
-        f"share of the current balance, it wants "
+        f"share of the current balance, it wants at least "
         f"{float(rule_arm['equity'].median()):.0%} equity at every one of "
-        f"them. The reason is mechanical and, once seen, obvious: under a "
+        f"them, and more than that wherever it can borrow. The reason is "
+        f"mechanical and, once seen, obvious: under a "
         f"fixed real rule a good return is never spent, so it accumulates "
         f"into assessable assets, the pension is withdrawn against them at "
         f"{taper:.1%} a year, and consumption does not rise at all. The "
@@ -678,15 +680,21 @@ def model(ctx: Any) -> List[Flowable]:
     out.append(ctx.p(
         f"On this calibration the free area is {free:.2f} times average "
         f"earnings, the full rate {rate:.1%} of them, and the cut-off "
-        f"{cut:.2f}. Section {SHORT_ORDER.index('incidence') + 1} runs both "
-        f"rules across all three regimes and reports which prediction "
-        f"holds."))
+        f"{cut:.2f}. Section {SHORT_ORDER.index('incidence') + 1} runs "
+        f"both rules across all three regimes and reports what happens to "
+        f"each prediction. Neither survives intact, and saying so is the "
+        f"point of writing one down."))
     out.append(ctx.h2("#model.2 What the model does not settle"))
     out.append(ctx.p(
-        "This is one period of accounting, not a solved lifecycle problem. "
-        "It says which way the forces point; it does not say how large the "
-        "non-monotonicity is where it exists, because that depends on the "
-        "return distribution, the horizon and the risk aversion. Nor does "
+        f"This is one period of accounting, not a solved lifecycle "
+        f"problem. It says which way the forces point; it does not say "
+        f"how large the non-monotonicity is, or whether it is there at "
+        f"all, because that depends on the return distribution, the "
+        f"horizon and the risk aversion. Section "
+        f"{SHORT_ORDER.index('incidence') + 1}.4 finds it is not there: "
+        f"under either withdrawal rule wanted equity turns out to be "
+        f"monotone in wealth, and the hump this section predicts does not "
+        f"appear once the grid is wide enough to show one. Nor does "
         "one period describe the region a real means test spends most of "
         "its time in, where a household inside the band this year is over "
         "the cut-off next year and the test is re-assessed annually against "
@@ -1039,6 +1047,44 @@ def incidence(ctx: Any) -> List[Flowable]:
                         "direction of the taper's insurance right and its "
                         "size wrong, and only a simulation with room above "
                         "the grid could have said so."))
+            ordered = base_arm.sort_values("median_wealth")
+            if len(ordered) > 1 and len(free) > 1:
+                first = float(ordered["equity"].iloc[0])
+                last = float(ordered["equity"].iloc[-1])
+                lev_lo = float(free["leverage"].iloc[0])
+                lev_hi = float(free["leverage"].iloc[-1])
+                if (last - first) * (lev_hi - lev_lo) < 0:
+                    out.append(ctx.p(
+                        f"<b>The two rules do not merely want different "
+                        f"amounts. They want them in opposite "
+                        f"directions.</b> Read down the same fourteen "
+                        f"balances, wanted equity under a fixed real "
+                        f"withdrawal runs {first:.0%} at the poorest and "
+                        f"{last:.0%} at the richest, rising with wealth; "
+                        f"under a percentage-of-balance rule it runs "
+                        f"{lev_lo:.2f}\u00d7 and {lev_hi:.2f}\u00d7, "
+                        f"falling. The withdrawal rule does not shift the "
+                        f"level of a common profile. It reverses the sign "
+                        f"of the wealth gradient itself."))
+                    out.append(ctx.p(
+                        "That is the sharpest form of this section's "
+                        "claim, and it is worth separating from the "
+                        "swing in levels. Under a rule that spends the "
+                        "balance, a poorer retiree is the one standing on "
+                        "the largest guaranteed floor relative to their "
+                        "portfolio, so they take the most risk \u2014 the "
+                        "textbook endowment result, working normally. "
+                        "Under a rule that does not, the same floor is "
+                        "unreachable: the return cannot be eaten, so it "
+                        "becomes assessable assets and the pension is "
+                        "withdrawn against it, and the poorer retiree is "
+                        "the one with most to lose from holding equity at "
+                        "all. Position against a means test does not have "
+                        "a portfolio implication on its own. It has one "
+                        "sign under one rule and the opposite sign under "
+                        "another, and a plan sponsor who sets a glide "
+                        "path without setting a drawdown default has not "
+                        "chosen between them."))
             out.append(ctx.p(
                 f"Two things keep this from overturning the section rather "
                 f"than qualifying it. The borrowing is worth little: "
@@ -1310,6 +1356,58 @@ def ordering(ctx: Any) -> List[Flowable]:
                     "We therefore state the reversal as what it is: a "
                     "point estimate this cross-section is too small to "
                     "separate from zero."))
+    if _has(f, "ordering_pseudo"):
+        pseudo = f.table("ordering_pseudo")
+        seat = pseudo[(pseudo["system"] == "australia_as_legislated")
+                      & (pseudo["rule"] == baseline_rule)]
+        if len(seat):
+            row = seat.iloc[0]
+            rest = pseudo.drop(seat.index)
+            out.append(ctx.p(
+                f"<b>The interval understates the problem, and the "
+                f"deletions say why.</b> A jackknife standard error is "
+                f"built on the sixteen sub-panel estimates and assumes "
+                f"the statistic is close to linear in the country being "
+                f"removed \u2014 that the deletions scatter around the "
+                f"full-sample number, roughly half above and half below. "
+                f"In the contested cell they do not. Only "
+                f"{int(row['below_point'])} of "
+                f"{int(row['deletions'])} fall below "
+                f"{float(row['point']):+.2f}%, and the mean deletion is "
+                f"{float(row['loo_mean']):+.2f}% \u2014 the average "
+                f"fifteen-country panel does not reverse the ordering at "
+                f"all. The implied jackknife bias is "
+                f"{float(row['bias_estimate']):+.1f} percentage points, "
+                f"{float(row['bias_over_point']):.0f} times the estimate "
+                f"it is a bias in."))
+            if len(rest):
+                lo = int(rest["below_point"].min())
+                hi = int(rest["below_point"].max())
+                worst = float(rest["bias_estimate"].abs().max())
+                out.append(ctx.p(
+                    f"That is a statement about this cell and not about "
+                    f"jackknives. Every other cell in the table splits "
+                    f"{lo}-to-{hi} around its own point estimate and none "
+                    f"carries an implied bias beyond {worst:.1f} points \u2014 "
+                    f"the same machinery, the same panel, the same "
+                    f"sixteen deletions, well behaved everywhere the sign "
+                    f"is not in dispute. So the reading to take from the "
+                    f"reversal is not that sixteen countries measure it "
+                    f"imprecisely. It is that the reversal is a property "
+                    f"of the sixteen-country panel taken whole, which "
+                    f"essentially no fifteen-country subsample of it "
+                    f"reproduces. That is a narrower claim than the "
+                    f"interval makes and a more useful one, and it is the "
+                    f"reason we lead with the rule effect."))
+            out.append(ctx.p(
+                "It also settles what weight the interval can carry. The "
+                "standard error rests on pseudo-values behaving, and here "
+                "they do not, so of the three things this section reports "
+                "about the contested cell \u2014 the interval, the span "
+                "across deletions, and the count of deletions that keep "
+                "the sign \u2014 the interval is the weakest and the "
+                "count is the strongest. We report all three rather than "
+                "the flattering one."))
     out.append(ctx.h2("#ordering.3 The interval on the difference, which "
                       "is the claim"))
     out.append(ctx.p(

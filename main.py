@@ -5069,6 +5069,8 @@ def step36_ordering(cfg: Dict[str, Any],
     # whose interval straddles zero is not a finding.
     influence = pd.DataFrame()
     intervals = pd.DataFrame()
+    pseudo = pd.DataFrame()
+    bias_found: Dict[str, Any] = {"measured": False}
     precision: Dict[str, Any] = {"measured": False}
     loo_systems = [str(x) for x in block.get("influence_systems", systems)]
     if block.get("influence_enabled", False):
@@ -5089,6 +5091,24 @@ def step36_ordering(cfg: Dict[str, Any],
         active["panel"], active["paths"] = panel, n_paths
         cache.clear()
         intervals = odr.intervals(influence, gapped)
+        # How well behaved each cell's jackknife is. The standard error
+        # above assumes the deletions scatter around the point estimate;
+        # whether they do is data, and on this panel the answer is not the
+        # same for every cell.
+        pseudo = odr.pseudo_values(influence, gapped)
+        bias_found = odr.bias_verdict(
+            pseudo, baseline_rule,
+            str(found.get("contender_system", "")))
+        if bias_found.get("measured"):
+            LOGGER.info("the contested cell's deletions: %d of %d below the "
+                        "point estimate, mean %+.2f against %+.2f, implied "
+                        "bias %+.1f against a worst of %.1f elsewhere; "
+                        "isolated: %s",
+                        bias_found["below_point"], bias_found["deletions"],
+                        bias_found["loo_mean"], bias_found["point"],
+                        bias_found["bias_estimate"],
+                        bias_found.get("others_worst_bias", float("nan")),
+                        bias_found.get("isolated"))
         precision = odr.precision_verdict(
             intervals, baseline_rule,
             baseline_system=str(found.get("baseline_system", "")),
@@ -5154,6 +5174,8 @@ def step36_ordering(cfg: Dict[str, Any],
     if len(influence):
         _save_table(influence, tables, "ordering_influence")
         _save_table(intervals, tables, "ordering_intervals")
+        if len(pseudo):
+            _save_table(pseudo, tables, "ordering_pseudo")
     if len(differences):
         _save_table(differences, tables, "ordering_differences")
     if len(by_gamma):
@@ -5164,12 +5186,13 @@ def step36_ordering(cfg: Dict[str, Any],
     rp.write_doc_36(
         Path("docs") / "36_ordering.md", cfg,
         {"swept": swept, "gaps": gapped, "intervals": intervals,
-         "differences": differences, "by_gamma": by_gamma},
+         "differences": differences, "by_gamma": by_gamma,
+         "pseudo": pseudo},
         figures,
         {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
          "verdict": found, "baseline_rule": baseline_rule,
          "precision": precision, "difference": difference_found,
-         "gamma_check": gamma_found})
+         "gamma_check": gamma_found, "bias": bias_found})
     LOGGER.info("docs/36 written (%.0fs)", elapsed)
     state["ordering_gaps"] = gapped
     return state

@@ -425,3 +425,100 @@ def gamma_verdict(by_gamma: pd.DataFrame, rule: str, system: str,
                                - {0.0}) <= 1),
         "spread_pp": float(values.max() - values.min()),
     }
+
+
+def pseudo_values(influence_frame: pd.DataFrame, gapped: pd.DataFrame,
+                  column: str = "gap_pct") -> pd.DataFrame:
+    """How well behaved each cell's jackknife actually is.
+
+    :func:`intervals` reports a standard error built on the delete-one
+    values, and that construction assumes the statistic is close to linear
+    in the units being deleted: the sixteen sub-panel estimates should
+    scatter around the full-sample one, roughly half above and half below.
+    Whether they do is a fact about the data, not an assumption, and it is
+    cheap to check once the deletions have been run.
+
+    Two fields carry it. ``below_point`` counts the deletions that fall
+    under the full-sample estimate, which for a smooth statistic on
+    sixteen units should sit near eight. ``bias_estimate`` is the classical
+    jackknife bias, ``(n-1)(mean of deletions - point)``: small relative to
+    the estimate when the pseudo-values behave, and not otherwise.
+
+    Reporting this matters here because a jackknife interval that straddles
+    zero reads as imprecision, and a cell whose deletions almost all lie on
+    one side of the point estimate is saying something different and more
+    specific -- that the estimate belongs to the whole panel rather than to
+    any subsample of it.
+    """
+    if not len(influence_frame) or not len(gapped):
+        return pd.DataFrame()
+    point_of = {(str(r["system"]), str(r["rule"])): float(r[column])
+                for _, r in gapped.iterrows()}
+    rows: List[Dict[str, Any]] = []
+    for (system, rule), block in influence_frame.groupby(["system", "rule"],
+                                                         sort=False):
+        values = block[column].to_numpy(dtype=float)
+        values = values[np.isfinite(values)]
+        n = int(values.size)
+        point = point_of.get((str(system), str(rule)), float("nan"))
+        if n < 2 or not np.isfinite(point):
+            continue
+        mean = float(values.mean())
+        rows.append({
+            "system": str(system), "rule": str(rule),
+            "point": point, "deletions": n,
+            "loo_mean": mean,
+            "loo_sd": float(values.std(ddof=1)),
+            "below_point": int((values < point).sum()),
+            "bias_estimate": float((n - 1) * (mean - point)),
+            # Against the estimate itself, because a bias of one point
+            # means something different beside a gap of two than beside a
+            # gap of twenty-five.
+            "bias_over_point": float(abs((n - 1) * (mean - point))
+                                     / abs(point)) if point else float("inf"),
+        })
+    return pd.DataFrame.from_records(rows)
+
+
+def bias_verdict(table: pd.DataFrame, baseline_rule: str, system: str,
+                 ratio: float = 3.0) -> Dict[str, Any]:
+    """Whether one cell's jackknife misbehaves where the others do not.
+
+    A diagnostic that fired on every cell would be a property of the
+    method and worth little. The claim worth making is a comparative one:
+    the same machinery on the same panel is well behaved everywhere except
+    where the paper's contested sign lives. ``isolated`` is that claim, and
+    it is false unless the contested cell is the worst by ``ratio``.
+    """
+    if not len(table):
+        return {"measured": False}
+    hit = table[(table["system"] == system) & (table["rule"] == baseline_rule)]
+    if not len(hit):
+        return {"measured": False}
+    row = hit.iloc[0]
+    others = table.drop(hit.index)
+    found: Dict[str, Any] = {
+        "measured": True,
+        "system": system, "rule": baseline_rule,
+        "point": float(row["point"]),
+        "deletions": int(row["deletions"]),
+        "below_point": int(row["below_point"]),
+        "loo_mean": float(row["loo_mean"]),
+        "bias_estimate": float(row["bias_estimate"]),
+        "bias_over_point": float(row["bias_over_point"]),
+        # The mean deletion crossing zero is the sharpest way to say it:
+        # the average fifteen-country panel does not reproduce the sign.
+        "mean_deletion_flips_sign": bool(
+            np.sign(float(row["loo_mean"])) != np.sign(float(row["point"]))
+            and abs(float(row["loo_mean"])) > 1e-9),
+    }
+    if len(others):
+        worst = others["bias_estimate"].abs().max()
+        found["others_worst_bias"] = float(worst)
+        found["others_median_bias"] = float(
+            others["bias_estimate"].abs().median())
+        found["others_below_low"] = int(others["below_point"].min())
+        found["others_below_high"] = int(others["below_point"].max())
+        found["isolated"] = bool(
+            abs(found["bias_estimate"]) > ratio * worst)
+    return found

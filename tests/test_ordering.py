@@ -435,3 +435,105 @@ class TestGammaVerdict:
     def test_one_risk_aversion_is_not_a_check(self) -> None:
         assert odr.gamma_verdict(self._frame([(5.0, -2.0)]), "fixed",
                                  "au") == {"measured": False}
+
+
+class TestThePseudoValues:
+    """A jackknife standard error assumes the statistic is close to linear
+    in the units deleted, so the sixteen sub-panel estimates should scatter
+    around the full-sample one. Whether they do is a fact about the data.
+    Reporting it matters because an interval straddling zero reads as
+    imprecision, and deletions that nearly all lie on one side of the point
+    estimate say something more specific."""
+
+    @staticmethod
+    def _frames(values, point, system="au", rule="fixed"):
+        influence = pd.DataFrame({
+            "system": [system] * len(values), "rule": [rule] * len(values),
+            "dropped": [f"C{i}" for i in range(len(values))],
+            "gap_pct": list(values)})
+        gapped = pd.DataFrame({"system": [system], "rule": [rule],
+                               "gap_pct": [point]})
+        return influence, gapped
+
+    def test_a_symmetric_jackknife_has_no_bias(self) -> None:
+        influence, gapped = self._frames([-1.0, 1.0, -2.0, 2.0], 0.0)
+        row = odr.pseudo_values(influence, gapped).iloc[0]
+        assert row["bias_estimate"] == pytest.approx(0.0)
+        assert row["below_point"] == 2
+
+    def test_the_bias_is_the_classical_one(self) -> None:
+        """``(n-1)(mean of deletions - point)``, by hand."""
+        influence, gapped = self._frames([2.0, 4.0, 6.0], 1.0)
+        row = odr.pseudo_values(influence, gapped).iloc[0]
+        assert row["bias_estimate"] == pytest.approx(2 * (4.0 - 1.0))
+        assert row["below_point"] == 0
+
+    def test_it_scales_the_bias_by_the_estimate(self) -> None:
+        influence, gapped = self._frames([2.0, 4.0, 6.0], 1.0)
+        row = odr.pseudo_values(influence, gapped).iloc[0]
+        assert row["bias_over_point"] == pytest.approx(6.0)
+
+    def test_a_cell_with_one_deletion_is_skipped(self) -> None:
+        influence, gapped = self._frames([1.0], 1.0)
+        assert not len(odr.pseudo_values(influence, gapped))
+
+    def test_a_cell_the_point_estimates_do_not_carry_is_skipped(self) -> None:
+        influence, _ = self._frames([1.0, 2.0], 1.0)
+        gapped = pd.DataFrame({"system": ["other"], "rule": ["other"],
+                               "gap_pct": [1.0]})
+        assert not len(odr.pseudo_values(influence, gapped))
+
+    def test_empty_in_empty_out(self) -> None:
+        assert not len(odr.pseudo_values(pd.DataFrame(), pd.DataFrame()))
+
+
+class TestWhetherTheBiasIsIsolated:
+    """A diagnostic that fires on every cell is a property of the method.
+    The claim worth making is comparative: well behaved everywhere except
+    where the contested sign lives."""
+
+    @staticmethod
+    def _table(rows):
+        return pd.DataFrame.from_records([
+            {"system": s, "rule": r, "point": p, "deletions": 4,
+             "loo_mean": m, "loo_sd": 1.0,
+             "below_point": b, "bias_estimate": 3 * (m - p),
+             "bias_over_point": abs(3 * (m - p)) / abs(p)}
+            for s, r, p, m, b in rows])
+
+    def test_one_misbehaving_cell_among_well_behaved_ones_is_isolated(self
+                                                                      ) -> None:
+        table = self._table([("au", "fixed", -2.0, 0.5, 1),
+                             ("au", "amort", 20.0, 20.1, 2),
+                             ("us", "fixed", 11.0, 10.9, 2)])
+        found = odr.bias_verdict(table, "fixed", "au")
+        assert found["isolated"]
+        assert found["mean_deletion_flips_sign"]
+
+    def test_a_cell_no_worse_than_its_neighbours_is_not(self) -> None:
+        table = self._table([("au", "fixed", -2.0, -2.1, 2),
+                             ("au", "amort", 20.0, 21.0, 2)])
+        found = odr.bias_verdict(table, "fixed", "au")
+        assert not found["isolated"]
+
+    def test_a_mean_that_keeps_the_sign_does_not_flip_it(self) -> None:
+        table = self._table([("au", "fixed", -2.0, -8.0, 0),
+                             ("au", "amort", 20.0, 20.1, 2)])
+        found = odr.bias_verdict(table, "fixed", "au")
+        assert not found["mean_deletion_flips_sign"]
+
+    def test_it_reports_the_spread_of_the_other_cells(self) -> None:
+        table = self._table([("au", "fixed", -2.0, 0.5, 1),
+                             ("au", "amort", 20.0, 20.1, 3),
+                             ("us", "fixed", 11.0, 10.9, 2)])
+        found = odr.bias_verdict(table, "fixed", "au")
+        assert found["others_below_low"] == 2
+        assert found["others_below_high"] == 3
+
+    def test_a_cell_that_is_not_there_is_not_measured(self) -> None:
+        table = self._table([("au", "amort", 20.0, 20.1, 2)])
+        assert odr.bias_verdict(table, "fixed", "au") == {"measured": False}
+
+    def test_empty_in_not_measured_out(self) -> None:
+        assert odr.bias_verdict(pd.DataFrame(), "fixed", "au") == {
+            "measured": False}

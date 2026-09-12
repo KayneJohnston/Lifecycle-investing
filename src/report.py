@@ -12010,6 +12010,54 @@ def write_doc_36(
     else:
         diff_line = ""
 
+    bias_found = notes.get("bias", {})
+    pseudo = frames.get("pseudo")
+    bias_tbl = md_table(_compact(
+        pseudo, ["system", "rule", "point", "below_point", "loo_mean",
+                 "bias_estimate"],
+        {"system": "Pension system", "rule": "Withdrawal rule",
+         "point": "Point estimate", "below_point": "Deletions below it",
+         "loo_mean": "Mean deletion", "bias_estimate": "Implied bias (pp)"}),
+        floatfmt="{:.2f}") if pseudo is not None and len(pseudo) else ""
+    if bias_found.get("measured"):
+        bias_line = (
+            f"**Of the {bias_found['deletions']} deletions, "
+            f"{bias_found['below_point']} fall below the point estimate of "
+            f"{bias_found['point']:+.2f}%, and the mean deletion is "
+            f"{bias_found['loo_mean']:+.2f}%.** The implied jackknife bias "
+            f"is {bias_found['bias_estimate']:+.1f} percentage points, "
+            f"{bias_found['bias_over_point']:.0f} times the estimate "
+            f"itself.")
+        if bias_found.get("isolated"):
+            bias_line += (
+                f" No other cell behaves this way: elsewhere the deletions "
+                f"split {bias_found['others_below_low']}-to-"
+                f"{bias_found['others_below_high']} around their own point "
+                f"estimate, and the worst implied bias anywhere else is "
+                f"{bias_found['others_worst_bias']:.1f} points. The same "
+                f"machinery on the same panel is well behaved in every cell "
+                f"but this one, which is what makes the diagnostic worth "
+                f"reporting rather than a caveat about jackknives in "
+                f"general.")
+        if bias_found.get("mean_deletion_flips_sign"):
+            bias_line += (
+                " And it says something the interval does not. A wide "
+                "interval reads as imprecision. What these pseudo-values "
+                "say is that the *average* fifteen-country panel does not "
+                "reproduce the sign at all, so the reversal belongs to the "
+                "joint configuration of all sixteen countries rather than "
+                "to any subsample of them. That is a sharper caveat and a "
+                "more specific one.")
+        bias_line += (
+            " It also settles how much weight the interval itself can take."
+            " A jackknife standard error assumes the statistic is close to"
+            " linear in the units deleted; a bias term of this size says the"
+            " pseudo-values here are not, so the interval is the weakest of"
+            " the three pieces of evidence on this cell and the count is the"
+            " strongest.")
+    else:
+        bias_line = ""
+
     spread = frames.get("by_gamma")
     gamma_found = notes.get("gamma_check", {})
     if spread is not None and len(spread):
@@ -12088,7 +12136,20 @@ country of evidence.
 
 {precision_line}
 
-## 4. The interval on the difference, which is the claim
+## 4. Whether the jackknife is well behaved
+
+The standard error in the table above is built on the delete-one values, and
+that construction assumes the statistic is close to linear in the countries
+being removed: the sixteen sub-panel estimates should scatter around the
+full-sample one, roughly half above and half below. Whether they do is a fact
+about the data rather than an assumption, and it is free to check once the
+deletions have been run.
+
+{bias_tbl}
+
+{bias_line}
+
+## 5. The interval on the difference, which is the claim
 
 An interval on two levels is not an interval on their difference, and the
 difference is what this section's surviving claim is about: that changing
@@ -12100,7 +12161,7 @@ jackknife rather than one assembled out of two marginal standard errors.
 
 {diff_line}
 
-## 5. And the same gaps at other risk aversions
+## 6. And the same gaps at other risk aversions
 
 The balance dial in `docs/35` is defended against the preference
 specification and the sweep above against the panel. Each was checked
@@ -12112,7 +12173,7 @@ gaps are re-read at other risk aversions here.
 
 {gamma_line}
 
-## 6. What this changes
+## 7. What this changes
 
 * The second finding has to be stated with its condition attached, because
   the condition is what the grid is about. "The ordering reverses again"
@@ -12124,7 +12185,7 @@ gaps are re-read at other risk aversions here.
 * This section re-derives the first finding on its own grid rather than
   quoting it, so the two cannot drift.
 
-## 7. What is still not modelled
+## 8. What is still not modelled
 
 * The rules here are fixed policies, not solved ones. A retiree who
   re-optimised the withdrawal each year against the means test would do
@@ -12136,11 +12197,11 @@ gaps are re-read at other risk aversions here.
 * Every row holds the retirement date fixed, so nothing here prices the
   interaction between the drawdown rule and when work stops.
 
-## 8. Figures
+## 9. Figures
 
 {figure_list}
 
-## 9. Reproduction
+## 10. Reproduction
 
 ```bash
 python main.py --steps 36

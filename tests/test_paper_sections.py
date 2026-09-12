@@ -907,6 +907,53 @@ class TestSubsectionRenumbering:
             assert max(moved.values()) <= trimmed + len(moved), key
 
 
+class TestTheJackknifeDiagnosticIsCarried:
+    """The interval on the contested cell reads as imprecision. The
+    pseudo-values say something more specific -- that the average
+    fifteen-country panel does not reproduce the sign -- and that sentence
+    is the one a referee asked for, so it should not be able to fall out of
+    the paper silently."""
+
+    def test_the_short_paper_reads_the_pseudo_values(self) -> None:
+        source = (PAPER / "short.py").read_text()
+        assert "ordering_pseudo" in source
+
+    def test_it_reports_the_count_and_the_bias(self) -> None:
+        """Both, because either alone is easy to wave away: a lopsided
+        count could be chance, and a bias without the count is a number
+        with no intuition attached."""
+        source = re.sub(r'"\s*\n\s*(f?)"', "",
+                        (PAPER / "short.py").read_text())
+        assert "below_point" in source
+        assert "bias_estimate" in source
+
+    def test_it_says_the_other_cells_are_well_behaved(self) -> None:
+        """The claim is comparative. Without the contrast the diagnostic
+        reads as a caveat about jackknives rather than about this cell."""
+        source = re.sub(r'"\s*\n\s*(f?)"', "",
+                        (PAPER / "short.py").read_text())
+        assert "Every other cell in the table splits" in source
+
+    def test_the_verdict_names_the_contested_cell(self) -> None:
+        """`bias_verdict` is only meaningful on the cell whose sign is in
+        dispute; run on a well-behaved one it should report nothing
+        unusual."""
+        import pandas as pd
+
+        from src import ordering as odr
+
+        table = pd.DataFrame.from_records([
+            {"system": "au", "rule": "fixed", "point": -2.0, "deletions": 16,
+             "loo_mean": 0.04, "loo_sd": 2.8, "below_point": 4,
+             "bias_estimate": 31.8, "bias_over_point": 15.3},
+            {"system": "au", "rule": "amort", "point": 26.6, "deletions": 16,
+             "loo_mean": 26.4, "loo_sd": 1.1, "below_point": 7,
+             "bias_estimate": -3.3, "bias_over_point": 0.12},
+        ])
+        assert odr.bias_verdict(table, "fixed", "au")["isolated"]
+        assert not odr.bias_verdict(table, "amort", "au")["isolated"]
+
+
 class TestFloatNumbering:
     """Figure and table numbers are issued by a counter on the context and
     the short paper trims whole subsections *after* that counter has run, so
