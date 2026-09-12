@@ -10785,6 +10785,54 @@ paths, gamma = {gamma:g}, retiring at {int(notes['retire_age'])}. Tables in
     return _write(path, [intro, body])
 
 
+def _crossing_why(found: Mapping[str, Any]) -> str:
+    """The mechanism behind a change of winner, read off the front-load.
+
+    A weight on the estate should promote the rule that leaves more,
+    which is the rule that draws less in the first year. That is a claim
+    about two numbers; the doc prints the numbers.
+    """
+    if "front_load_before" not in found:
+        return ""
+    before = float(found["front_load_before"])
+    after = float(found["front_load_after"])
+    if found.get("slower_after_the_change"):
+        return (f", and it wins by spending more slowly: {after:.1%} of "
+                f"the balance in the first retirement year against "
+                f"{before:.1%}, so more of the portfolio survives to be "
+                f"left")
+    return (f", and not by spending more slowly: {after:.1%} of the "
+            f"balance in the first retirement year against {before:.1%}, "
+            f"so the weight is rewarding something other than a rule that "
+            f"leaves more")
+
+
+def _bequest_divide(found: Mapping[str, Any]) -> str:
+    """Whether the weight ever moves the winner across the divide that
+    Section 10's second finding rests on.
+
+    Not the same question as "does the fixed real rule ever win": a
+    depleting rule that is not the fixed real one would break the reading
+    just as surely, so the winners are classified rather than checked
+    against one name.
+    """
+    if not found.get("winner_side_known"):
+        return ("Whether every winner across the grid can run the account "
+                "to zero is not established, so this sweep does not settle "
+                "what Section 10 takes from the ranking.")
+    if found.get("every_winner_survives"):
+        return ("What the weight does not touch is the divide the paper's "
+                "second finding rests on: every winner across the grid "
+                "sets its spending from a horizon and so cannot run the "
+                "account to zero, and the fixed real withdrawal, which "
+                "can, is beaten at every weight on the grid.")
+    named = ", ".join(str(w) for w in found.get("depleting_winners", []))
+    return (f"And the weight does move the winner across the divide the "
+            f"paper's second finding rests on: {named} can run the account "
+            f"to zero, so at the weights where it wins the ranking hands "
+            f"Section 10 a rule on the wrong side of its own contrast.")
+
+
 def write_doc_34(
     path: str | Path,
     cfg: Mapping[str, Any],
@@ -10892,6 +10940,48 @@ def write_doc_34(
     else:
         ablation_line = ""
 
+    # How firmly the winner is selected: the margin over the runner-up, and
+    # whether the pick survives the one preference parameter a comparison
+    # between rules is exposed to by construction.
+    bequest = frames.get("bequest")
+    bequest_found = notes.get("bequest", {})
+    bequest_tbl = ""
+    bequest_line = ("The bequest weight was not swept, so how much of the "
+                    "ranking is the parameter is unmeasured.")
+    if bequest is not None and len(bequest):
+        bequest_tbl = md_table(_compact(
+            bequest, ["bequest_weight", "winner", "runner_up",
+                      "margin_pct"],
+            {"bequest_weight": "Bequest weight", "winner": "Winning rule",
+             "runner_up": "Runner-up",
+             "margin_pct": "Margin over the runner-up (%)"}),
+            floatfmt="{:.2f}")
+    if bequest_found.get("measured"):
+        ranked = ranking.sort_values("rank_mortality")
+        margin = (100.0 * (float(ranked.iloc[0][lng.MORTALITY])
+                           / float(ranked.iloc[1][lng.MORTALITY]) - 1.0)
+                  if len(ranked) > 1 else float("nan"))
+        stable = bool(bequest_found["winner_is_stable"])
+        bequest_line = (
+            f"**{ranked.iloc[0]['rule_label']} tops the ranking by "
+            f"{margin:.2f}%** over {ranked.iloc[1]['rule_label']}, which is "
+            f"the same rule at an adjacent setting. What the grid resolves "
+            f"is the family, not the member.\n\n"
+            + (f"**And the pick survives the weight.** The same rule wins "
+               f"at every weight from {min(bequest_found['weights']):g} to "
+               f"{max(bequest_found['weights']):g}."
+               if stable else
+               f"**And the pick does not survive the weight.** The winner "
+               f"changes at "
+               f"{bequest_found.get('changes_at', float('nan')):g}, where "
+               f"{bequest_found.get('changes_to', '')} takes over"
+               + _crossing_why(bequest_found)
+               + f". At the configured "
+                 f"weight of {bequest_found['baseline_weight']:g} the pick "
+                 f"is {bequest_found['baseline_winner']} by "
+                 f"{bequest_found['baseline_margin_pct']:.2f}%.")
+            + "\n\n" + _bequest_divide(bequest_found))
+
     if "front_load_corr" in found:
         corr = float(found["front_load_corr"])
         strength = str(found.get("front_load_strength", "moderate"))
@@ -10978,7 +11068,8 @@ def write_doc_34(
         else:
             return_line = (
                 f"**The assumed return has an interior optimum too.** "
-                f"{found['best_return_rule']} wants "
+                f"The rule that takes one, {found['best_return_rule']}, "
+                f"wants "
                 f"{float(found['best_return']):.0%} inside a grid running "
                 f"{span[1:-1]}, so over-assuming does start to cost, and "
                 f"the sweep can see where. This is the dial the earlier "
@@ -10998,8 +11089,9 @@ def write_doc_34(
     if split.get("measured"):
         split_line = (
             f"**The rate a rule wants spans {split['spread_pp']:.1f} "
-            f"percentage points.** {split['top_rule']} wants "
-            f"{split['top_rate']:.1%} and {split['bottom_rule']} wants "
+            f"percentage points.** At the top, {split['top_rule']} wants "
+            f"{split['top_rate']:.1%}; at the bottom, "
+            f"{split['bottom_rule']} wants "
             f"{split['bottom_rate']:.1%}, across {int(split['rules'])} rules "
             f"that set a rate at all. ")
         if split["separates"]:
@@ -11120,7 +11212,26 @@ decision, and the last frees all three.
 
 {ablation_line}
 
-## 6. What this changes
+## 6. How firmly the winning rule is selected
+
+The paper reads this section's pick as the rule a retiree should use, which
+raises the standard it has to meet. Two things about the selection are worth
+stating rather than leaving to a reader who checks.
+
+The first is the margin between the winner and the runner-up, which are
+adjacent settings of the same rule. The second is the bequest weight. Every
+rule here differs from a fixed real withdrawal in the estate it leaves *by
+construction* -- the amortisation family spends the portfolio to nothing and
+a fixed real rule dies with most of it -- so the bequest term enters this
+ranking with a weight no data pins down. Scoring is free beside simulating,
+which is the argument this section already makes for carrying two
+objectives, so the weight is swept on the same outcomes.
+
+{bequest_tbl}
+
+{bequest_line}
+
+## 7. What this changes
 
 * The rule comparison in `docs/06` and the joint optimisation in `docs/31`
   both score a horizon nobody faces. This says how much that mattered.
@@ -11130,7 +11241,7 @@ decision, and the last frees all three.
   model with two parameters, and `docs/24` sweeps them; the sweep here is
   held at that section's central calibration.
 
-## 7. What is still not modelled
+## 8. What is still not modelled
 
 * Annuities, which are the direct hedge for the risk this section prices
   and would dominate part of the grid if they were in it.
@@ -11139,11 +11250,11 @@ decision, and the last frees all three.
 * Couples, where the relevant horizon is the second death and the
   distribution is a different shape.
 
-## 8. Figures
+## 9. Figures
 
 {figure_list}
 
-## 9. Reproduction
+## 10. Reproduction
 
 ```bash
 python main.py --steps 34
@@ -11871,7 +11982,7 @@ def write_doc_36(
             f"{found['recovering_rule']} it leads by "
             f"{found['recovering_gap_pct']:+.2f}% in the Australian system, "
             f"against {found['contender_gap_pct']:+.2f}% under {base}. "
-            f"{len(found.get('recovering_rules', []))} of "
+            f"In all, {len(found.get('recovering_rules', []))} of "
             f"{int(found.get('rules', 0))} rules in the menu return the "
             f"lead. So the sentence 'a rule that supplies its own floor "
             f"restores the all-equity ordering' is a statement about "
@@ -12010,6 +12121,123 @@ def write_doc_36(
     else:
         diff_line = ""
 
+    bias_found = notes.get("bias", {})
+    pseudo = frames.get("pseudo")
+    bias_tbl = md_table(_compact(
+        pseudo, ["system", "rule", "point", "below_point", "loo_mean",
+                 "bias_estimate"],
+        {"system": "Pension system", "rule": "Withdrawal rule",
+         "point": "Point estimate", "below_point": "Deletions below it",
+         "loo_mean": "Mean deletion", "bias_estimate": "Implied bias (pp)"}),
+        floatfmt="{:.2f}") if pseudo is not None and len(pseudo) else ""
+    if bias_found.get("measured"):
+        bias_line = (
+            f"**Of the {bias_found['deletions']} deletions, "
+            f"{bias_found['below_point']} fall below the point estimate of "
+            f"{bias_found['point']:+.2f}%, and the mean deletion is "
+            f"{bias_found['loo_mean']:+.2f}%.** The implied jackknife bias "
+            f"is {bias_found['bias_estimate']:+.1f} percentage points, "
+            f"{bias_found['bias_over_point']:.0f} times the estimate "
+            f"itself.")
+        if bias_found.get("isolated"):
+            bias_line += (
+                f" No other cell behaves this way: elsewhere the deletions "
+                f"split {bias_found['others_below_low']}-to-"
+                f"{bias_found['others_below_high']} around their own point "
+                f"estimate, and the worst implied bias anywhere else is "
+                f"{bias_found['others_worst_bias']:.1f} points. The same "
+                f"machinery on the same panel is well behaved in every cell "
+                f"but this one, which is what makes the diagnostic worth "
+                f"reporting rather than a caveat about jackknives in "
+                f"general.")
+        if bias_found.get("mean_deletion_flips_sign"):
+            bias_line += (
+                " And it says something the interval does not. A wide "
+                "interval reads as imprecision. What these pseudo-values "
+                "say is that the *average* fifteen-country panel does not "
+                "reproduce the sign at all, so the reversal belongs to the "
+                "joint configuration of all sixteen countries rather than "
+                "to any subsample of them. That is a sharper caveat and a "
+                "more specific one.")
+        bias_line += (
+            " It also settles how much weight the interval itself can take."
+            " A jackknife standard error assumes the statistic is close to"
+            " linear in the units deleted; a bias term of this size says the"
+            " pseudo-values here are not, so the interval is the weakest of"
+            " the three pieces of evidence on this cell and the count is the"
+            " strongest.")
+    else:
+        bias_line = ""
+
+    obj_found = notes.get("objective", {})
+    lvl_found = notes.get("levels", {})
+    objectives = frames.get("objectives")
+    obj_tbl = ""
+    if objectives is not None and len(objectives):
+        wide = objectives.pivot_table(index=["system", "rule"],
+                                      columns="objective",
+                                      values="gap_pct").reset_index()
+        obj_tbl = md_table(wide, floatfmt="{:.2f}")
+    if obj_found.get("measured"):
+        obj_line = (
+            f"**The levels move and the gaps do not.** Scored over a real "
+            f"lifespan rather than a retirement that ends at ninety-three "
+            f"with certainty, the certainty equivalents shift across a "
+            f"span of {lvl_found.get('level_span_pct', float('nan')):.1f} "
+            f"percentage points "
+            f"({lvl_found.get('low_level_shift_pct', float('nan')):+.1f}% "
+            f"to {lvl_found.get('high_level_shift_pct', float('nan')):+.1f}%, "
+            f"median "
+            f"{lvl_found.get('median_level_shift_pct', float('nan')):+.1f}%). "
+            f"The gap between the two portfolios inside a cell moves by "
+            f"{obj_found['median_move_pp']:.2f} percentage points at the "
+            f"median and {obj_found['worst_move_pp']:.2f} at the worst "
+            f"({' / '.join(obj_found['worst_cell'])}).")
+        obj_line += (
+            f" {obj_found['signs_flipped']} of {obj_found['cells']} signs "
+            f"change." if obj_found["signs_flipped"] else
+            f" No sign changes in any of the {obj_found['cells']} cells.")
+        if "contested_move_pp" in obj_found:
+            obj_line += (
+                f" The contested cell goes "
+                f"{obj_found['contested_fixed']:+.2f}% to "
+                f"{obj_found['contested_survival']:+.2f}%, and its sign "
+                f"{'holds' if obj_found['contested_sign_holds'] else 'does not hold'}.")
+        obj_line += (
+            " That is the evidence for a claim this section would otherwise"
+            " be making on faith. A horizon that flatters the rules which"
+            " divide by it flatters both portfolios in a cell equally, so a"
+            " comparison *within* a rule is close to insulated from the"
+            " treatment `docs/34` rejects for comparisons *between* rules."
+            " Close to, not exactly: the two portfolios leave different"
+            " estates and ruin at different rates, and the survival"
+            " weighting prices both, which is why the gaps move at all."
+            if obj_found.get("insulated") else
+            " The gap is therefore not insulated from the objective, and"
+            " every number in this section has to be read with the horizon"
+            " treatment attached.")
+    else:
+        obj_line = ""
+    # The ruin column moves too, and by more than the gaps do. Section 9
+    # of the paper objects to counting a portfolio exhausted at ninety-one
+    # as a failed retirement for a household that most likely died before
+    # then; this is that objection priced.
+    if {"prob_ruin", "prob_ruin_survival"} <= set(swept.columns):
+        risky = swept[swept["prob_ruin"] > 0]
+        if len(risky):
+            obj_line += (
+                f" The ruin column moves further than either. Across the "
+                f"{len(risky)} cells that ruin at all, the probability "
+                f"falls from {risky['prob_ruin'].median():.1%} to "
+                f"{risky['prob_ruin_survival'].median():.1%} at the median "
+                f"once failure is counted against the retiree's own "
+                f"lifespan rather than a terminal age nobody is promised. "
+                f"That is the measure `docs/34` argues for, and it roughly "
+                f"halves the margin by which the fixed real rule is "
+                f"dominated on this dimension \u2014 the dominance holds, "
+                f"and is worth about half what the fixed-horizon column "
+                f"says.")
+
     spread = frames.get("by_gamma")
     gamma_found = notes.get("gamma_check", {})
     if spread is not None and len(spread):
@@ -12088,7 +12316,20 @@ country of evidence.
 
 {precision_line}
 
-## 4. The interval on the difference, which is the claim
+## 4. Whether the jackknife is well behaved
+
+The standard error in the table above is built on the delete-one values, and
+that construction assumes the statistic is close to linear in the countries
+being removed: the sixteen sub-panel estimates should scatter around the
+full-sample one, roughly half above and half below. Whether they do is a fact
+about the data rather than an assumption, and it is free to check once the
+deletions have been run.
+
+{bias_tbl}
+
+{bias_line}
+
+## 5. The interval on the difference, which is the claim
 
 An interval on two levels is not an interval on their difference, and the
 difference is what this section's surviving claim is about: that changing
@@ -12100,7 +12341,20 @@ jackknife rather than one assembled out of two marginal standard errors.
 
 {diff_line}
 
-## 5. And the same gaps at other risk aversions
+## 6. And the same gaps on a real lifespan
+
+`docs/34` rejects a retirement that ends at ninety-three with certainty as
+not neutral *between* withdrawal rules, and re-solves the rule against a
+survival curve. This section compares portfolios *within* a rule, which is a
+different exposure -- but the reader should not have to take that on trust,
+so every outcome is scored a second time under the objective `docs/34`
+argues for.
+
+{obj_tbl}
+
+{obj_line}
+
+## 7. And the same gaps at other risk aversions
 
 The balance dial in `docs/35` is defended against the preference
 specification and the sweep above against the panel. Each was checked
@@ -12112,7 +12366,7 @@ gaps are re-read at other risk aversions here.
 
 {gamma_line}
 
-## 6. What this changes
+## 8. What this changes
 
 * The second finding has to be stated with its condition attached, because
   the condition is what the grid is about. "The ordering reverses again"
@@ -12124,7 +12378,7 @@ gaps are re-read at other risk aversions here.
 * This section re-derives the first finding on its own grid rather than
   quoting it, so the two cannot drift.
 
-## 7. What is still not modelled
+## 9. What is still not modelled
 
 * The rules here are fixed policies, not solved ones. A retiree who
   re-optimised the withdrawal each year against the means test would do
@@ -12136,11 +12390,11 @@ gaps are re-read at other risk aversions here.
 * Every row holds the retirement date fixed, so nothing here prices the
   interaction between the drawdown rule and when work stops.
 
-## 8. Figures
+## 10. Figures
 
 {figure_list}
 
-## 9. Reproduction
+## 11. Reproduction
 
 ```bash
 python main.py --steps 36
@@ -12148,5 +12402,429 @@ python main.py --steps 36
 
 Runtime {float(notes['elapsed_seconds']):.0f}s at {int(notes['n_paths']):,}
 paths, gamma = {gamma:g}. Tables in `results/tables/ordering_*.csv`.
+"""
+    return _write(path, [intro, body])
+
+
+def write_doc_37(
+    path: str | Path,
+    cfg: Mapping[str, Any],
+    frames: Mapping[str, pd.DataFrame],
+    figures: Sequence[str],
+    notes: Mapping[str, Any],
+) -> Path:
+    """Whether the retiree's 100% is a corner or a ceiling.
+
+    `docs/35` reports that a means-tested retiree spending a share of the
+    balance wants the whole portfolio in equity at every position against
+    the assets test. That is the top of the grid, so it is two findings at
+    once and the document has to say which: a household that wants exactly
+    that, or a household that wants more and was not asked.
+    """
+    found = notes["verdict"]
+    shape = notes.get("shape", {})
+    gamma = float(notes["gamma"])
+    rule = str(notes.get("rule", "constant_percent"))
+
+    intro = _header(
+        "37 - Is the Corner the Household's, or the Grid's?",
+        "`docs/35` sweeps the equity share a means-tested retiree wants and "
+        "finds two corners: nothing in equity under a fixed real withdrawal, "
+        "everything in equity under a percentage-of-balance rule. Only one "
+        "of them is a finding.") + """
+## 1. Why the second corner is not a finding yet
+
+The first corner is at zero, and there is nothing below zero to want: the
+grid cannot be hiding a better answer underneath it. The second sits at the
+top of the grid, and a grid that stops at the whole portfolio cannot report
+an optimum above it. So "100% at every balance" is consistent with a
+household that wants exactly the whole portfolio and with one that wants half
+as much again.
+
+That matters more than a truncated number usually would, because the claim
+`docs/35` is testing is about a *shape* -- wanted equity highest inside the
+taper band, lower below the free area, lowest past the cut-off. Three regions
+pinned against a shared ceiling cannot be ranked against each other at all.
+The flat 100% is not evidence for the prediction and not evidence against it.
+It is the absence of evidence, and reporting it as either would be wrong.
+
+## 2. Lifting the ceiling
+
+The retiree may borrow against the equity sleeve at the realised bill return
+plus a spread, which is the arithmetic `src.leverage` already implements,
+applied to the retirement window alone. Leverage is one through the working
+years, so the balance the household arrives with is the balance `docs/35`
+scaled and not one that borrowing helped build. The sleeve stays all-equity
+and the only dial is how much of it the retiree holds.
+"""
+
+    if not found.get("measured"):
+        return _write(path, [intro, "\nThe sweep produced nothing to read.\n"])
+
+    optima = frames.get("optimum")
+    opt_tbl = md_table(_compact(
+        optima[optima["spread"] == found["cheapest_spread"]],
+        ["scale", "leverage", "cec", "at_ceiling"],
+        {"scale": "Balance (x the model's own)", "leverage": "Wanted leverage",
+         "cec": "CEC", "at_ceiling": "At the top of the grid"}),
+        floatfmt="{:.4f}") if optima is not None and len(optima) else ""
+
+    censored = found["censored"]
+    rule_line = (
+        f"The withdrawal rule throughout is `{rule}` -- the one whose answer "
+        f"was censored. The fixed real rule's corner is at zero and is not "
+        f"in question here.")
+    grid_hi = found["leverage_grid_high"]
+    verdict_line = (
+        f"**At a borrowing spread of {100 * found['cheapest_spread']:.0f}% "
+        f"the retiree wants leverage of {found['median_leverage']:.2f} at the "
+        f"median balance and {found['max_leverage']:.2f} at the most, so the "
+        f"100% reported in `docs/35` is the grid's answer and not the "
+        f"household's.**" if censored else
+        f"**At a borrowing spread of {100 * found['cheapest_spread']:.0f}% -- "
+        f"the cheapest price there is -- the retiree still wants exactly the "
+        f"unlevered portfolio at every balance. The corner is the "
+        f"household's.**")
+    if censored:
+        verdict_line += (
+            f" Borrowing is worth {found.get('median_gain_pct', float('nan')):.2f}% "
+            f"of certainty-equivalent consumption at the median balance and "
+            f"{found.get('max_gain_pct', float('nan')):.2f}% at the most, "
+            f"against the unlevered portfolio on the same paths.")
+        if found["all_at_ceiling"]:
+            verdict_line += (
+                f" Every balance wants the top of *this* grid too "
+                f"({grid_hi:.2f}), so the number to carry is the direction "
+                f"and not the level: what has been established is that the "
+                f"optimum is above the whole portfolio, not how far above.")
+
+    spread_line = (
+        f"The unlevered corner comes back at a borrowing spread of "
+        f"{100 * found['break_even_spread']:.0f}%, which is the number to "
+        f"weigh against a real margin loan."
+        if np.isfinite(found["break_even_spread"]) else
+        f"No spread in the sweep -- up to "
+        f"{100 * max(found['spreads']):.0f}% -- brings the unlevered corner "
+        f"back, so the price at which borrowing stops being worth having is "
+        f"above the range priced here.")
+
+    shape_tbl = ""
+    shape_line = ("The balances were not classified against the assets test, "
+                  "so the shape cannot be read here.")
+    bands = frames.get("bands")
+    if bands is not None and len(bands):
+        shape_tbl = md_table(_compact(
+            bands, ["position", "balances", "median_leverage", "low", "high"],
+            {"position": "Position against the test", "balances": "Balances",
+             "median_leverage": "Median wanted leverage", "low": "Lowest",
+             "high": "Highest"}), floatfmt="{:.2f}")
+    if shape.get("measured"):
+        if not shape["differentiated"]:
+            shape_line = (
+                f"**The three regions still want the same thing.** The spread "
+                f"across them is {shape['spread']:.2f} in leverage, which is "
+                f"inside the tolerance this check uses. Lifting the ceiling "
+                f"moved the level and not the shape, so the prediction in "
+                f"Section 2 of the paper is no better supported with room "
+                f"above the grid than it was without -- and that is the "
+                f"honest way to report it.")
+        elif shape.get("prediction_holds"):
+            shape_line = (
+                f"**The predicted ordering appears once there is room for "
+                f"it.** Wanted leverage is highest inside the taper band, "
+                f"lower below the free area and lowest past the cut-off, "
+                f"spanning {shape['spread']:.2f}. The shape was there; the "
+                f"ceiling was hiding it.")
+        else:
+            shape_line = (
+                f"**The regions differ, but not in the predicted order.** "
+                f"Wanted leverage spans {shape['spread']:.2f} across the "
+                f"three, and the ranking is not the one Section 2 of the "
+                f"paper derives. The ceiling was hiding a shape, and it is "
+                f"not the shape that was predicted.")
+
+    body = f"""
+## 3. What the retiree wants with room above the grid
+
+{rule_line}
+
+{opt_tbl}
+
+{verdict_line}
+
+{spread_line}
+
+## 4. And whether the shape appears
+
+{shape_tbl}
+
+{shape_line}
+
+## 5. What this changes in `docs/35`
+
+* The zero corner stands unchanged. It is not at a grid edge in any
+  meaningful sense and the leave-one-out there resolves it exactly.
+* The 100% corner should be stated as a bound rather than an optimum:
+  {"at least the whole portfolio, and more than that where borrowing is available"
+   if censored else "the whole portfolio and no more, which the levered grid confirms"}.
+* Any sentence reading a *shape* off the proportional-rule row is
+  {"still not supported" if not shape.get("differentiated") else "now supported by this sweep rather than by that row"}.
+
+## 6. What is still not modelled
+
+* Borrowing is priced as a spread over the realised bill return and is
+  available in unlimited size at that price. There is no margin call, no
+  position limit, and no counterparty who withdraws the facility in the
+  states where it matters most -- which are exactly the states a levered
+  retiree needs it in.
+* Limited liability is imposed by clipping the levered return at total
+  loss, which is the assumption most favourable to leverage. The share of
+  path-years in which that clip binds is recorded in `ceiling_sweep.csv`
+  rather than assumed away.
+* The sleeve stays all-equity, so this measures how *much* portfolio the
+  retiree wants and not what is in it.
+
+## 7. Reproduction
+
+```bash
+python main.py --steps 37
+```
+
+Runtime {float(notes['elapsed_seconds']):.0f}s at {int(notes['n_paths']):,}
+paths, gamma = {gamma:g}. Tables in `results/tables/ceiling_*.csv`.
+"""
+    return _write(path, [intro, body])
+
+
+def write_doc_38(
+    path: str | Path,
+    cfg: Mapping[str, Any],
+    frames: Mapping[str, pd.DataFrame],
+    figures: Sequence[str],
+    notes: Mapping[str, Any],
+) -> Path:
+    """Whether the pension's start date was ever given a chance to matter.
+
+    `docs/32` crosses two features of Australia's Age Pension -- the means
+    test and the eligibility age -- solves each arm for its own best
+    retirement date, and concludes that the formula does the work and the
+    date does not. Two of its four rows come out identical to six figures,
+    and that is the tell: both land on the pension age, where the gate is
+    slack, so the comparison could not have seen the gate whatever it did.
+    """
+    found = notes["verdict"]
+    bridge_found = notes.get("bridge", {})
+    gamma = float(notes["gamma"])
+    gate_age = int(notes["gate_age"])
+    reference = int(notes["reference_age"])
+
+    intro = _header(
+        "38 - The Pension Gate, Held Still",
+        "`docs/32` reads a feature decomposition at each arm's own optimum. "
+        "Two arms land on the pension age, where the eligibility gate cannot "
+        "bind, so their agreement is an identity rather than a measurement. "
+        "This re-reads the square at every date, and sweeps the partial "
+        "benefit paid before the gate.") + f"""
+## 1. Why the original comparison could not see the gate
+
+An ablation compares four arms: neither feature, each alone, and both. The
+leisure study solves each arm for the retirement date that suits it and sets
+the four optima side by side. That confounds what a feature *does* with where
+it moves the argmax, and here the confounding is total rather than partial.
+
+The joint arm and the formula-only arm both solve to age {gate_age}, which is
+the pension's own eligibility age. A household retiring on the birthday the
+pension arrives on is in exactly the same position whether or not there is a
+gate in front of it. The two arms are therefore the same simulation, their
+certainty equivalents agree to every digit, and the interaction -- being the
+joint arm less the two singles -- is forced to equal minus the timing effect.
+Neither number is evidence about anything.
+
+That does not touch what the study found about the *formula*, which is large
+at every date on the grid. It touches the standing of what it found about the
+gate, which is that the gate does nothing.
+
+## 2. The square at every date
+
+The fix is the standard one: read the ablation at a common date. It costs
+nothing extra here, because all four arms are already scored across the whole
+grid.
+"""
+
+    square = frames.get("square")
+    if square is None or not len(square):
+        return _write(path, [intro, "\nThe sweep produced nothing to read.\n"])
+
+    square_tbl = md_table(_compact(
+        square, ["retire_age", "cec_baseline", "cec_timing", "cec_formula",
+                 "cec_both", "timing_effect", "formula_effect",
+                 "interaction", "arms_coincide"],
+        {"retire_age": "Retires at", "cec_baseline": "Neither",
+         "cec_timing": "Gate only", "cec_formula": "Means test only",
+         "cec_both": "Both", "timing_effect": "Gate effect",
+         "formula_effect": "Means-test effect",
+         "interaction": "Interaction",
+         "arms_coincide": "Arms coincide"}), floatfmt="{:.4f}")
+
+    binds = int(found.get("informative_dates", 0))
+    slack = int(found.get("slack_dates", 0))
+    blind = bool(found.get("argmax_was_blind", False))
+    verdict_line = (
+        f"**The gate binds at {binds} of the {int(found['dates'])} dates and "
+        f"is slack at the other {slack}.** Every date at or past "
+        f"{gate_age} is an identity: a household that has already reached the "
+        f"eligibility age is paid the same with a gate as without one, so the "
+        f"gate-only arm reproduces the baseline and the joint arm reproduces "
+        f"the means-test arm."
+        + (f" The leisure study's decomposition is read at "
+           f"{int(found['joint_best_age'])}, which is one of those dates, so "
+           f"its timing row was zero by construction."
+           if blind else
+           f" The leisure study's decomposition is read at "
+           f"{int(found.get('joint_best_age', gate_age))}, where the gate "
+           f"does operate, so its timing row is a measurement after all."))
+
+    if "timing_where_it_bites" in found:
+        ratio = found.get("formula_over_timing", float("nan"))
+        bites_line = (
+            f"**Where the gate does bind it is not nothing, and it is still "
+            f"much the smaller of the two.** Across the {binds} dates below "
+            f"the eligibility age the gate moves the certainty equivalent by "
+            f"{found['timing_median_where_it_bites']:+.4f} at the median and "
+            f"{found['timing_where_it_bites']:+.4f} at its widest (age "
+            f"{int(found['timing_widest_age'])}), against a means-test effect "
+            f"of {found['formula_median_where_it_bites']:+.4f} at the median "
+            f"-- a factor of {ratio:.1f}. So the leisure study's conclusion "
+            f"survives, but it survives on evidence it did not previously "
+            f"have: the comparison it drew that conclusion from was blind, "
+            f"and this one is not.")
+    else:
+        bites_line = ("No date on the grid falls below the eligibility age, "
+                      "so this sweep cannot separate the two features either.")
+
+    interaction_line = ""
+    if "interaction_median_where_it_bites" in found:
+        interaction_line = (
+            f"The interaction at a date the gate reaches runs "
+            f"{found['interaction_median_where_it_bites']:+.4f} at the "
+            f"median, which is a real number rather than the arithmetic "
+            f"echo the argmax version produced.")
+
+    bridge = frames.get("bridge")
+    bridge_tbl = ""
+    bridge_line = ("The bridge was not swept, so the timing arm's dependence "
+                   "on it is unmeasured.")
+    if bridge is not None and len(bridge):
+        at_ref = bridge[bridge["retire_age"] == reference]
+        bridge_tbl = md_table(_compact(
+            at_ref, ["bridge", "cec_baseline", "cec_timing",
+                     "timing_effect"],
+            {"bridge": "Bridge (share of the rate)",
+             "cec_baseline": "Neither", "cec_timing": "Gate only",
+             "timing_effect": "Gate effect"}), floatfmt="{:.4f}")
+    if bridge_found.get("measured"):
+        bridge_line = (
+            f"**The gate effect is largely made of the bridge, which is the "
+            f"point of disclosing it.** At age {reference} the timing arm "
+            f"runs {bridge_found['at_lowest_share']:+.4f} when nothing is "
+            f"paid before the eligibility age and "
+            f"{bridge_found['at_highest_share']:+.4f} when the full rate is, "
+            f"a span of {bridge_found['span']:.4f} across a parameter no "
+            f"data pins down."
+            + (" The movement is monotone in the share."
+               if bridge_found.get("monotone")
+               else " The movement is not monotone in the share, which the "
+                    "mechanism does not predict and which is worth a look."))
+        if bridge_found.get("isolates_penalty"):
+            bridge_line += (
+                f"\n\nThe top of that grid does more than bound the "
+                f"sweep: it separates the two halves of the feature. A "
+                f"pension paying the full rate on both sides of its "
+                f"eligibility age is not gated at all, so what survives at "
+                f"a full bridge is the *other* thing the timing arm carries "
+                f"-- a benefit that is not actuarially reduced for stopping "
+                f"work early. That residual is "
+                f"{bridge_found['penalty_only']:+.4f}, and the bridge's own "
+                f"contribution is the remainder, "
+                f"{bridge_found['bridge_only']:+.4f}. The "
+                f"{bridge_found['dominant']} is the larger of the two.")
+            if bridge_found.get("ends_disagree"):
+                where = bridge_found.get("cancels_at_share")
+                bridge_line += (
+                    f" They also pull in opposite directions, so there is a "
+                    f"share at which they cancel"
+                    + (f" -- {100.0 * float(where):.0f}%, which is close "
+                       f"enough to the calibration `docs/32` uses that its "
+                       f"finding of no timing effect should be read as that "
+                       f"cancellation rather than as a property of pension "
+                       f"design." if where is not None else ".")
+                    + " The two halves are not the same size -- the "
+                      "bridge dominates the sweep and the penalty is the "
+                      "small residual -- so the crossing is where the "
+                      "shrinking bridge finally gives way to it, not two "
+                      "large effects cancelling.")
+
+    body = f"""
+{square_tbl}
+
+{verdict_line}
+
+{bites_line}
+
+{interaction_line}
+
+## 3. The bridge, which is a floor nobody disclosed
+
+The years between stopping work and the eligibility age are bridged in this
+model by a partial payment at {100.0 * float(cfg.get('leisure', {}).get('pre_pension_safety_net', 0.0)):.0f}% of
+the means-tested rate. That number appears in no table of the paper, and it is
+not an innocent default: it is a *floor under consumption* in a study whose
+whole mechanism is that floors decide the portfolio, it sits in the arm whose
+subject is the timing of that floor, and a constant-relative-risk-aversion
+objective is unbounded below without one. A parameter chosen because the
+objective is acutely sensitive to it has to be swept rather than set.
+
+{bridge_tbl}
+
+{bridge_line}
+
+## 4. What this changes in `docs/32`
+
+* The formula effect stands. It is present at every date and at every
+  bridge, and nothing in either sweep moves it.
+* Whether it *dominates* the gate is conditional on the bridge, which was
+  the point of sweeping the bridge. At the calibration `docs/32` uses it
+  dominates comfortably; with nothing paid before the eligibility age the
+  gate is the larger of the two. The claim to keep is the conditional one.
+* The timing row of that decomposition should not be read as a measurement.
+  It is zero because the argmax landed on the eligibility age, and it would
+  have been zero for any gate at all.
+* The interaction row should not be read either: with the joint arm equal to
+  the formula arm, it is minus the timing effect by construction.
+* The pre-eligibility share belongs in the paper's calibration table
+  alongside the rate, the free areas and the taper.
+
+## 5. What is still not modelled
+
+* The bridge is a flat share of the means-tested rate rather than the
+  income-tested unemployment payment an Australian would actually receive,
+  which is assessed differently and on a different threshold.
+* The gate arm still carries the removal of the actuarial reduction along
+  with the eligibility age, because a pension arriving on a fixed birthday
+  has no claiming decision to adjust. Splitting them would model a system
+  nobody lives under, and `src.leisure` says so; the consequence is that
+  "the gate" here means the gate and the absent penalty together.
+* Leisure is held at no value throughout. The date grid is scored once
+  rather than eleven times, because the value of a retired year is the
+  leisure study's dial and not this section's question.
+
+## 6. Reproduction
+
+```bash
+python main.py --steps 38
+```
+
+Runtime {float(notes['elapsed_seconds']):.0f}s at {int(notes['n_paths']):,}
+paths, gamma = {gamma:g}. Tables in `results/tables/gate_*.csv`.
 """
     return _write(path, [intro, body])

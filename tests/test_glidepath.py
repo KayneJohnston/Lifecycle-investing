@@ -78,6 +78,38 @@ class TestBatchSimulate:
         assert trimmed.shape[2] == spec.n_retired
         np.testing.assert_allclose(trimmed[0], full[0][:, spec.n_working:])
 
+    def test_the_balance_dial_reaches_the_batched_path(self, setup) -> None:
+        """`retirement_balance_scale` is applied by `lifecycle.simulate` at
+        the retirement boundary. The batched recursion ignored it, so a
+        study that scaled the balance and evaluated in batch scored every
+        row at the household's own wealth and could not see the dial at
+        all."""
+        import dataclasses
+
+        cfg, spec, strategies, paths, income = setup
+        scaled = dataclasses.replace(spec, retirement_balance_scale=0.1)
+        weights = strategies[list(strategies)[0]].weights[None]
+        batched, _, _ = gp.batch_simulate(paths, weights, scaled, income)
+        single = lc.simulate(paths, strategies[list(strategies)[0]], scaled,
+                             income)
+        np.testing.assert_allclose(batched[0], single.consumption,
+                                   rtol=1e-10, atol=1e-10)
+
+    def test_the_balance_dial_changes_the_batched_answer(self, setup) -> None:
+        """Guards the guard: if the scale were silently dropped again, the
+        comparison above would still pass against a reference that had also
+        dropped it."""
+        import dataclasses
+
+        cfg, spec, strategies, paths, income = setup
+        weights = strategies[list(strategies)[0]].weights[None]
+        plain, _, _ = gp.batch_simulate(paths, weights, spec, income)
+        scaled, _, _ = gp.batch_simulate(
+            paths, weights, dataclasses.replace(
+                spec, retirement_balance_scale=0.1), income)
+        assert not np.allclose(plain[:, :, spec.n_working:],
+                               scaled[:, :, spec.n_working:])
+
     def test_rejects_a_bad_weight_shape(self, setup) -> None:
         cfg, spec, strategies, paths, income = setup
         with pytest.raises(ValueError, match="weights must be"):

@@ -160,6 +160,37 @@ ARMS: Tuple[str, ...] = ("pension from the day work stops",
                          "spending a share of the balance")
 
 
+def balance_arms(base: Any) -> Dict[str, Any]:
+    """The three specifications the balance dial is swept on.
+
+    One function rather than three inline ``dataclasses.replace`` calls,
+    because a second study came to depend on the third arm and rebuilt it
+    from the raw specification instead. It rebuilt it wrongly: it kept the
+    model's own retirement age, so its household stopped work four years
+    before the pension began and spent four retirement years outside the
+    assets test -- which is the first arm's counterpart, deliberately
+    excluded here, and not the arm the study said it was extending.
+
+    The arms differ in exactly two dimensions and nothing else. ``ARMS[0]``
+    starts the pension the day work stops, so every retirement year is
+    under the test and the taper is not credited with what a hole in the
+    floor does. ``ARMS[1]`` is that hole, kept as the comparison.
+    ``ARMS[2]`` is ``ARMS[0]`` again with the withdrawal rule changed, so a
+    difference between the two is the rule and nothing else.
+    """
+    import dataclasses
+
+    pension_age = int(getattr(base, "benefit_start_age", None)
+                      or base.age_retire)
+    aligned = dataclasses.replace(base, age_retire=pension_age)
+    return {
+        ARMS[0]: aligned,
+        ARMS[1]: base,
+        ARMS[2]: dataclasses.replace(aligned,
+                                     retirement_rule="fixed_percentage"),
+    }
+
+
 def balance_sweep(simulate: Callable[[float, float], Any],
                   spec_for: Callable[[float], Any],
                   scales: Sequence[float], equities: Sequence[float],

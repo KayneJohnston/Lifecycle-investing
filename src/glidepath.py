@@ -159,6 +159,13 @@ class BatchEvaluator:
                     (self.income[:, h] - contribution)[:, None]
             wealth = (wealth + contribution[:, None]) * (1.0 + rp[h])
 
+        # The balance dial, applied at the retirement boundary exactly as
+        # `lifecycle.simulate` applies it. Without this the batched path
+        # silently ignores the scale and every row is scored at the
+        # household's own balance, which for a study about where a means
+        # test bites is the one thing that must not happen.
+        if spec.retirement_balance_scale != 1.0:
+            wealth = wealth * float(spec.retirement_balance_scale)
         wealth_at_retirement = wealth.copy()
         benefit = self._benefit[:, None]
         initial = self.rule.initial_withdrawal(wealth_at_retirement,

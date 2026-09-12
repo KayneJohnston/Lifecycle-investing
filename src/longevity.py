@@ -57,7 +57,8 @@ LOGGER = logging.getLogger(__name__)
 
 __all__ = [
     "Combination", "describe", "front_load", "correlation_strength", "allocation_grid", "plan_grid", "sweep", "optimum",
-    "by_objective", "ranking_shift", "ablation", "verdict",
+    "by_objective", "ranking_shift", "ablation", "ruin_overstatement",
+    "by_bequest", "bequest_verdict", "bequest_column", "verdict",
     "FIXED", "MORTALITY",
 ]
 
@@ -225,12 +226,22 @@ def sweep(simulate: Callable[[Combination], Any],
           score_mortality: Callable[[Any], float],
           ruin_mortality: Callable[[Any], float],
           combinations: Sequence[Combination],
-          log_every: int = 200) -> pd.DataFrame:
+          log_every: int = 200,
+          extra: Mapping[str, Callable[[Any], float]] | None = None,
+          ) -> pd.DataFrame:
     """Every combination, scored under both aggregations.
 
     The two scores come off the *same* simulated outcome, which is the point:
     a difference between them cannot be sampling noise, because there is no
     second sample.
+
+    ``extra`` names further scorers to run on that same outcome, one column
+    each.  It exists for the bequest weight: the rules in this grid differ
+    in the estate they leave *by construction* -- a rule that amortises to
+    a horizon spends the portfolio to nothing, a fixed real rule dies with
+    most of it -- so which rule wins is exposed to a preference parameter
+    that a comparison between allocations is not.  Re-scoring is free
+    beside simulating, so it is measured rather than fixed.
     """
     rows: List[Dict[str, Any]] = []
     for i, combo in enumerate(combinations):
@@ -251,6 +262,8 @@ def sweep(simulate: Callable[[Combination], Any],
             "ruin_fixed": float(np.mean(outcome.ruin)),
             "ruin_mortality": float(ruin_mortality(outcome)),
             "mean_consumption": float(outcome.consumption.mean()),
+            **{name: float(score(outcome))
+               for name, score in (extra or {}).items()},
         })
         if log_every and (i + 1) % int(log_every) == 0:
             LOGGER.info("  scored %d of %d combinations", i + 1,
@@ -458,6 +471,217 @@ def rate_split_verdict(preference: pd.DataFrame) -> Dict[str, Any]:
     return found
 
 
+#: Column prefix for a survival-weighted score at a named bequest weight.
+BEQUEST_PREFIX: str = "cec_mortality_theta"
+
+
+def bequest_column(weight: float) -> str:
+    """The sweep column holding the score at this bequest weight."""
+    return f"{BEQUEST_PREFIX}{weight:g}"
+
+
+def by_bequest(frame: pd.DataFrame,
+               weights: Sequence[float]) -> pd.DataFrame:
+    """Which rule wins at each bequest weight, and by how much.
+
+    The rules in this grid are not interchangeable in the estate they
+    leave: the amortisation family spends the portfolio to nothing by
+    design and a fixed real rule dies with most of it unspent.  The
+    bequest term therefore enters the comparison between rules with a
+    weight that no data pins down, and a ranking read at one value of it
+    is a ranking conditional on that value.
+
+    Each rule is taken at its own best settings under each weight, which
+    is the same discipline :func:`ranking_shift` applies to the horizon:
+    scoring a rule at a rate chosen to suit a different preference would
+    confound the rule with the setting.
+
+    The winner's ``front_load`` -- the share of the balance it draws in
+    the first retirement year -- rides along where the frame carries it,
+    because the mechanism behind a change of winner is a claim about
+    spending speed and should be read rather than asserted.  A weight on
+    the estate rewards the rule that leaves more, which is the rule that
+    spends more slowly, and the column says which one that is.
+
+    :returns: one row per weight with the winner, the runner-up, the
+        margin between them in per cent, and whether the winner changed
+        from the previous weight.
+    """
+    rows: List[Dict[str, Any]] = []
+    previous: str | None = None
+    for weight in weights:
+        column = bequest_column(float(weight))
+        if column not in frame.columns:
+            continue
+        best = frame.groupby("rule_label")[column].max().sort_values(
+            ascending=False)
+        if len(best) < 2:
+            continue
+        winner, runner = str(best.index[0]), str(best.index[1])
+        top, second = float(best.iloc[0]), float(best.iloc[1])
+        row: Dict[str, Any] = {
+            "bequest_weight": float(weight),
+            "winner": winner, "winner_cec": top,
+            "runner_up": runner, "runner_up_cec": second,
+            "margin_pct": (100.0 * (top / second - 1.0) if second
+                           else float("nan")),
+            "winner_changed": bool(previous is not None
+                                   and winner != previous),
+        }
+        if "front_load" in frame.columns:
+            # At the winner's own best setting under this weight, not the
+            # family median: a family swept over its rate front-loads over
+            # a range, and the number that explains this row is the one
+            # the winning member draws.
+            block = frame[frame["rule_label"] == winner]
+            row["winner_front_load"] = float(
+                block.loc[block[column].idxmax(), "front_load"])
+        rows.append(row)
+        previous = winner
+    return pd.DataFrame.from_records(rows)
+
+
+def _depletes(label: str) -> bool | None:
+    """Whether a rule, named as the sweep names it, can run out.
+
+    The sweep labels a rule with its rate attached -- ``amortisation (6%
+    assumed return)`` -- and the classification lives on the bare family
+    name in :data:`src.plan.CAN_DEPLETE`, so the label is matched on its
+    prefix. ``None`` means the label matched no known family, which the
+    caller has to treat as "not established" rather than as "safe": a
+    verdict that silently defaulted an unrecognised winner to the
+    convenient side would be asserting exactly what it claims to measure.
+    """
+    from src import plan as _pl
+    for family, can in _pl.CAN_DEPLETE.items():
+        if label.startswith(family):
+            return bool(can)
+    return None
+
+
+def bequest_verdict(table: pd.DataFrame,
+                    baseline_weight: float,
+                    family: str = "amortisation",
+                    contrast: str = "constant_real") -> Dict[str, Any]:
+    """Whether the rule this section recommends survives the bequest weight.
+
+    Two questions, and they have different answers, so the section has to
+    ask both rather than one.
+
+    * Does the *family* survive?  A rule that spends the portfolio down is
+      being compared with one that does not, and if the horizon-based
+      family wins throughout then the paper's second finding -- that a
+      rule which cannot deplete restores the ordering -- does not depend
+      on the parameter.
+    * Does the *member* survive?  Which rule inside that family wins is a
+      far finer comparison, and a margin of a fraction of a per cent is
+      not a recommendation a reader should act on without knowing it.
+    """
+    if not len(table):
+        return {"measured": False}
+    hit = table[np.isclose(table["bequest_weight"], float(baseline_weight))]
+    if not len(hit):
+        return {"measured": False}
+    row = hit.iloc[0]
+    winners = [str(x) for x in table["winner"]]
+    found: Dict[str, Any] = {
+        "measured": True,
+        "baseline_weight": float(baseline_weight),
+        "weights": [float(x) for x in table["bequest_weight"]],
+        "baseline_winner": str(row["winner"]),
+        "baseline_runner_up": str(row["runner_up"]),
+        "baseline_margin_pct": float(row["margin_pct"]),
+        "winners": list(dict.fromkeys(winners)),
+        "winner_is_stable": bool(len(set(winners)) == 1),
+        # The claim that matters for the paper's second finding.
+        "family_holds": bool(all(family in w for w in winners)),
+        "family": family,
+        # The claim the paper's second finding actually rests on, which is
+        # not the family claim: whatever wins, it is never the rule that
+        # holds a fixed real amount. That contrast is what "a rule which
+        # cannot deplete restores the ordering" is a statement about, and
+        # it can hold while the winner inside the horizon-based rules
+        # moves with the weight.
+        "contrast": contrast,
+        "contrast_ever_wins": bool(any(contrast in w for w in winners)),
+    }
+    # Stronger than `contrast_ever_wins`, and the one the next section
+    # actually needs: not merely that the fixed real rule never wins, but
+    # that whatever does win is on the far side of the same divide. A
+    # depleting rule other than the fixed real one could take the top of
+    # the grid at some weight, and that would break the reading just as
+    # surely, so it is classified here rather than assumed away.
+    sides = [_depletes(w) for w in found["winners"]]
+    found["winner_side_known"] = bool(all(x is not None for x in sides))
+    found["every_winner_survives"] = bool(
+        found["winner_side_known"] and not any(sides))
+    found["depleting_winners"] = [
+        w for w, x in zip(found["winners"], sides) if x
+    ]
+    if not found["winner_is_stable"]:
+        changed = table[table["winner_changed"]]
+        if len(changed):
+            found["changes_at"] = float(changed.iloc[0]["bequest_weight"])
+            found["changes_to"] = str(changed.iloc[0]["winner"])
+            # The mechanism, read rather than asserted: a weight on the
+            # estate should promote the rule that spends more slowly, and
+            # the two front-load numbers say whether it did. If they do
+            # not order that way the explanation is something else, and
+            # the caller has to be able to find that out.
+            if "winner_front_load" in table.columns:
+                before = table[table["bequest_weight"]
+                               < found["changes_at"]]
+                if len(before):
+                    found["front_load_before"] = float(
+                        before.iloc[-1]["winner_front_load"])
+                    found["front_load_after"] = float(
+                        changed.iloc[0]["winner_front_load"])
+                    found["slower_after_the_change"] = bool(
+                        found["front_load_after"]
+                        < found["front_load_before"])
+    found["narrowest_margin_pct"] = float(table["margin_pct"].min())
+    return found
+
+
+def ruin_overstatement(frame: pd.DataFrame) -> Dict[str, Any]:
+    """How far a fixed horizon inflates the probability of ruin.
+
+    Ruin is the number every retirement study quotes, and a horizon that
+    ends at a certain age counts as a failure a portfolio exhausted at
+    ninety-one for somebody who, on the survival curve, most likely died
+    before reaching it.  The overstatement is measured across the
+    combinations that *can* run out: on a rule that cannot, both numbers
+    are zero and their ratio would say nothing.
+
+    Sections other than #longevity quote fixed-horizon ruin, because that
+    is the replicated study's convention and because a comparison between
+    two portfolios measured alike survives the distortion.  They point at
+    this number to say how large the distortion they are living with is,
+    so it is computed in one place rather than restated.
+
+    :param frame: the swept grid, carrying ``ruin_fixed`` and
+        ``ruin_mortality`` for each combination.
+    :returns: ``measured`` false when nothing in the grid can deplete;
+        otherwise ``combinations``, the ``median_ratio`` of the two
+        measures, and the ``worst_ratio`` over the same rows.
+    """
+    for column in ("ruin_fixed", "ruin_mortality"):
+        if column not in frame.columns:
+            return {"measured": False}
+    depleting = frame[frame["ruin_fixed"] > 0.0]
+    if not len(depleting):
+        return {"measured": False}
+    ratios = (depleting["ruin_fixed"]
+              / depleting["ruin_mortality"].replace(0.0, np.nan))
+    finite = ratios.dropna()
+    if not len(finite):
+        return {"measured": False, "combinations": int(len(depleting))}
+    return {"measured": True,
+            "combinations": int(len(depleting)),
+            "median_ratio": float(finite.median()),
+            "worst_ratio": float(finite.max())}
+
+
 def verdict(frame: pd.DataFrame, shift: pd.DataFrame,
             ablated: pd.DataFrame,
             horizon: Mapping[str, float] | None = None) -> Dict[str, Any]:
@@ -572,10 +796,13 @@ def verdict(frame: pd.DataFrame, shift: pd.DataFrame,
         float(mortality_best["ruin_fixed"]) > 0.0)
     depleting = frame[frame["ruin_fixed"] > 0.0]
     if len(depleting):
-        ratios = (depleting["ruin_fixed"]
-                  / depleting["ruin_mortality"].replace(0.0, np.nan))
+        # The ratio itself comes from the shared helper, so the number the
+        # baseline section points at and the number this section prints
+        # cannot drift apart.
+        overstated = ruin_overstatement(frame)
         found["depleting_combinations"] = int(len(depleting))
-        found["median_ruin_ratio"] = float(ratios.median())
+        if overstated.get("measured"):
+            found["median_ruin_ratio"] = float(overstated["median_ratio"])
         best_depleting = depleting.loc[depleting[MORTALITY].idxmax()]
         found["best_depleting_rule"] = str(best_depleting["rule_label"])
         found["best_depleting_ruin_fixed"] = float(

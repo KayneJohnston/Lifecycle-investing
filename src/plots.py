@@ -3322,11 +3322,14 @@ SYSTEM_LABEL: Mapping[str, str] = {
     "au_pension_only": "Age Pension, no guarantee",
     "au_as_legislated": "Australia as legislated",
     # The pension study's own regime keys, used by the ordering sweep so it
-    # can be compared with the headline it audits.
-    "us_social_security": "United States",
-    "us_matched_saving": "United States, matched saving",
+    # can be compared with the headline it audits. Named by the
+    # *contribution rate* rather than by "matched", which described the
+    # 20.2% American arm and the 10% means-tested arm with one phrase --
+    # and they are matched to each other, not to a common rate.
+    "us_social_security": "United States, 10% saving",
+    "us_matched_saving": "United States, 20.2% saving",
     "age_pension_untested": "Age Pension, no means test",
-    "age_pension_matched": "Age Pension, matched saving",
+    "age_pension_matched": "Means-tested, 10% saving",
     "australia_as_legislated": "Australia as legislated",
     "australia_non_homeowner": "Australia, non-homeowner",
 }

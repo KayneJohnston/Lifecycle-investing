@@ -1,0 +1,81 @@
+system,rule,challenger,incumbent,gap_pct,leader,best_strategy,best_cec,objective
+age_pension_matched,fixed_real_rule,0.4129805244728724,0.47503031130224693,-13.062279469971372,target_date_fund,target_date_fund,0.47503031130224693,cec
+age_pension_matched,constant_percent at 4%,0.6741219454114566,0.5951935377755629,13.260965152759475,balanced_all_equity,international_equity,0.7137334905128867,cec
+age_pension_matched,amortisation at 0%,0.7275549600457073,0.6552123796620679,11.041088756740347,balanced_all_equity,international_equity,0.7647757422287584,cec
+age_pension_matched,amortisation at 2%,0.8694815976597449,0.7648734826513867,13.676525253005334,balanced_all_equity,international_equity,0.9203459317524468,cec
+age_pension_matched,amortisation at 4%,0.9768030363130554,0.8356201495946631,16.895581896496424,balanced_all_equity,international_equity,1.0430289204734762,cec
+age_pension_matched,amortisation at 6%,1.0313238541990613,0.8616385155689527,19.693332594128865,balanced_all_equity,international_equity,1.1109680332891951,cec
+age_pension_matched,amortisation at 8%,1.0309316602538252,0.851377985971251,21.089771786586596,balanced_all_equity,international_equity,1.1165720706332145,cec
+age_pension_matched,amortisation at 10%,0.9901785281519453,0.8194126864110691,20.840029032112064,balanced_all_equity,international_equity,1.0721722175819701,cec
+age_pension_untested,fixed_real_rule,0.9089219194262154,0.8059253553995984,12.779913590824865,balanced_all_equity,international_equity,0.9664877362250611,cec
+age_pension_untested,constant_percent at 4%,1.0084486089782714,0.8373237793036286,20.43711571370408,balanced_all_equity,international_equity,1.0959521967834662,cec
+age_pension_untested,amortisation at 0%,1.0770642997797264,0.9070503865531022,18.743601871192283,balanced_all_equity,international_equity,1.1601179043132956,cec
+age_pension_untested,amortisation at 2%,1.1252095651165543,0.9292536417610163,21.087452827646125,balanced_all_equity,international_equity,1.2202043129328346,cec
+age_pension_untested,amortisation at 4%,1.1423102686472202,0.9296244225838236,22.87868529446029,balanced_all_equity,international_equity,1.2457608751756055,cec
+age_pension_untested,amortisation at 6%,1.1246972711324779,0.9092578423006897,23.693986326987627,balanced_all_equity,international_equity,1.230480217583282,cec
+age_pension_untested,amortisation at 8%,1.0772648039068782,0.8733570826995001,23.347577439586352,balanced_all_equity,international_equity,1.1778551838154638,cec
+age_pension_untested,amortisation at 10%,1.0110498270370862,0.829009921473087,21.958712537544578,balanced_all_equity,international_equity,1.1001917365489498,cec
+australia_as_legislated,fixed_real_rule,0.64111077903984,0.6546978833282056,-2.0753243036764513,target_date_fund,target_date_fund,0.6546978833282056,cec
+australia_as_legislated,constant_percent at 4%,0.8615210457013636,0.7274447158764656,18.43113667591294,balanced_all_equity,international_equity,0.9490936310185639,cec
+australia_as_legislated,amortisation at 0%,0.9449560370302699,0.8259041105229673,14.41473955516679,balanced_all_equity,international_equity,1.027587017202228,cec
+australia_as_legislated,amortisation at 2%,1.1329346459702474,0.963744003990824,17.555558455234156,balanced_all_equity,international_equity,1.2321784782559242,cec
+australia_as_legislated,amortisation at 4%,1.2721130858206227,1.047592601310882,21.43204182893157,balanced_all_equity,international_equity,1.3842525986474226,cec
+australia_as_legislated,amortisation at 6%,1.3361507086736706,1.0700553077456825,24.867443673409674,balanced_all_equity,international_equity,1.4578544088786938,cec
+australia_as_legislated,amortisation at 8%,1.3216697270734326,1.0437311844775523,26.629322447139913,balanced_all_equity,international_equity,1.4476316262798867,cec
+australia_as_legislated,amortisation at 10%,1.249262500570775,0.9885445012462231,26.373926413618598,balanced_all_equity,international_equity,1.3701295661828776,cec
+us_matched_saving,fixed_real_rule,1.27704444218058,1.1091522553651552,15.136982862659497,balanced_all_equity,international_equity,1.366192887162388,cec
+us_matched_saving,constant_percent at 4%,1.481011801358257,1.191628907963812,24.284648640231964,balanced_all_equity,international_equity,1.6290834313240679,cec
+us_matched_saving,amortisation at 0%,1.5380438946110424,1.2830194082181159,19.876900127887364,balanced_all_equity,international_equity,1.647986917866591,cec
+us_matched_saving,amortisation at 2%,1.6032698955295468,1.3126377297919412,22.141079685685416,balanced_all_equity,international_equity,1.72384845153536,cec
+us_matched_saving,amortisation at 4%,1.621930284824548,1.308687940774657,23.93560254436762,balanced_all_equity,international_equity,1.7518862977670384,cec
+us_matched_saving,amortisation at 6%,1.591265458649952,1.2739658673113246,24.906443687402778,balanced_all_equity,international_equity,1.7277007368354311,cec
+us_matched_saving,amortisation at 8%,1.518278415159963,1.2163824246717947,24.819167423405197,balanced_all_equity,international_equity,1.6544364389743405,cec
+us_matched_saving,amortisation at 10%,1.4175214614476714,1.1462109471599795,23.670207910675668,balanced_all_equity,international_equity,1.544130230192238,cec
+us_social_security,fixed_real_rule,1.0493326019515596,0.9446112745066872,11.086182249895549,balanced_all_equity,international_equity,1.1094293553441226,cec
+us_social_security,constant_percent at 4%,1.129776498110558,0.9580606993299128,17.9232692563996,balanced_all_equity,international_equity,1.2191390291169464,cec
+us_social_security,amortisation at 0%,1.1919779636948156,1.024133790486841,16.38889125298626,balanced_all_equity,international_equity,1.2751397476773185,cec
+us_social_security,amortisation at 2%,1.238469240333833,1.0476490118615316,18.214137207387758,balanced_all_equity,international_equity,1.3328704157147624,cec
+us_social_security,amortisation at 4%,1.2566698605070818,1.0507153048194469,19.601366301885736,balanced_all_equity,international_equity,1.3588897724344229,cec
+us_social_security,amortisation at 6%,1.2431410086727492,1.033845582770962,20.244360414136864,balanced_all_equity,international_equity,1.3474845436465455,cec
+us_social_security,amortisation at 8%,1.2016710709150793,1.0016281239033653,19.971778171737277,balanced_all_equity,international_equity,1.3012341834790224,cec
+us_social_security,amortisation at 10%,1.1416126879739497,0.9607363255172283,18.826847455709927,balanced_all_equity,international_equity,1.2305332865816445,cec
+age_pension_matched,fixed_real_rule,0.44288290363008875,0.5034897701665381,-12.037358081059423,target_date_fund,target_date_fund,0.5034897701665381,cec_survival
+age_pension_matched,constant_percent at 4%,0.6735887021141896,0.6004949257275808,12.172255460451375,balanced_all_equity,international_equity,0.7112411081807222,cec_survival
+age_pension_matched,amortisation at 0%,0.7022153167464263,0.635930127375348,10.423344722580573,balanced_all_equity,international_equity,0.7374163138306838,cec_survival
+age_pension_matched,amortisation at 2%,0.8485694748858398,0.7541815255391668,12.515282614380485,balanced_all_equity,international_equity,0.8966403007275523,cec_survival
+age_pension_matched,amortisation at 4%,0.97071904605066,0.8426740455069011,15.195080615866697,balanced_all_equity,international_equity,1.0335781982456087,cec_survival
+age_pension_matched,amortisation at 6%,1.0508010424670595,0.8915759098636398,17.85884194961842,balanced_all_equity,international_equity,1.1279906018967532,cec_survival
+age_pension_matched,amortisation at 8%,1.080108976382632,0.9024312446402974,19.688783250535113,balanced_all_equity,international_equity,1.1667725786714807,cec_survival
+age_pension_matched,amortisation at 10%,1.0640023141250323,0.8852331603042931,20.19458396240923,balanced_all_equity,international_equity,1.1517447518372501,cec_survival
+age_pension_untested,fixed_real_rule,0.9484666360418013,0.8447380215085788,12.279382707076248,balanced_all_equity,international_equity,1.0073767292570743,cec_survival
+age_pension_untested,constant_percent at 4%,1.0148083644352968,0.8567533271489013,18.448138137072668,balanced_all_equity,international_equity,1.0976688448803686,cec_survival
+age_pension_untested,amortisation at 0%,1.064438948071683,0.9078040886357592,17.254257983274044,balanced_all_equity,international_equity,1.1454247006883536,cec_survival
+age_pension_untested,amortisation at 2%,1.1282603220027547,0.944758994256857,19.423083438357637,balanced_all_equity,international_equity,1.2221685607767003,cec_survival
+age_pension_untested,amortisation at 4%,1.1668520091800823,0.962277517137276,21.259406813473557,balanced_all_equity,international_equity,1.271015922305465,cec_survival
+age_pension_untested,amortisation at 6%,1.1734653698417812,0.9587255002349189,22.398472717607287,balanced_all_equity,international_equity,1.28279664417619,cec_survival
+age_pension_untested,amortisation at 8%,1.148142811231684,0.9366071763848028,22.58531006172564,balanced_all_equity,international_equity,1.2557497733184222,cec_survival
+age_pension_untested,amortisation at 10%,1.0979355621288938,0.9014260540955469,21.79984782340425,balanced_all_equity,international_equity,1.197116366633318,cec_survival
+australia_as_legislated,fixed_real_rule,0.6762202063420082,0.6825876573141688,-0.9328400395071768,target_date_fund,target_date_fund,0.6825876573141688,cec_survival
+australia_as_legislated,constant_percent at 4%,0.8653018410971806,0.7408109696780589,16.80467440610698,balanced_all_equity,international_equity,0.9499754156482991,cec_survival
+australia_as_legislated,amortisation at 0%,0.9148450495351148,0.8040404763072644,13.780969552272438,balanced_all_equity,international_equity,0.9957906798888513,cec_survival
+australia_as_legislated,amortisation at 2%,1.1132909515515503,0.9564224762506311,16.40158812618826,balanced_all_equity,international_equity,1.2134655938723633,cec_survival
+australia_as_legislated,amortisation at 4%,1.2795317396081438,1.0679448766613955,19.81252661731101,balanced_all_equity,international_equity,1.3965008723678989,cec_survival
+australia_as_legislated,amortisation at 6%,1.3851963165978751,1.1237525233240502,23.26524638187031,balanced_all_equity,international_equity,1.5152522029259725,cec_survival
+australia_as_legislated,amortisation at 8%,1.4144793841834304,1.1260687266896403,25.61217185576632,balanced_all_equity,international_equity,1.5519854240836681,cec_survival
+australia_as_legislated,amortisation at 10%,1.3742790759252075,1.0893419465655132,26.1568124001877,balanced_all_equity,international_equity,1.510189794090939,cec_survival
+us_matched_saving,fixed_real_rule,1.356472880584538,1.1813879502065054,14.820273928426975,balanced_all_equity,international_equity,1.4503911619207037,cec_survival
+us_matched_saving,constant_percent at 4%,1.4950813822457871,1.2254038975885735,22.00723248782723,balanced_all_equity,international_equity,1.635225468263442,cec_survival
+us_matched_saving,amortisation at 0%,1.5609805712979852,1.302408311813175,19.853394449305473,balanced_all_equity,international_equity,1.6868438634717227,cec_survival
+us_matched_saving,amortisation at 2%,1.6613221863615273,1.3572754187701979,22.401257945629084,balanced_all_equity,international_equity,1.8049253305163835,cec_survival
+us_matched_saving,amortisation at 4%,1.7173250099609743,1.37943354177798,24.49494360906137,balanced_all_equity,international_equity,1.8751971977548993,cec_survival
+us_matched_saving,amortisation at 6%,1.7192046090485313,1.3675479238036978,25.714395753439902,balanced_all_equity,international_equity,1.8853971016681585,cec_survival
+us_matched_saving,amortisation at 8%,1.6690286069436728,1.3266503487156391,25.80772383314851,balanced_all_equity,international_equity,1.8344887681425153,cec_survival
+us_matched_saving,amortisation at 10%,1.5799804028732578,1.2659678248497042,24.804151563712384,balanced_all_equity,international_equity,1.7342661817500056,cec_survival
+us_social_security,fixed_real_rule,1.0802399648634962,0.9761485349812676,10.663482672155622,balanced_all_equity,international_equity,1.1409824311406103,cec_survival
+us_social_security,constant_percent at 4%,1.1348932054389578,0.9762673416922442,16.248199337668545,balanced_all_equity,international_equity,1.2193161862073627,cec_survival
+us_social_security,amortisation at 0%,1.1832541713957065,1.0258210701251724,15.347033303900059,balanced_all_equity,international_equity,1.265798306351206,cec_survival
+us_social_security,amortisation at 2%,1.2464269677544497,1.0642454413560531,17.118375077675907,balanced_all_equity,international_equity,1.3418037034291501,cec_survival
+us_social_security,amortisation at 4%,1.2861976461553315,1.0845432061180906,18.593490688031068,balanced_all_equity,international_equity,1.3916496355061014,cec_survival
+us_social_security,amortisation at 6%,1.2962369591288398,1.0846972843915228,19.50218533606669,balanced_all_equity,international_equity,1.4067024698679471,cec_survival
+us_social_security,amortisation at 8%,1.276180138443861,1.0666722842293541,19.641257892612373,balanced_all_equity,international_equity,1.3849703905892659,cec_survival
+us_social_security,amortisation at 10%,1.231946926255102,1.0354813440157513,18.97335798223343,balanced_all_equity,international_equity,1.332606360782369,cec_survival

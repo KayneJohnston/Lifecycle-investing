@@ -1150,9 +1150,26 @@ ordering:
   # Keys from the pension study's own factorial design, so this section
   # audits the headline on the headline's own household rather than on the
   # leisure study's, which defines Australia differently.
-  systems: [us_social_security, age_pension_untested, australia_as_legislated]
+  # The pension study's *whole* factorial rather than a corner of it. A
+  # three-system grid ran the American arm at 10% saving and the Australian
+  # one at 20.2%, so the headline contrast changed the benefit formula and
+  # the contribution rate together -- exactly the confound the pension
+  # study's own crossing exists to avoid, reintroduced in the table that
+  # carries the paper's headline. Five systems close it: the formula is
+  # crossed with the contribution rate, and `age_pension_untested` stays as
+  # the floor-against-taper control at the baseline rate.
+  systems: [us_social_security, us_matched_saving, age_pension_untested,
+            age_pension_matched, australia_as_legislated]
   baseline_system: us_social_security
   contender_system: australia_as_legislated
+  # The 2x2 inside those five, named here rather than inferred from the
+  # keys, so a reader can see which cell is which and the code does not
+  # hardcode a system name it would have to be grepped for.
+  factorial:
+    earnings_related: {voluntary: us_social_security,
+                       compulsory: us_matched_saving}
+    means_tested: {voluntary: age_pension_matched,
+                   compulsory: australia_as_legislated}
   strategies: [balanced_all_equity, target_date_fund, sixty_forty,
                domestic_equity, international_equity]
   # The rule the rest of the paper spends by, a percentage of the current
@@ -1163,10 +1180,14 @@ ordering:
   # Delete-one-country intervals on every cell of the gap table. The
   # headline is a change of sign, sixteen developed markets are not sixteen
   # independent draws, and a sign whose interval straddles zero is not a
-  # finding. Restricted to the two systems the headline compares: the full
-  # cross would be 384 runs to put an interval on two numbers.
+  # finding. Restricted to the three systems that carry a headline: the two
+  # the paper opened with, plus the means-tested arm at *matched*
+  # contributions, which is the contrast that survives the confound above
+  # and therefore needs an interval of its own. The remaining two are read
+  # off the point estimates.
   influence_enabled: true
-  influence_systems: [us_social_security, australia_as_legislated]
+  influence_systems: [us_social_security, age_pension_matched,
+                      australia_as_legislated]
   # The same path count as the point estimate. A cheaper one would fold the
   # Monte Carlo difference between two path counts into the interval, which
   # is precisely the error the jackknife is there to exclude.
@@ -1176,6 +1197,15 @@ ordering:
   # so each headline is now checked against both the panel and the
   # preference specification rather than one each.
   robust_gammas: [2.0, 10.0]
+  # And on a real lifespan. The withdrawal-rule section rejects a horizon
+  # that ends at ninety-three with certainty as not neutral between rules;
+  # this grid compares portfolios *within* a rule, which is a different
+  # exposure, and whether the gap survives the change of objective is a
+  # fact to measure rather than an argument to make. Nothing is
+  # re-simulated -- the same outcomes are scored twice.
+  survival_enabled: true
+  mortality_modal_age: 88.0
+  mortality_dispersion: 10.0
   assumed_return_grid: [0.00, 0.02, 0.04, 0.06, 0.08, 0.10]
 
 incidence:
@@ -1220,9 +1250,77 @@ incidence:
   influence_enabled: true
   influence_n_paths: 25000
 
+# Is the retiree's 100% a corner the household wants, or the top of the grid
+# it was offered? The incidence sweep stops at the whole portfolio, so it
+# cannot report an optimum above one -- and the shape it is testing for is
+# read off exactly those optima. This lifts the ceiling by letting the
+# retiree borrow against the equity sleeve, and asks again.
+ceiling:
+  enabled: true
+  n_paths: 25000
+  # The rule whose answer was censored. The fixed real rule's corner is at
+  # zero, where there is nothing below it to want, so it is not in question.
+  rule: constant_percent
+  rule_rate: 0.04
+  # Leverage on the retirement sleeve. One is the unlevered portfolio and
+  # has to be on the grid: the whole question is whether the optimum sits
+  # there. Two is the most a retiree could plausibly obtain against a
+  # portfolio, and is deliberately generous.
+  leverage_grid: [1.00, 1.10, 1.20, 1.30, 1.40, 1.50, 1.60, 1.75, 2.00]
+  # What the borrowing costs over the realised bill return. Zero is the
+  # free-money case, which is the hardest test for the corner; the rest
+  # bracket a real margin loan, and the sweep reports the spread at which
+  # the unlevered corner comes back.
+  spread_grid: [0.00, 0.01, 0.02, 0.03, 0.05]
+  # The incidence dial's own balances, so the two studies answer the same
+  # question at the same points and a row here can be set beside a row
+  # there. A coarser grid of its own put two points inside the taper band,
+  # which is not enough to say anything about a shape across it.
+  balance_grid: [0.015, 0.03, 0.05, 0.07, 0.09, 0.11, 0.13, 0.15,
+                 0.17, 0.20, 0.25, 0.35, 0.60, 1.00]
+
+# ---------------------------------------------------------------------------
+# Step 38 - the pension gate, held still
+# ---------------------------------------------------------------------------
+# The feature 2x2 of the leisure study solves each arm for its own best
+# retirement date and compares the optima. The joint arm and the
+# formula-only arm both land on the pension age, where the eligibility gate
+# is exactly slack -- so the two are the same simulation and their agreement
+# is an identity rather than a measurement. This section re-reads the square
+# at every date instead, and sweeps the partial payment made before the
+# pension age, which is an undisclosed consumption floor in a paper about
+# consumption floors.
+gate:
+  enabled: true
+  # Matched to the leisure study's count so a row here can be set beside a
+  # row there. The comparison is between arms on the same draws, so the
+  # differences are far better resolved than the levels.
+  n_paths: 100000
+  strategy: balanced_all_equity
+  # The leisure study's own date grid, for the same reason.
+  ages: [50, 52, 55, 58, 60, 62, 63, 65, 67, 70]
+  # Where the 2x2 is read when one date has to be picked. The baseline arm's
+  # own optimum, which is below the pension age and therefore a date at
+  # which the gate can operate at all.
+  reference_age: 60
+  # The share of the means-tested rate paid before the pension age. The
+  # leisure study fixes this at 0.60 without reporting it; here it runs from
+  # nothing to the full rate. One is the control: a gate that pays the same
+  # on both sides is not a gate, and the timing effect must vanish.
+  bridge_grid: [0.00, 0.30, 0.60, 1.00]
+
+
 longevity:
   enabled: true
   n_paths: 25000
+  # Bequest weights the ranking is re-read under. The rules here differ in
+  # the estate they leave by construction -- amortisation spends the
+  # portfolio to nothing, a fixed real rule dies with most of it -- so the
+  # comparison between them is exposed to this parameter in a way the
+  # comparison between allocations is not. Nothing is re-simulated: each
+  # weight is another score off the same outcome, exactly as the two
+  # objectives are. The range brackets no bequest motive and a strong one.
+  bequest_grid: [0.0, 1.0, 2.0, 5.0, 10.0]
   # Held constant through retirement. The free-form schedule of section
   # #glide is a different question; this one is about the rule.
   equity_grid: [0.70, 0.80, 0.90, 1.00]
