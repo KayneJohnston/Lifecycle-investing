@@ -69,8 +69,8 @@ LONG_NUMBER_ALL: Dict[str, int] = {
     k: ct.section_number(k) for k in ct.SECTION_ORDER}
 
 TITLE = "The Pension and the Drawdown Rule"
-SUBTITLE = ("What a Means-Tested Pension Does to the All-Equity "
-            "Lifecycle Portfolio, and Under Which Rule")
+SUBTITLE = ("Why a Means Test Makes the Portfolio and the Withdrawal "
+            "Rule One Decision")
 
 #: Added because the long paper's eighteen do not cover this argument. The
 #: referee's list, in the order a reader meets the ideas.
@@ -207,6 +207,13 @@ def front(ctx: Any) -> List[Flowable]:
             widest_pp = float(
                 diffs.loc[diffs["difference_pp"].abs().idxmax(),
                           "difference_pp"])
+    # How many of the menu's rules keep the all-equity lead once the
+    # pension is means-tested, in the cell the panel resolves. This is
+    # the paper's finding and the abstract leads with it: the reversal is
+    # a property of one rule rather than of the pension, and a reader
+    # should meet that as the result and not as a qualification three
+    # pages on.
+    matched_rules = _matched_rule_split(f, _matched(f, baseline_rule))
     flat = gapped[(gapped["system"] == "age_pension_untested")
                   & (gapped["rule"] == baseline_rule)]
     flat_gap = float(flat["gap_pct"].iloc[0]) if len(flat) else float("nan")
@@ -216,7 +223,7 @@ def front(ctx: Any) -> List[Flowable]:
     out: List[Flowable] = [
         Paragraph(TITLE, s["title"]),
         Paragraph(SUBTITLE, s["subtitle"]),
-        Paragraph("This version: 11 September 2026", s["subtitle"]),
+        Paragraph("This version: 13 September 2026", s["subtitle"]),
         Paragraph("Abstract", s["h1_plain"]),
     ]
     matched = _matched(f, baseline_rule)
@@ -225,29 +232,39 @@ def front(ctx: Any) -> List[Flowable]:
              if matched.get("measured") else {"measured": False})
     out.append(ctx.p(
         f"An all-equity lifecycle portfolio is said to dominate the "
-        f"age-declining glide path of a target-date fund. We show that the "
-        f"prescription is conditional on the retiree's institutions rather "
-        f"than on the return process. On a 16-country panel of real "
+        f"age-declining glide path of a target-date fund. We show that "
+        f"under a means-tested public pension this is not a property of "
+        f"the pension at all. It turns on the household's withdrawal "
+        f"rule, because the means test assesses what the portfolio still "
+        f"holds and the rule decides whether a good return is spent or "
+        f"left to be assessed. On a 16-country panel of real "
         f"returns spanning 1890\u20132020, crossing five public pension "
         f"regimes with eight withdrawal rules on common simulated "
-        f"lifetimes, the all-equity portfolio leads the target-date fund "
-        f"by {us_base_gap:+.2f}% in certainty-equivalent retirement "
-        f"consumption under an earnings-related pension and "
-        f"{matched['cells']['means_tested/voluntary']:+.2f}% under a "
+        f"lifetimes, replacing an earnings-related pension with a "
         f"means-tested one paid to the same household on the same "
-        f"contributions \u2014 a reversal whose sign holds in all sixteen "
-        f"delete-one-country sub-panels. The reversal needs two further "
-        f"things: a "
-        f"fixed real withdrawal, and a household risk-averse enough to pay "
-        f"for a floor. The mechanism is the loss of an unconditional floor "
+        f"contributions reverses the portfolio ordering under "
+        f"{_spelled(matched_rules['loses']) if matched_rules.get('measured') else 'one'} "
+        f"of the eight rules and under no other: the lead runs "
+        f"{matched['cells']['means_tested/voluntary']:+.2f}% under the "
+        f"fixed real withdrawal the literature assumes, which never spends "
+        f"what the portfolio earns, and "
+        f"{matched_rules['lowest_keeping_pct']:+.2f}% to "
+        f"{matched_rules['highest_keeping_pct']:+.2f}% under the "
+        f"{_spelled(matched_rules['keeps'])} rules that do. Against an "
+        f"earnings-related pension the same household leads by "
+        f"{us_base_gap:+.2f}% whatever rule it spends by. The reversal's "
+        f"sign holds in all sixteen delete-one-country sub-panels, and it "
+        f"needs a household risk-averse enough to pay for a floor as well. "
+        f"The mechanism is the loss of an unconditional floor "
         f"rather than the means test's taper, and either of the two "
         f"institutions a country can change \u2014 a compulsory "
         f"contribution, worth "
         f"{matched['contribution_effect_means_tested']:+.1f} points here, "
         f"or a withdrawal rule that cannot deplete, worth up to "
-        f"{abs(widest_pp):.0f} points \u2014 offsets most of it. Near the test, "
-        f"the drawdown default and the portfolio default are one decision."
-        if matched.get("measured") else
+        f"{abs(widest_pp):.0f} points \u2014 offsets most of it. Near the "
+        f"test, the drawdown default and the portfolio default are one "
+        f"decision."
+        if matched.get("measured") and matched_rules.get("measured") else
         f"An all-equity lifecycle portfolio is said to dominate the "
         f"age-declining glide path of a target-date fund. We show that the "
         f"prescription is conditional on the retiree's institutions rather "
@@ -257,11 +274,13 @@ def front(ctx: Any) -> List[Flowable]:
         f"earnings-related pension and {au_base_gap:+.2f}% under a "
         f"means-tested one."))
     out.append(ctx.p(
-        f"<b>What the paper shows.</b> (i) Replacing an earnings-related "
-        f"pension with a means-tested one, holding contributions fixed, "
-        f"reverses the portfolio ordering under the withdrawal rule the "
-        f"literature assumes, and under no other rule in an eight-rule "
-        f"menu. (ii) The mechanism is the "
+        f"<b>What the paper shows.</b> (i) Under a means-tested pension "
+        f"the portfolio ordering is a property of the withdrawal rule: "
+        f"replacing an earnings-related pension with a means-tested one, "
+        f"holding contributions fixed, reverses it under the rule the "
+        f"literature assumes and under no other rule in an eight-rule "
+        f"menu, and the rule that reverses it is the only one that never "
+        f"reads the balance. (ii) The mechanism is the "
         f"floor, not the taper: paying the <i>same</i> flat pension to the "
         f"same household without testing it leaves the all-equity portfolio "
         f"ahead by {flat_gap:+.2f}% against "
@@ -421,16 +440,74 @@ def introduction(ctx: Any) -> List[Flowable]:
         f"them."))
     out.append(ctx.h2("#introduction.1 What we find"))
     matched = _matched(f, baseline_rule)
+    matched_rules = _matched_rule_split(f, matched)
     mt_iv = (_interval_for(f, matched["systems"]["means_tested/voluntary"],
                            baseline_rule)
              if matched.get("measured") else {"measured": False})
+
+    # The result, in the register it belongs in. This paragraph and its
+    # table used to sit at Section #ordering.2, forty pages on, with the
+    # introduction carrying the same fact as a qualification -- "the
+    # reversal holds under one of the eight rules we run". A reader who
+    # meets a finding as a caveat discounts it, and a referee who meets it
+    # on page forty reads the paper as a reversal with an embarrassment
+    # attached rather than as a statement about what a means test does.
+    if matched_rules.get("measured"):
+        _losing = [rule_label(r)
+                   for r in matched_rules["losing_rules"]]
+        out.append(ctx.p(
+            f"<b>Under a means-tested pension the portfolio ordering is a "
+            f"property of the withdrawal rule.</b> A means test assesses "
+            f"what the portfolio still holds, so whether a good return "
+            f"helps the retiree depends on whether their rule spends it or "
+            f"leaves it to be assessed. Run the same means-tested pension "
+            f"against the whole menu and the all-equity portfolio leads "
+            f"the target-date fund under "
+            f"{_spelled(matched_rules['keeps'])} of the "
+            f"{_spelled(matched_rules['rules'])} withdrawal rules, by "
+            f"{matched_rules['lowest_keeping_pct']:+.2f}% to "
+            f"{matched_rules['highest_keeping_pct']:+.2f}%. It loses under "
+            f"{_spelled(matched_rules['loses'])}"
+            + (f", and that one is the fixed real withdrawal the "
+               f"literature assumes and this paper's earlier sections "
+               f"spend by \u2014 the only rule in the menu that never "
+               f"reads the balance."
+               if matched_rules["only_the_baseline_loses"] else
+               f": {_join(_losing)}.")))
+        out.extend(ctx.table(
+            [["Withdrawal rule", "All-equity lead", "Reads the balance?"]]
+            + [[rule_label(str(r["rule"])),
+                f"{float(r['gap_pct']):+.2f}%",
+                "no" if str(r["rule"]) == baseline_rule else "yes"]
+               for _, r in matched_rules["table"].iterrows()],
+            "The all-equity portfolio's lead over the target-date fund "
+            "under a means-tested pension, rule by rule, at a matched "
+            "contribution rate.",
+            anchor="introduction_rule_split",
+            note="The cell the panel resolves: the same household, the "
+                 "same contributions and the same simulated lifetimes in "
+                 "every row, with only the withdrawal rule changing. "
+                 "\u201cReads the balance\u201d marks a rule whose payment "
+                 "in a given year is a function of the portfolio that "
+                 "year. Section #ordering gives the full grid, the "
+                 "delete-one-country intervals and the other four pension "
+                 "regimes."))
+        out.append(ctx.p(
+            f"That is the paper's result, and the rest of it is an "
+            f"account of why. The reversal below is the same fact stated "
+            f"on the one rule it happens under; we lead with it because it "
+            f"is what the literature assumes, not because it is what a "
+            f"retiree should do. Section "
+            f"{SHORT_ORDER.index('longevity') + 1} solves for the rule a "
+            f"retiree should actually use, and it is not that one."))
+
     if matched.get("measured") and mt_iv.get("measured"):
         split_mt = _split_found(
             f, baseline_rule, matched["systems"]["means_tested/voluntary"])
         out.append(ctx.p(
-            f"<b>The ordering reverses when a pension is means-tested, and "
-            f"the cleanest form of that is a pair of runs differing in "
-            f"nothing else.</b> Pay this household the Age Pension's own "
+            f"<b>On that rule, the reversal is as clean as a pair of runs "
+            f"differing in nothing else.</b> Pay this household the Age "
+            f"Pension's own "
             f"flat rate with no test attached and the all-equity portfolio "
             f"leads the target-date fund by {flat_gap:+.2f}%; apply the "
             f"test to that identical benefit and the lead becomes "
@@ -472,12 +549,8 @@ def introduction(ctx: Any) -> List[Flowable]:
             f"a statement about one country and is the more fragile of the "
             f"two."))
     out.append(ctx.p(
-        f"Two qualifications belong with those sentences rather than after "
-        f"them. The reversal holds under "
-        f"{_spelled(int((au_rows['gap_pct'] < 0).sum()))} of the "
-        f"{_spelled(int(len(au_rows)))} withdrawal rules we run; under "
-        f"every other "
-        f"one the all-equity portfolio leads in Australia too. And the "
+        f"One further qualification belongs with those sentences rather "
+        f"than after them. The "
         f"legislated cell is the one this cross-section cannot "
         f"resolve: a delete-one-country jackknife over the sixteen markets "
         f"puts a standard error of "
@@ -807,6 +880,52 @@ def model(ctx: Any) -> List[Flowable]:
         "proportional rule spends the gain late; a fixed real rule never "
         "spends it. That is the distinction which survives from one period "
         "to a retirement, and the threshold only says how late."))
+    # The two paragraphs above argue this in prose and the rest of the
+    # paper measures it. Stating it once as a proposition is what makes the
+    # simulation a quantification of a result rather than the source of
+    # one, and it costs nothing: every line of it is already derived.
+    out.append(ctx.p(
+        f"<b>Proposition 1 (the sign belongs to the rule, not to the "
+        f"test).</b> Let the household hold assessable balance <i>W</i>, "
+        f"earn gross real return <i>R</i>, and withdraw <i>x</i>. Inside "
+        f"the taper band, where the pension is being withdrawn at "
+        f"<i>&tau;</i> per unit of assessable assets:"))
+    out.extend(ctx.bullets([
+        "<b>(i)</b> Consumption falls in the return — "
+        "&part;<i>c</i>/&part;<i>R</i> &lt; 0 — if and only if "
+        "&part;<i>x</i>/&part;<i>R</i> &lt; <i>&tau;W</i>/(1 + "
+        "<i>&tau;</i>). The threshold is a property of the withdrawal "
+        "rule; the taper only sets where it sits.",
+        "<b>(ii)</b> A rule whose payment does not read the balance has "
+        "&part;<i>x</i>/&part;<i>R</i> = 0 and therefore satisfies (i) at "
+        "every balance and every withdrawal rate. The return it forgoes is "
+        "never recovered, because no later payment reads the balance "
+        "either: the gain is assessed for as long as it is held and "
+        "reaches consumption in no year.",
+        "<b>(iii)</b> A rule paying a share <i>k</i> &gt; 0 of the current "
+        "balance has &part;<i>x</i>/&part;<i>R</i> = <i>kW</i> and "
+        "violates (i) exactly when <i>k</i> &gt; <i>&tau;</i>/(1 + "
+        "<i>&tau;</i>). Below that threshold it satisfies (i) in the year "
+        "the return arrives, but the larger balance is carried forward and "
+        "every later payment is a share of it, so the return reaches "
+        "consumption in some later year for any <i>k</i> &gt; 0.",
+    ]))
+    out.append(ctx.p(
+        f"The content of the proposition is (ii) against (iii): under a "
+        f"means test the retiree's exposure to the return is signed by "
+        f"&part;<i>x</i>/&part;<i>R</i>, not by <i>&tau;</i>, and the two "
+        f"rule families sit on opposite sides of that regardless of the "
+        f"rate either is run at. What the proposition does <i>not</i> "
+        f"deliver is the optimal risky share. One period of accounting "
+        f"signs a derivative; the share depends on the return "
+        f"distribution, the horizon and the curvature of the objective, "
+        f"and none of those appear above. Section "
+        f"{SHORT_ORDER.index('incidence') + 1} measures the share directly "
+        f"and Section {SHORT_ORDER.index('ordering') + 1} measures what it "
+        f"does to the portfolio ordering; the proposition says which way "
+        f"to expect them to come out, and Section "
+        f"{SHORT_ORDER.index('model') + 1}.2 sets out where it can be "
+        f"wrong."))
     out.append(ctx.h3("#model.1.1 What that implies for the portfolio"))
     out.append(ctx.p(
         "The three regimes then order the retiree's problem, and the "
@@ -2726,6 +2845,59 @@ def _contribution_has_a_cost_side(ctx: Any, f: Any) -> List[Flowable]:
         f"is the quantity a comparison between portfolios needs, and it "
         f"is not the quantity a comparison between systems as social "
         f"arrangements would use."))
+    return out
+
+
+def _matched_rule_split(f: Any, matched: Dict[str, Any]) -> Dict[str, Any]:
+    """Which withdrawal rules keep the all-equity lead under a means test.
+
+    The paper's reversal appears in one cell of one row. Section
+    #ordering's table has always said so, and the introduction has always
+    carried it as a qualification -- "the reversal holds under one of the
+    eight withdrawal rules we run". That is the wrong register for the
+    strongest thing the paper has. What the grid shows is that a means
+    test reverses the portfolio ordering exactly when the withdrawal rule
+    does not convert portfolio returns into consumption, and leaves the
+    ordering alone under every rule that does.
+
+    Read on the matched-contribution cell, which is the one the panel
+    signs in all sixteen deletions, rather than on the legislated cell it
+    cannot sign.
+    """
+    out: Dict[str, Any] = {"measured": False}
+    if not matched.get("measured"):
+        return out
+    system = matched["systems"].get("means_tested/voluntary")
+    if system is None:
+        return out
+    rows = f.table("ordering_gaps")
+    block = rows[rows["system"] == system]
+    if not len(block):
+        return out
+    keeps = block[block["gap_pct"] > 0.0]
+    loses = block[block["gap_pct"] <= 0.0]
+    out.update({
+        "measured": True,
+        "system": system,
+        "rules": int(len(block)),
+        "keeps": int(len(keeps)),
+        "loses": int(len(loses)),
+        "losing_rules": [str(r) for r in loses["rule"]],
+        "lowest_keeping_pct": (float(keeps["gap_pct"].min())
+                               if len(keeps) else float("nan")),
+        "highest_keeping_pct": (float(keeps["gap_pct"].max())
+                                if len(keeps) else float("nan")),
+        "worst_losing_pct": (float(loses["gap_pct"].min())
+                             if len(loses) else float("nan")),
+        "table": block.sort_values("gap_pct"),
+    })
+    # The claim the framing rests on: the rule that loses is the one the
+    # literature assumes, and it is the only rule in the menu that never
+    # reads the balance. Established from the grid rather than asserted,
+    # because a rerun that broke it would otherwise leave the abstract
+    # making a claim the table refuses.
+    baseline = str(f.cfg["lifecycle"]["retirement"]["rule"])
+    out["only_the_baseline_loses"] = bool(out["losing_rules"] == [baseline])
     return out
 
 

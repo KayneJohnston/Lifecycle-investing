@@ -1389,6 +1389,141 @@ class TestNoFloatIsCitedByANumber:
         assert named <= declared, sorted(named - declared)
 
 
+class TestTheResultIsStatedAsAResult:
+    """The reversal appears in one cell of one row, and for several drafts
+    the paper carried that as a *qualification* -- "the reversal holds
+    under one of the eight withdrawal rules we run" -- with the evidence
+    forty pages on in Section 10.
+
+    Wrong register for the strongest thing the paper has. What the grid
+    shows is that under a means test the portfolio ordering is a property
+    of the withdrawal rule: it reverses under the one rule that never
+    reads the balance and holds under every rule that does. That belongs
+    in the abstract and on the introduction's first page, as the finding.
+    """
+
+    def test_the_split_is_classified_not_typed(self) -> None:
+        """Counted off the grid, so a rerun that changed it could not
+        leave the abstract asserting the old count."""
+        from paper import build_paper as bp, short as sh
+
+        f = bp.Facts()
+        rule = str(f.cfg["lifecycle"]["retirement"]["rule"])
+        found = sh._matched_rule_split(f, sh._matched(f, rule))
+        assert found["measured"]
+        assert found["keeps"] + found["loses"] == found["rules"]
+        assert found["loses"] >= 1, "nothing reverses; the paper has no result"
+
+    def test_the_rule_that_reverses_is_the_baseline(self) -> None:
+        """The framing rests on this and nothing else: the rule that loses
+        the ordering is the one the literature assumes, which is the only
+        rule in the menu whose payment never reads the balance. If a rerun
+        ever broke it, the abstract's sentence would be false."""
+        from paper import build_paper as bp, short as sh
+
+        f = bp.Facts()
+        rule = str(f.cfg["lifecycle"]["retirement"]["rule"])
+        found = sh._matched_rule_split(f, sh._matched(f, rule))
+        assert found["only_the_baseline_loses"], found["losing_rules"]
+
+    def test_it_is_read_on_the_cell_the_panel_signs(self) -> None:
+        """Not the legislated cell, whose sign sixteen countries cannot
+        resolve -- the matched-contribution one, which they sign 16/16."""
+        from paper import build_paper as bp, short as sh
+
+        f = bp.Facts()
+        rule = str(f.cfg["lifecycle"]["retirement"]["rule"])
+        matched = sh._matched(f, rule)
+        found = sh._matched_rule_split(f, matched)
+        assert found["system"] == matched["systems"]["means_tested/voluntary"]
+        assert found["system"] != "australia_as_legislated"
+
+    def test_the_abstract_leads_with_the_rule_and_not_the_country(self
+                                                                  ) -> None:
+        import re
+
+        from pypdf import PdfReader
+
+        path = PAPER / "floor_beneath_the_portfolio.pdf"
+        if not path.exists():
+            pytest.skip("the short paper has not been built")
+        first = re.sub(r"\s+", " ",
+                       PdfReader(str(path)).pages[0].extract_text() or "")
+        abstract = first[first.index("Abstract"):]
+        head = abstract[:900]
+        assert "property of the pension" in head
+        assert "withdrawal rule" in head
+        # The country is an application, not the headline.
+        assert "Australia" not in head
+
+    def test_the_introduction_carries_the_split_before_the_reversal(self
+                                                                    ) -> None:
+        """Order on the page, not merely presence: the reader should meet
+        the rule-dependence first and the reversal as its illustration."""
+        import re
+
+        from pypdf import PdfReader
+
+        path = PAPER / "floor_beneath_the_portfolio.pdf"
+        if not path.exists():
+            pytest.skip("the short paper has not been built")
+        text = re.sub(r"\s+", " ", "\n".join(
+            (page.extract_text() or "") for page in PdfReader(str(path)).pages))
+        found = text.index("What we find")
+        split = text.index("property of the withdrawal rule", found)
+        pair = text.index("differing in nothing else", found)
+        assert split < pair, "the reversal still precedes the rule split"
+
+
+class TestTheMechanismIsStatedAsAProposition:
+    """Section 2.1 derived the sign condition and then argued it in prose.
+    A referee reading a calibrated simulation wants to know what is a
+    result and what is an output; stating it once formally is what makes
+    the simulation quantify a claim rather than be the claim."""
+
+    def test_the_proposition_is_in_the_model_section(self) -> None:
+        import re
+
+        from pypdf import PdfReader
+
+        for name in ("floor_beneath_the_portfolio.pdf",
+                     "lifecycle_asset_allocation.pdf"):
+            path = PAPER / name
+            if not path.exists():
+                continue
+            text = re.sub(r"\s+", " ", "\n".join(
+                (page.extract_text() or "")
+                for page in PdfReader(str(path)).pages))
+            assert "Proposition 1" in text, name
+
+    def test_it_says_what_it_does_not_deliver(self) -> None:
+        """One period of accounting signs a derivative. It does not give an
+        optimal share, and the paper must not let a reader think it does.
+
+        Read off the page rather than the source: the sentence is built
+        across several f-string fragments, so a source match would pin the
+        line breaks instead of the claim.
+        """
+        import re
+
+        from pypdf import PdfReader
+
+        path = PAPER / "floor_beneath_the_portfolio.pdf"
+        if not path.exists():
+            pytest.skip("the short paper has not been built")
+        text = re.sub(r"\s+", " ", "\n".join(
+            (page.extract_text() or "")
+            for page in PdfReader(str(path)).pages))
+        block = text[text.index("Proposition 1"):]
+        block = block[:block.index("What that implies for the portfolio")]
+        assert "does not deliver is the optimal risky share" in block
+        assert "signs a derivative" in block
+
+    def test_the_simulation_cites_it_where_it_measures_it(self) -> None:
+        source = (PAPER / "content.py").read_text()
+        assert "Proposition 1(ii) against 1(iii)" in source
+
+
 class TestTheProseUsesOneDash:
     """Both documents set an em dash 190-odd times and set `--` thirteen
     times, all of them in prose written as a docstring-style ASCII dash and
