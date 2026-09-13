@@ -4792,3 +4792,55 @@ def plot_mortality(frame: pd.DataFrame, curve: pd.DataFrame,
 
         fig.tight_layout()
     return _save(fig, directory, name)
+
+
+def plot_typology(best: pd.DataFrame, divide: pd.DataFrame,
+                  directory: str | Path,
+                  name: str = "fig68_typology") -> Path:
+    """Whether the rule divide is one household's or every household's.
+
+    One panel per household type, each plotting the wanted equity share
+    against the balance the retiree arrives with, under a rule that reads
+    the balance and a rule that does not. Each panel carries its *own*
+    free area and cut-off, shaded, because the same balance sits in
+    different regimes for a renter and a homeowner -- which is the whole
+    reason the types are crossed rather than pooled.
+
+    What a reader should see without reading a number: two flat lines a
+    long way apart, in four panels whose shaded bands sit in four
+    different places.
+    """
+    with plt.rc_context(STYLE):
+        keys = list(dict.fromkeys(best["household"]))
+        if not keys:
+            raise ValueError("no household types to plot")
+        fig, axes = _grid(len(keys), 2.5, max_cols=2, hspace=0.62)
+        style = {"constant_real": ("Fixed real", PALETTE[1], "o"),
+                 "constant_percent": ("Percentage of balance",
+                                      PALETTE[0], "s")}
+        for ax, key in zip(axes, keys):
+            block = best[best["household"] == key]
+            label = str(block["household_label"].iloc[0])
+            free = float(block["free_area"].iloc[0])
+            cut = float(block["cutoff"].iloc[0])
+            ax.axvspan(free, cut, color=PALETTE[4], alpha=0.14, zorder=0,
+                       linewidth=0)
+            for rule, (shown, colour, mark) in style.items():
+                arm = block[block["rule"] == rule].sort_values(
+                    "median_wealth")
+                if not len(arm):
+                    continue
+                ax.plot(arm["median_wealth"], 100.0 * arm["equity"],
+                        marker=mark, markersize=3.6, linewidth=1.7,
+                        color=colour, label=shown)
+            ax.set_xscale("log")
+            ax.set_title(f"{label}: the test bites from {free:.1f}\u00d7 "
+                         f"to {cut:.1f}\u00d7", fontsize=7.5)
+            ax.set_ylim(-6, 106)
+            ax.set_xlabel("Median balance at retirement "
+                          "(\u00d7 average earnings)", fontsize=7)
+            ax.set_ylabel("Wanted equity (%)", fontsize=7)
+        axes[0].legend(loc="center left", fontsize=6.8)
+        fig.suptitle("The rule divide, by the household the test sees",
+                     fontsize=9.5, y=0.995)
+        return _save(fig, directory, name)

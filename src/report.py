@@ -12596,6 +12596,214 @@ paths, gamma = {gamma:g}. Tables in `results/tables/ceiling_*.csv`.
     return _write(path, [intro, body])
 
 
+def write_doc_39(
+    path: str | Path,
+    cfg: Mapping[str, Any],
+    frames: Mapping[str, pd.DataFrame],
+    figures: Sequence[str],
+    notes: Mapping[str, Any],
+) -> Path:
+    """Which households the portfolio-and-rule interaction actually reaches.
+
+    `docs/35` finds the paper's sharpest result on one household: scale the
+    arriving balance until the assets test binds, and the wanted equity
+    share is a corner at zero under a rule that never reads the balance and
+    at the top of the grid under one that does. The obvious objection is
+    that it is one household -- a single renter, one earnings profile, one
+    pair of thresholds -- and that the retirees a real means test binds
+    differ from that one in more than their balance.
+
+    The three features that separate them are parameters of the schedule
+    rather than of the model: the family home's exemption, a couple's joint
+    assessment, and the balance a career produces. Crossing them is a test
+    the paper can fail.
+    """
+    found = notes["verdict"]
+    gamma = float(notes["gamma"])
+    n_paths = int(notes["n_paths"])
+    taper = float(notes["taper"])
+    types = list(notes.get("types", ()))
+
+    intro = _header(
+        "39 - Which Households the Interaction Reaches",
+        "`docs/35` establishes the rule divide on one household. This "
+        "crosses the two schedule features that separate Australian "
+        "retirees from one another -- the family home's exemption and a "
+        "couple's joint assessment -- with the balance dial, and asks "
+        "whether the divide is a property of the household it was found "
+        "on.")
+
+    types_tbl = md_table(pd.DataFrame.from_records(
+        [{"Household": label,
+          "Free area (x AWOTE)": f"{free:.2f}",
+          "Cut-off (x AWOTE)": f"{cut:.2f}",
+          "Full rate (x AWOTE)": f"{rate:.3f}"}
+         for _key, label, free, cut, rate in types])) if types else ""
+
+    divide = frames.get("divide")
+    divide_tbl = ""
+    if divide is not None and len(divide):
+        shown = divide.rename(columns={
+            "household_label": "Household", "position": "Position",
+            "equity_constant_real": "Wanted equity, fixed real",
+            "equity_constant_percent": "Wanted equity, share of balance"})
+        cols = [c for c in ("Household", "Position",
+                            "Wanted equity, fixed real",
+                            "Wanted equity, share of balance")
+                if c in shown]
+        divide_tbl = md_table(shown[cols], floatfmt="{:.0%}")
+
+    if not found.get("measured"):
+        verdict_line = ("The sweep produced nothing to classify, so this "
+                        "document reports no verdict.")
+    elif found["divide_holds_everywhere"]:
+        verdict_line = (
+            f"**The divide is not one household's.** Across "
+            f"{found['households']} household types and "
+            f"{found['positions']} positions against each type's own test, "
+            f"the rule that reads the balance wants more equity than the "
+            f"rule that does not in all {found['cells']} cells. The "
+            f"narrowest gap is {100 * found['narrowest_gap']:.0f} "
+            f"percentage points and the widest is "
+            f"{100 * found['widest_gap']:.0f}. That is what Corollary 1 of "
+            f"the paper's model section predicts: the derivation turns on "
+            f"whether the withdrawal rule reads the balance, and no "
+            f"threshold appears in it, so no threshold should move the "
+            f"sign.")
+    else:
+        verdict_line = (
+            f"**The divide does not hold everywhere.** It holds in "
+            f"{found['cells_holding']} of {found['cells']} cells across "
+            f"{found['households']} household types, and the cell it "
+            f"fails in is {found.get('worst_cell', 'unknown')}, where the "
+            f"gap is {100 * found['narrowest_gap']:+.0f} percentage "
+            f"points. That is a failure of the prediction in the model "
+            f"section rather than a qualification of it, and the paper "
+            f"reports it as one.")
+
+    corner_line = (
+        "And the corner is the same corner. Wherever the test operates on "
+        "the return -- inside the taper band and above the cut-off -- the "
+        "blind rule sits at zero equity for every household type, which is "
+        "what Corollary 1 says should happen: a better return never raises "
+        "that year's consumption under a rule whose payment does not read "
+        "the balance, so the risky asset enters the objective only through "
+        "the estate. Nothing in that derivation is a preference parameter "
+        "and nothing in it is a threshold, which is why no threshold moves "
+        "it. Below the free area the pension is paid in full and the "
+        "corollary predicts no corner, so that band is not read as one."
+        if found.get("blind_at_zero_where_it_binds") else
+        f"The blind rule does not sit at zero where the test operates: its "
+        f"highest wanted share across the table is "
+        f"{100 * found.get('blind_highest', float('nan')):.0f}%. Corollary "
+        f"1 predicts a corner there and this is not one, so the corollary "
+        f"is reaching further than the simulation supports somewhere in "
+        f"the grid, and the paper has to say where.")
+
+    thresholds = frames.get("thresholds")
+    threshold_tbl, threshold_line = "", (
+        "The couple thresholds were not swept, so how much of the couple "
+        "result is the ratio chosen for them is unmeasured.")
+    if thresholds is not None and len(thresholds):
+        threshold_tbl = md_table(thresholds.rename(columns={
+            "free_area_ratio": "Couple free area, x the single figure",
+            "divide_holds_everywhere": "Divide holds everywhere",
+            "cells_holding": "Cells holding", "cells": "Cells",
+            "narrowest_gap": "Narrowest gap"})[
+                ["Couple free area, x the single figure",
+                 "Divide holds everywhere", "Cells holding", "Cells",
+                 "Narrowest gap"]], floatfmt="{:.2f}")
+        every = bool(thresholds["divide_holds_everywhere"].all())
+        threshold_line = (
+            f"The couple free area is a ratio of the single homeowner's "
+            f"sourced figure rather than a separately verified statutory "
+            f"dollar, so it is swept rather than trusted -- the treatment "
+            f"`docs/32` gives the pre-eligibility payment, and for the "
+            f"same reason. Across "
+            f"{len(thresholds)} ratios, from "
+            f"{float(thresholds['free_area_ratio'].min()):.2f} to "
+            f"{float(thresholds['free_area_ratio'].max()):.2f} times the "
+            f"single figure, the divide holds everywhere in "
+            + ("every one of them, so nothing in the couple result "
+               "depends on the ratio."
+               if every else
+               f"{int(thresholds['divide_holds_everywhere'].sum())} of "
+               f"them, so part of the couple result does depend on the "
+               f"ratio and the paper says which part."))
+
+    body = f"""
+## 1. What this asks
+
+`docs/35` scales one household's arriving balance until the assets test
+binds and reads the wanted equity share off each position. The answer is a
+corner at zero under a fixed real withdrawal and the top of the grid under
+a percentage of balance. It is one household: a single renter, on this
+project's own earnings profile, facing one pair of thresholds.
+
+The retirees a real means test binds are not that household. They own
+homes, which the test exempts and which therefore raises the balance at
+which the test starts to bite; they have partners, which raises both the
+threshold and the payment; and they arrive with the balance a career
+produced rather than one a sweep chose. The first two are parameters of
+the schedule. Crossing them with the third asks whether the finding
+belongs to the mechanism or to the household.
+
+Nothing in the mechanism predicts that a threshold should matter.
+Corollary 1 of the paper's model section turns on whether the withdrawal
+rule's payment reads the balance, and no threshold appears anywhere in the
+derivation. So this is a test the paper can fail.
+
+## 2. The households
+
+{types_tbl}
+
+The single figures are statutory and cited in `src/pension.py`. The couple
+figures are ratios applied to them rather than separately sourced dollars,
+which is a weaker claim and is treated as one in section 4 below.
+
+## 3. What each rule wants, by household and position
+
+{divide_tbl}
+
+{verdict_line}
+
+{corner_line}
+
+## 4. Whether the couple result depends on the ratio
+
+{threshold_tbl}
+
+{threshold_line}
+
+## 5. What this does not do
+
+This is not a calibration to the Australian wealth distribution. Every
+household type is run across the same grid of positions against its own
+test, which answers "does the result hold for this kind of retiree?" and
+not "how many retirees of this kind are there?". The second question is
+the more useful one for policy and needs household-level data this study
+does not carry; the first is the one a referee should ask of a result, and
+it is the one answered here.
+
+Nor is a couple here a couple's retirement problem. The model has one
+earner and one portfolio, so the couple rows are one portfolio meeting a
+couple's schedule. That isolates the thing being tested -- whether the
+threshold moves the answer -- and it is not a model of two people.
+
+## 6. Reproduction
+
+```
+python main.py --steps 39
+```
+
+{n_paths:,} paths per cell at risk aversion {gamma:g}, on the Australian
+arm as legislated, with a taper of {taper:.1%} of assessable assets a year.
+Working life is identical across the grid: only the retiree's problem
+differs.
+"""
+    return _write(path, [intro, body])
+
+
 def write_doc_38(
     path: str | Path,
     cfg: Mapping[str, Any],

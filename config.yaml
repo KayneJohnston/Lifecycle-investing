@@ -1290,6 +1290,45 @@ ceiling:
 # at every date instead, and sweeps the partial payment made before the
 # pension age, which is an undisclosed consumption floor in a paper about
 # consumption floors.
+# ---------------------------------------------------------------------
+# Step 39 - which households the interaction reaches
+# ---------------------------------------------------------------------
+# Section #incidence finds its sharpest result on one household: a single
+# renter, scaled onto the assets test. The households a real means test
+# binds differ from that one in more than their balance, and the three
+# features that separate them -- the family home's exemption, a couple's
+# joint assessment, and the balance a career produces -- are parameters of
+# the schedule rather than of the model. Crossing them asks whether the
+# finding is a property of the household it was found on.
+typology:
+  enabled: true
+  n_paths: 20000
+  # Coarser than step 35's, because this grid is four household types and
+  # two rules wide where that one was a single type. The balances still
+  # span from well below the tightest free area to well above the loosest
+  # cut-off, which is what the sweep needs.
+  scale_grid: [0.02, 0.04, 0.07, 0.10, 0.14, 0.20, 0.28, 0.40, 0.60, 1.00]
+  equity_grid: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+  # One rule from each side of Corollary 1's divide. A third rule from
+  # either side would cost a quarter of the run and test nothing the
+  # ordering grid does not already report.
+  rules: [constant_real, constant_percent]
+  percent_rate: 0.04
+  domestic_share: 0.10
+  accumulation_equity: 1.0
+  # The couple schedule as ratios of the single homeowner's sourced
+  # figures rather than as separately verified statutory dollars. A ratio
+  # is a weaker claim than a rate, so it is swept below rather than
+  # trusted -- the same treatment Section #leisure.1 gives the
+  # pre-eligibility payment, and for the same reason.
+  couple_free_area_ratio: 1.50
+  couple_renter_free_area_ratio: 1.23
+  couple_rate_ratio: 1.51
+  # Where the answer stops depending on that ratio. Brackets a couple
+  # assessed on the single thresholds (1.0) and one assessed on thresholds
+  # half again as generous as the published pair.
+  free_area_ratios: [1.00, 1.25, 1.50, 1.75, 2.25]
+
 gate:
   enabled: true
   # Matched to the leisure study's count so a row here can be set beside a

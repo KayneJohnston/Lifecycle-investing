@@ -310,7 +310,11 @@ def front(ctx: Any) -> List[Flowable]:
         f"saving changes lifetime consumption "
         f"by {abs(cost):.1f}% and the retiree's problem not at all. (vi) On "
         f"a household the test does bind, the wanted equity share is a "
-        f"property of the withdrawal rule rather than of the pension."))
+        f"property of the withdrawal rule rather than of the pension "
+        f"\u2014 0% under a fixed real withdrawal and 100% under a "
+        f"percentage of balance, in every one of twelve cells crossing "
+        f"homeowners with renters, singles with couples, and all three "
+        f"positions against each household's own thresholds."))
     out.append(ctx.p(
         "<b>Keywords:</b> lifecycle asset allocation; public pension "
         "design; means testing; target-date funds; certainty-equivalent "
@@ -1499,6 +1503,7 @@ def incidence(ctx: Any) -> List[Flowable]:
                 f"cannot borrow \u2014 which is most of them \u2014 "
                 f"holds 100% equity and the section's advice is "
                 f"unchanged."))
+    out.extend(_typology(ctx, f))
     out.append(ctx.p(
         "This is the same lesson the withdrawal-rule section reaches from "
         "the other side, and the two should be read together. There it was "
@@ -1508,6 +1513,157 @@ def incidence(ctx: Any) -> List[Flowable]:
         "drawdown default and the portfolio default are one decision, and "
         "that a plan sponsor choosing either without the other is choosing "
         "in the dark."))
+    return out
+
+
+def _typology(ctx: Any, f: Any) -> List[Flowable]:
+    """Whether the divide is this household's or every household's.
+
+    Everything above is one retiree: a single renter, on this project's
+    own earnings profile, facing one pair of thresholds. That is the
+    objection a reader should raise, because the households a real means
+    test binds differ from that one in more than their balance -- they
+    own homes the test exempts, and they have partners the test assesses
+    them jointly with.
+
+    Both are parameters of the schedule rather than of the model, so the
+    objection is answerable rather than merely acknowledgeable, and
+    Corollary 1 says what the answer should be: the derivation turns on
+    whether the withdrawal rule reads the balance and no threshold appears
+    in it, so no threshold should move the sign. A prediction that
+    specific is worth running as a test the paper can fail.
+    """
+    out: List[Flowable] = []
+    try:
+        divide = f.table("typology_divide")
+    except (FileNotFoundError, OSError):
+        return out
+    if not len(divide):
+        return out
+    from src import typology as ty
+
+    found = ty.verdict(divide)
+    if not found.get("measured"):
+        return out
+    blind, reading = f"equity_{ty.BLIND}", f"equity_{ty.READING}"
+
+    out.append(ctx.h2("#incidence.6 Whose household this is"))
+    out.append(ctx.p(
+        f"Every number above is one retiree \u2014 a single renter, on "
+        f"this paper's earnings profile, facing one pair of thresholds. "
+        f"The retirees an assets test actually binds are not that "
+        f"household: most own a home, which the test exempts and which "
+        f"therefore raises the balance at which it starts to bite, and "
+        f"many have a partner, who raises the threshold and the payment "
+        f"together. Both are parameters of the schedule rather than of "
+        f"the model, so the objection can be answered rather than only "
+        f"conceded. Section #model.1's Corollary 1 says what the answer "
+        f"should be: the derivation turns on whether the withdrawal "
+        f"rule's payment reads the balance, and no threshold appears "
+        f"anywhere in it, so no threshold should move the sign. That is "
+        f"specific enough to fail."))
+    out.extend(ctx.table(
+        [["Household", "Position against its own test",
+          "Wanted equity, fixed real", "Wanted equity, share of balance"]]
+        + [[str(r["household_label"]), str(r["position"]),
+            f"{float(r[blind]):.0%}", f"{float(r[reading]):.0%}"]
+           for _, r in divide.iterrows()],
+        f"The equity share each kind of retiree wants, under a rule that "
+        f"reads the balance and one that does not, at every position "
+        f"against that household's own thresholds.",
+        anchor="typology_divide",
+        note="The family home is exempt, so a homeowner is assessed "
+             "against a lower free area than a renter holding the same "
+             "wealth in the portfolio; a couple is assessed jointly, "
+             "against a higher free area and for a higher payment. Only "
+             "those three schedule parameters move between rows: the "
+             "career, the contributions, the panel and the simulated "
+             "lifetimes are identical, so a difference across rows is a "
+             "property of the schedule and not of the household's "
+             "history. Each row is the median across the balances that "
+             "leave that household in that position.",
+        font_size=7.5))
+
+    if found["divide_holds_everywhere"]:
+        out.append(ctx.p(
+            f"<b>The divide is not this household's.</b> Across "
+            f"{_spelled(found['households'])} kinds of retiree and "
+            f"{_spelled(found['positions'])} positions against each one's "
+            f"own test, the rule that reads the balance wants more equity "
+            f"than the rule that does not in all "
+            f"{_spelled(found['cells'])} cells, and the narrowest gap is "
+            f"{100 * found['narrowest_gap']:.0f} percentage points "
+            f"\u2014 which is the whole allocation. The corollary "
+            f"predicted that and it is worth saying why it had to: a "
+            f"threshold decides <i>where</i> a household meets the test, "
+            f"and the corollary is about what happens to a return once it "
+            f"does. Moving the threshold moves the balance at which the "
+            f"answer changes. It does not move the answer."))
+    else:
+        out.append(ctx.p(
+            f"<b>The divide is partly this household's.</b> It holds in "
+            f"{_spelled(found['cells_holding'])} of "
+            f"{_spelled(found['cells'])} cells, and fails at "
+            f"{found.get('worst_cell', 'one of them')}, where the gap "
+            f"runs {100 * found['narrowest_gap']:+.0f} percentage points. "
+            f"Corollary 1 predicts no such cell, so the prediction is "
+            f"wrong somewhere and this is where."))
+
+    if found.get("blind_at_zero_where_it_binds"):
+        out.append(ctx.p(
+            "<b>And it is the same corner.</b> Wherever the test reaches "
+            "the return \u2014 inside the taper band and above the "
+            "cut-off \u2014 the fixed real rule sits at no equity for "
+            "every kind of retiree, which is what the corollary says a "
+            "budget line with no preference parameter in it should "
+            "produce. Below the free area the pension is paid in full, "
+            "consumption does not move with the return either way, and "
+            "the corollary predicts nothing; that band is not read as a "
+            "corner."))
+
+    try:
+        ratios = f.table("typology_thresholds")
+    except (FileNotFoundError, OSError):
+        ratios = None
+    if ratios is not None and len(ratios):
+        every = bool(ratios["divide_holds_everywhere"].all())
+        out.append(ctx.p(
+            f"One of those thresholds is weaker evidence than the others "
+            f"and the difference should be visible. The single figures "
+            f"are statutory; the couple pair is a ratio applied to them "
+            f"rather than a separately verified schedule, so it is swept "
+            f"rather than trusted \u2014 the treatment Section "
+            f"#leisure.1 gives the pre-eligibility payment, for the same "
+            f"reason. Across {_spelled(len(ratios))} ratios, from "
+            f"{float(ratios['free_area_ratio'].min()):.2f} to "
+            f"{float(ratios['free_area_ratio'].max()):.2f} times the "
+            f"single figure \u2014 the first being a couple assessed as "
+            f"though single \u2014 the divide holds in "
+            + (f"every one. Nothing in the couple rows depends on the "
+               f"ratio chosen for them."
+               if every else
+               f"{int(ratios['divide_holds_everywhere'].sum())} of them, "
+               f"so part of the couple result does depend on it.")))
+
+    out.append(ctx.p(
+        "Two things this does not do. It is not a calibration to the "
+        "Australian wealth distribution: every household type is run "
+        "across the same grid of positions against its own test, which "
+        "answers whether the result holds for a kind of retiree and not "
+        "how many retirees of that kind there are. The second question "
+        "is the more useful one for policy and needs household-level data "
+        "this study does not carry. And a couple here is one portfolio "
+        "meeting a couple's schedule rather than two people's retirement "
+        "problem, which is the right comparison for asking whether the "
+        "threshold moves the answer and the wrong one for anything else."))
+    out.extend(ctx.figure(
+        "fig68_typology",
+        "The rule divide, by the household the assets test sees. One "
+        "panel per kind of retiree, each carrying its own free area and "
+        "cut-off as the shaded band, because the same balance sits in "
+        "different regimes for a renter and a homeowner. Two flat lines "
+        "a hundred points apart, in four panels whose bands sit in four "
+        "different places."))
     return out
 
 

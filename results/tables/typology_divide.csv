@@ -1,0 +1,13 @@
+household,household_label,position,balances,equity_constant_real,equity_constant_percent
+couple_homeowner,"couple, homeowners",below the free area,3,0.0,1.0
+couple_homeowner,"couple, homeowners",inside the taper band,2,0.0,1.0
+couple_homeowner,"couple, homeowners",above the cut-off,5,0.0,1.0
+couple_renter,"couple, renters",below the free area,4,0.0,1.0
+couple_renter,"couple, renters",inside the taper band,2,0.0,1.0
+couple_renter,"couple, renters",above the cut-off,4,0.0,1.0
+single_homeowner,"single, homeowner",below the free area,2,0.0,1.0
+single_homeowner,"single, homeowner",inside the taper band,2,0.0,1.0
+single_homeowner,"single, homeowner",above the cut-off,6,0.0,1.0
+single_renter,"single, renter",below the free area,4,0.0,1.0
+single_renter,"single, renter",inside the taper band,1,0.0,1.0
+single_renter,"single, renter",above the cut-off,5,0.0,1.0

@@ -62,6 +62,7 @@ from src import sensitivity as sn
 from src import spending as spg
 from src import tax as tx
 from src import turnover as tn
+from src import typology as ty
 from src import utility as ut
 
 LOGGER = logging.getLogger("main")
@@ -5605,6 +5606,156 @@ def step37_ceiling(cfg: Dict[str, Any],
     return state
 
 
+def step39_typology(cfg: Dict[str, Any],
+                    state: Dict[str, Any]) -> Dict[str, Any]:
+    """Does the rule divide survive the household, or was it one household's?"""
+    block = cfg.get("typology", {})
+    if not block.get("enabled", False):
+        LOGGER.info("typology study disabled; skipping step 39")
+        return state
+    LOGGER.info("=== STEP 39: which households the interaction reaches ===")
+    started = time.perf_counter()
+
+    panel = state.get("panel") or dl.build_panel(cfg)
+    spec = state.get("spec") or lc.spec_from_config(cfg)
+    gamma = float(cfg["utility"]["baseline_risk_aversion"])
+    beta = float(cfg["utility"]["discount_factor"])
+    util = cfg["utility"]
+    n_paths = int(block.get("n_paths", 20000))
+    for chunk in bs.from_config(panel, cfg).chunks(n_paths, n_paths):
+        paths = chunk
+
+    # The Australian arm, as Section #incidence runs it, with one household
+    # type laid over the top of it at a time. Only the two threshold
+    # parameters and the full rate move between types: the career, the
+    # contributions, the panel and the simulated lifetimes are identical,
+    # which is what makes a difference across types a property of the
+    # schedule rather than of the household's history.
+    over, _ = le.system_overrides("au_as_legislated", cfg)
+    base = dataclasses.replace(spec, **over)
+    pen = pn.from_config(cfg)
+    taper = float(pen["pension_taper"])
+    types = ty.households(
+        single_free_area=float(pen["pension_free_area"]),
+        renter_free_area=float(pen["pension_free_area_non_homeowner"]),
+        single_full_rate=float(pen["pension_full_rate"]),
+        couple_free_area_ratio=float(block.get("couple_free_area_ratio", 1.5)),
+        couple_renter_free_area_ratio=float(
+            block.get("couple_renter_free_area_ratio", 1.23)),
+        couple_rate_ratio=float(block.get("couple_rate_ratio", 1.51)))
+
+    bond_share = float(cfg.get("glide", {}).get("bond_share", 0.7))
+    domestic = float(block.get("domestic_share", 0.1))
+    accumulation_equity = float(block.get("accumulation_equity", 1.0))
+    percent_rate = float(block.get("percent_rate", 0.04))
+    rules = [str(r) for r in block.get("rules", (ty.BLIND, ty.READING))]
+    scales = [float(x) for x in block.get("scale_grid", (1.0,))]
+    equities = [float(x) for x in block.get("equity_grid", (1.0,))]
+
+    def _spec_for(who: Any, rule: str, scale: float) -> Any:
+        return dataclasses.replace(
+            base,
+            pension_free_area=float(who.free_area),
+            pension_full_rate=float(who.full_rate),
+            retirement_balance_scale=float(scale),
+            retirement_rule=("fixed_real_rule" if rule == ty.BLIND
+                             else "fixed_percentage"),
+            rule_rate=(float(base.rule_rate) if rule == ty.BLIND
+                       else percent_rate))
+
+    def _run(who: Any, rule: str, scale: float, equity: float) -> Any:
+        aged = _spec_for(who, rule, scale)
+        income = lc.simulate_income(
+            aged, n_paths, np.random.default_rng(int(cfg["run"]["seed"])),
+            dom_eq=paths.dom_eq, intl_eq=paths.intl_eq)
+        shares = np.full(aged.horizon, equity)
+        shares[:aged.n_working] = accumulation_equity
+        weights = gp.weights_from_shares(shares,
+                                         np.full(aged.horizon, domestic),
+                                         bond_share)
+        strategy = lc.Strategy(key="grid",
+                               label=f"equity {equity:.0%}", weights=weights)
+        return lc.simulate(paths, strategy, aged, income)
+
+    def _score(outcome: Any) -> Dict[str, Any]:
+        window = outcome.consumption[:, base.n_working:]
+        return {
+            "cec": float(ut.crra_certainty_equivalent(
+                ut.bundle_from_outcome(outcome, cfg, base), gamma, beta,
+                float(util["bequest_weight"]),
+                bool(util["bequest_enabled"]))),
+            "median_wealth": float(np.median(outcome.wealth_at_retirement)),
+            "prob_ruin": float(np.mean(outcome.ruin)),
+            "mean_consumption": float(window.mean()),
+            "p5_consumption": float(np.percentile(window, 5)),
+        }
+
+    LOGGER.info("%d household types x %d rules x %d balances x %d shares",
+                len(types), len(rules), len(scales), len(equities))
+    swept = ty.sweep(_run, _score, types, rules, scales, equities, taper)
+    best = ty.wanted_by_type(swept)
+    table = ty.divide_table(best)
+    found = ty.verdict(table)
+    if found.get("measured"):
+        LOGGER.info("the divide holds in %d of %d cells across %d household "
+                    "types and %d positions; everywhere: %s; narrowest gap "
+                    "%.0f pp; the blind rule sits at zero throughout: %s",
+                    found["cells_holding"], found["cells"],
+                    found["households"], found["positions"],
+                    found["divide_holds_everywhere"],
+                    100 * found["narrowest_gap"],
+                    found["blind_always_at_zero"])
+        if not found["divide_holds_everywhere"]:
+            LOGGER.info("  the cell it fails in: %s",
+                        found.get("worst_cell", "unknown"))
+
+    # The couple thresholds are ratios of the single figures rather than
+    # separately sourced dollars, so the answer has to be shown not to
+    # depend on the ratio.
+    def _at_ratio(ratio: float) -> "pd.DataFrame":
+        widened = ty.households(
+            single_free_area=float(pen["pension_free_area"]),
+            renter_free_area=float(pen["pension_free_area_non_homeowner"]),
+            single_full_rate=float(pen["pension_full_rate"]),
+            couple_free_area_ratio=float(ratio),
+            couple_renter_free_area_ratio=float(ratio),
+            couple_rate_ratio=float(block.get("couple_rate_ratio", 1.51)))
+        couples = [w for w in widened if w.partnered]
+        sub = ty.sweep(_run, _score, couples, rules, scales, equities,
+                       taper, log_every=0)
+        return ty.divide_table(ty.wanted_by_type(sub))
+
+    ratios = [float(x) for x in block.get("free_area_ratios", ())]
+    sensitivity = (ty.threshold_sensitivity(_at_ratio, ratios)
+                   if ratios else pd.DataFrame())
+    if len(sensitivity):
+        holds = int(sensitivity["divide_holds_everywhere"].sum())
+        LOGGER.info("across %d couple threshold ratios the divide holds "
+                    "everywhere in %d of them", len(sensitivity), holds)
+
+    tables = cfg["run"]["table_dir"]
+    _save_table(swept, tables, "typology_sweep")
+    _save_table(best, tables, "typology_wanted")
+    _save_table(table, tables, "typology_divide")
+    if len(sensitivity):
+        _save_table(sensitivity, tables, "typology_thresholds")
+
+    plots.plot_typology(best, table, cfg["run"]["figure_dir"])
+
+    elapsed = time.perf_counter() - started
+    rp.write_doc_39(
+        Path("docs") / "39_typology.md", cfg,
+        {"swept": swept, "best": best, "divide": table,
+         "thresholds": sensitivity}, [],
+        {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
+         "verdict": found, "taper": taper,
+         "types": [(w.key, w.label, w.free_area, w.cut_out(taper),
+                    w.full_rate) for w in types]})
+    LOGGER.info("docs/39 written (%.0fs)", elapsed)
+    state["typology"] = {"sweep": swept, "divide": table, "found": found}
+    return state
+
+
 STEPS = {1: step1_dataset, 2: step2_bootstrap, 3: step3_lifecycle,
          4: step4_report, 5: step5_sensitivity, 6: step6_spending,
          7: step7_glide_path, 8: step8_hedging, 9: step9_retirement_timing,
@@ -5623,11 +5774,11 @@ STEPS = {1: step1_dataset, 2: step2_bootstrap, 3: step3_lifecycle,
          34: step34_longevity,
          35: step35_incidence,
          36: step36_ordering, 37: step37_ceiling,
-         38: step38_gate}
+         38: step38_gate, 39: step39_typology}
 
 
 def run(config_path: str = "config.yaml",
-        steps: Sequence[int] = tuple(range(1, 39)),
+        steps: Sequence[int] = tuple(range(1, 40)),
         quick: bool = False) -> Dict[str, Any]:
     """Execute the pipeline and return the accumulated state."""
     cfg = dl.load_config(config_path)
@@ -5657,8 +5808,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--steps", nargs="+", type=int,
-                        default=list(range(1, 39)),
-                        choices=list(range(1, 39)))
+                        default=list(range(1, 40)),
+                        choices=list(range(1, 40)))
     parser.add_argument("--quick", action="store_true",
                         help="small N for smoke tests")
     parser.add_argument("--verbose", action="store_true")

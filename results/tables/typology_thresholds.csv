@@ -1,0 +1,6 @@
+free_area_ratio,measured,divide_holds_everywhere,cells_holding,cells,narrowest_gap
+1.0,True,True,6,6,0.3
+1.25,True,True,6,6,1.0
+1.5,True,True,6,6,1.0
+1.75,True,True,6,6,0.9
+2.25,True,True,6,6,0.8
