@@ -2359,6 +2359,12 @@ def _resampled(ctx: Any, f: Any) -> List[Flowable]:
     if not found.get("measured"):
         return out
     draws = int(block.get("replicates", 0))
+    # The grid's own reading of the headline cell, so the section can say
+    # why its point estimate differs from the one every other section
+    # quotes rather than leave a reader to spot it.
+    _grid = f.table("ordering_gaps")
+    _grid = _grid[(_grid["system"] == head[0]) & (_grid["rule"] == head[1])]
+    grid_gap = float(_grid["gap_pct"].iloc[0]) if len(_grid) else float("nan")
 
     out.append(ctx.h2("#ordering.7 How much of that precision was the "
                       "assumption"))
@@ -2455,6 +2461,12 @@ def _resampled(ctx: Any, f: Any) -> List[Flowable]:
             f"{h['gap_pct']:+.2f}% with a delete-one standard error of "
             f"{h['jackknife_se']:.2f} and a resampled one of "
             f"{h['bootstrap_se']:.2f}, a factor of {h['se_ratio']:.2f}. "
+            + (f"The point estimate is the replicates' own path count "
+               f"rather than the grid's, which is where the difference "
+               f"from the {grid_gap:+.2f}% of Section #ordering.3 comes "
+               f"from; that is Monte Carlo and not panel, and putting the "
+               f"two on one path count is what makes the ratio beside it "
+               f"mean anything. " if grid_gap == grid_gap else "")
             + ("It is still signed, and it is signed on the statistic "
                "this section has argued for throughout rather than on the "
                "one it distrusts."
@@ -2567,6 +2579,7 @@ def limitations(ctx: Any) -> List[Flowable]:
         "different for it to come out the other way. Four things would."))
     out.append(ctx.h2("#limitations.1 The cross-section is sixteen "
                       "countries"))
+    paras: List[str] = []
     line = (
         "The panel is sixteen developed markets, and they are not sixteen "
         "independent draws: equity returns co-move, and the twentieth "
@@ -2590,8 +2603,8 @@ def limitations(ctx: Any) -> List[Flowable]:
             f"ordering in all sixteen sub-panels.")
     if contested is not None:
         line += (
-            f" What it does not settle is Australia's own combination of "
-            f"two institutions that offset. That cell is "
+            f" What it does not settle is the combination one country "
+            f"legislates, whose two institutions offset. That cell is "
             f"{float(contested['gap_pct']):+.2f}% "
             f"with a delete-one standard error of "
             f"{float(contested['standard_error']):.2f} and an interval of "
@@ -2604,14 +2617,17 @@ def limitations(ctx: Any) -> List[Flowable]:
     if resolved is not None and len(resolved):
         line += (
             f" The rest of the table is not like that: "
-            f"{len(resolved)} of {len(band)} cells have intervals "
+            f"{len(resolved)} of the {len(band)} cells the jackknife "
+            f"covers \u2014 the eight rules under each of the three "
+            f"systems a headline is drawn from \u2014 have intervals "
             f"excluding zero, the matched reversal among them. So the "
             f"cross-section is small enough to leave one sign undetermined "
             f"and large enough to settle every other, and the two should "
             f"not be reported in the same voice.")
     if seat is not None:
-        line += (
-            f" And the interval is the weaker half of that, in <i>both</i> "
+        paras.append(line)
+        line = (
+            f"And the interval is the weaker half of that, in <i>both</i> "
             f"the cells where the ordering reverses. Only "
             f"{int(seat['below_point'])} of {int(seat['deletions'])} "
             f"deletions fall below the legislated estimate, the mean "
@@ -2646,10 +2662,12 @@ def limitations(ctx: Any) -> List[Flowable]:
     split = (_split_found(f, str(f.cfg["lifecycle"]["retirement"]["rule"]))
              if _has(f, "ordering_influence") else {"measured": False})
     if split.get("measured"):
-        line += (
-            f" That is a statement about the estimator and not about how "
+        paras.append(line)
+        line = (
+            f"That is a statement about the estimator and not about how "
             f"many countries reverse: {_spelled(int(split['sign_holds']))} of "
-            f"{int(split['deletions'])} fifteen-country panels still put the "
+            f"{_spelled(int(split['deletions']))} fifteen-country panels "
+            f"still put the "
             f"target-date fund ahead and "
             f"{_spelled(int(split['sign_flips']))} do not, with removing "
             f"{COUNTRY_NAME.get(str(split['largest_flip']), str(split['largest_flip']))} "
@@ -2659,8 +2677,9 @@ def limitations(ctx: Any) -> List[Flowable]:
             f"reversal is carried by a handful of identifiable markets in "
             f"this panel, and no wider panel is available to say whether "
             f"they are representative.")
-    line += (
-        " And the delete-one interval is not the only statement of that "
+    paras.append(line)
+    line = (
+        "And the delete-one interval is not the only statement of that "
         "uncertainty the paper makes. Section #ordering.7 resamples the "
         "sixteen markets with replacement rather than deleting from them, "
         "which drops the independence the jackknife assumes; the two agree "
@@ -2671,7 +2690,8 @@ def limitations(ctx: Any) -> List[Flowable]:
         "it."
         " Nothing in this paper should be read as a point estimate, and "
         "every claim it makes is a claim about a sign.")
-    out.append(ctx.p(line))
+    paras.append(line)
+    out.extend(ctx.p(para) for para in paras)
     out.append(ctx.h2("#limitations.2 One pension system, stylised"))
     out.append(ctx.p(
         f"Australia's Age Pension is modelled as an assets test alone: a "
