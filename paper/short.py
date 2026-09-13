@@ -234,10 +234,13 @@ def front(ctx: Any) -> List[Flowable]:
         f"An all-equity lifecycle portfolio is said to dominate the "
         f"age-declining glide path of a target-date fund. We show that "
         f"under a means-tested public pension this is not a property of "
-        f"the pension at all. It turns on the household's withdrawal "
-        f"rule, because the means test assesses what the portfolio still "
-        f"holds and the rule decides whether a good return is spent or "
-        f"left to be assessed. On a 16-country panel of real "
+        f"the pension alone. The test assesses what the portfolio still "
+        f"holds, so whether a good return reaches the retiree depends on "
+        f"whether their withdrawal rule spends it or leaves it to be "
+        f"assessed \u2014 and the ordering that follows is a joint "
+        f"property of the pension, the withdrawal rule and the "
+        f"household's risk aversion, none of which is sufficient alone. "
+        f"On a 16-country panel of real "
         f"returns spanning 1890\u20132020, crossing five public pension "
         f"regimes with eight withdrawal rules on common simulated "
         f"lifetimes, replacing an earnings-related pension with a "
@@ -254,7 +257,10 @@ def front(ctx: Any) -> List[Flowable]:
         f"earnings-related pension the same household leads by "
         f"{us_base_gap:+.2f}% whatever rule it spends by. The reversal's "
         f"sign holds in all sixteen delete-one-country sub-panels, and it "
-        f"needs a household risk-averse enough to pay for a floor as well. "
+        f"is absent at the lowest of the three risk aversions we score: "
+        f"re-read at \u03b3 = 2 the same cell is "
+        f"{_gamma_first(f, baseline_rule, matched['systems']['means_tested/voluntary'])}, "
+        f"so the third condition binds as hard as the other two. "
         f"The mechanism is the loss of an unconditional floor "
         f"rather than the means test's taper, and either of the two "
         f"institutions a country can change \u2014 a compulsory "
@@ -279,8 +285,11 @@ def front(ctx: Any) -> List[Flowable]:
         f"replacing an earnings-related pension with a means-tested one, "
         f"holding contributions fixed, reverses it under the rule the "
         f"literature assumes and under no other rule in an eight-rule "
-        f"menu, and the rule that reverses it is the only one that never "
-        f"reads the balance. (ii) The mechanism is the "
+        f"menu, and the rule that reverses it is the only rule in that "
+        f"menu whose payment never reads the balance. The reversal needs "
+        f"a household risk-averse enough to pay for a floor as well, so "
+        f"the interaction is three-way and not two. (ii) The mechanism "
+        f"is the "
         f"floor, not the taper: paying the <i>same</i> flat pension to the "
         f"same household without testing it leaves the all-equity portfolio "
         f"ahead by {flat_gap:+.2f}% against "
@@ -470,8 +479,11 @@ def introduction(ctx: Any) -> List[Flowable]:
             f"{_spelled(matched_rules['loses'])}"
             + (f", and that one is the fixed real withdrawal the "
                f"literature assumes and this paper's earlier sections "
-               f"spend by \u2014 the only rule in the menu that never "
-               f"reads the balance."
+               f"spend by \u2014 the only rule <i>in this menu</i> whose "
+               f"payment never reads the balance. The menu is eight rules "
+               f"and not a taxonomy: what the grid establishes is a "
+               f"division, not that no other rule could fall on the "
+               f"losing side of it."
                if matched_rules["only_the_baseline_loses"] else
                f": {_join(_losing)}.")))
         out.extend(ctx.table(
@@ -885,8 +897,9 @@ def model(ctx: Any) -> List[Flowable]:
     # simulation a quantification of a result rather than the source of
     # one, and it costs nothing: every line of it is already derived.
     out.append(ctx.p(
-        f"<b>Proposition 1 (the sign belongs to the rule, not to the "
-        f"test).</b> Let the household hold assessable balance <i>W</i>, "
+        f"<b>Proposition 1 (return exposure under a means test is "
+        f"governed by the withdrawal rule).</b> Let the household hold "
+        f"assessable balance <i>W</i>, "
         f"earn gross real return <i>R</i>, and withdraw <i>x</i>. Inside "
         f"the taper band, where the pension is being withdrawn at "
         f"<i>&tau;</i> per unit of assessable assets:"))
@@ -911,11 +924,13 @@ def model(ctx: Any) -> List[Flowable]:
         "consumption in some later year for any <i>k</i> &gt; 0.",
     ]))
     out.append(ctx.p(
-        f"The content of the proposition is (ii) against (iii): under a "
-        f"means test the retiree's exposure to the return is signed by "
-        f"&part;<i>x</i>/&part;<i>R</i>, not by <i>&tau;</i>, and the two "
-        f"rule families sit on opposite sides of that regardless of the "
-        f"rate either is run at. What the proposition does <i>not</i> "
+        f"The content of the proposition is (ii) against (iii). The "
+        f"taper sets where the threshold sits \u2014 it is "
+        f"<i>&tau;W</i>/(1 + <i>&tau;</i>), and without a test there is no "
+        f"threshold at all \u2014 but which side of it a household falls "
+        f"on is decided by &part;<i>x</i>/&part;<i>R</i>, and the two rule "
+        f"families sit on opposite sides regardless of the rate either is "
+        f"run at. What the proposition does <i>not</i> "
         f"deliver is the optimal risky share. One period of accounting "
         f"signs a derivative; the share depends on the return "
         f"distribution, the horizon and the curvature of the objective, "
@@ -926,6 +941,42 @@ def model(ctx: Any) -> List[Flowable]:
         f"to expect them to come out, and Section "
         f"{SHORT_ORDER.index('model') + 1}.2 sets out where it can be "
         f"wrong."))
+    # The bridge from a signed derivative to a portfolio claim. It is the
+    # one step the one-period accounting can take on its own, and taking it
+    # here is what stops Section #incidence's corner reading as an output
+    # of a particular calibration: it is not, and the reason is that the
+    # calibration never enters.
+    out.append(ctx.p(
+        f"<b>Corollary 1.</b> Take a rule with "
+        f"&part;<i>x</i>/&part;<i>R</i> = 0, and a retirement year in "
+        f"which the portfolio funds its withdrawal. Consumption is then "
+        f"<i>x</i> + <i>b</i> below the free area and <i>x</i> above the "
+        f"cut-off, neither of which moves with the return, and "
+        f"<i>x</i>(1 + <i>&tau;</i>) &minus; <i>&tau;WR</i> + "
+        f"(<i>b</i> + <i>&tau;A</i>) inside the band, which falls in it. "
+        f"So at no position does a better return raise that year's "
+        f"consumption, and inside the band it lowers it — and, since "
+        f"the balance carried forward is larger, it lowers the following "
+        f"year's too for as long as the household remains in the band. "
+        f"The risky asset contributes nothing to consumption utility and "
+        f"subtracts from it wherever the test operates. It enters the "
+        f"objective positively only through the estate."))
+    out.append(ctx.p(
+        f"That is a statement about the budget line and not about the "
+        f"investor, and it is the reason to expect a corner rather than a "
+        f"small allocation: no risk aversion, no return distribution and "
+        f"no horizon appears anywhere in it, so nothing in the "
+        f"calibration is available to overturn it. Section "
+        f"{SHORT_ORDER.index('incidence') + 1}.4 is the test — the "
+        f"corner holds at half the baseline risk aversion, at twice it, "
+        f"and under two consumption floors — and the corollary is why "
+        f"it should. One channel is outside the algebra and belongs with "
+        f"it: a good return postpones depletion, and a rule that spends a "
+        f"fixed real amount can deplete. On the paths where it does, the "
+        f"return does reach consumption, by buying years in which there is "
+        f"a withdrawal at all. Section "
+        f"{SHORT_ORDER.index('ordering') + 1}.2 reports how many paths "
+        f"those are."))
     out.append(ctx.h3("#model.1.1 What that implies for the portfolio"))
     out.append(ctx.p(
         "The three regimes then order the retiree's problem, and the "
@@ -2434,10 +2485,13 @@ def conclusion(ctx: Any) -> List[Flowable]:
         f"still. Near a means test, the withdrawal rule does not modify "
         f"the portfolio decision. It is the portfolio decision."))
     out.append(ctx.p(
-        "Three implications follow for default design. A plan sponsor "
+        "Three implications follow for default design, and they are "
+        "implications of a calibrated model rather than costed policy "
+        "advice. A plan sponsor "
         "choosing a glide path is implicitly choosing it against a pension "
-        "schedule, and the same fund is not the right default in a "
-        "means-tested system and an earnings-related one. The drawdown "
+        "schedule, and on this model the fund that is best under an "
+        "earnings-related pension need not be the one that is best under "
+        "a means-tested one. The drawdown "
         "default matters as much as the portfolio default: in a system "
         "without a floor, supplying one through the withdrawal rule "
         "recovers what the pension no longer provides. And for the "
@@ -2643,6 +2697,29 @@ def _sign(value: float) -> int:
     if abs(value) < 1e-9:
         return 0
     return 1 if value > 0 else -1
+
+
+def _gamma_first(f: Any, rule: str, system: str) -> str:
+    """The cell at the lowest risk aversion on the grid, as prose.
+
+    The abstract states the third condition rather than deferring it: the
+    reversal is absent at the bottom of the range, so a reader meeting
+    "the ordering turns on the withdrawal rule" is told in the same breath
+    that it turns on the curvature of the objective too. Read off the
+    sweep rather than typed, because a rerun that moved the sign at the
+    lowest gamma would otherwise leave the abstract asserting it.
+    """
+    if not _has(f, "ordering_by_gamma"):
+        return ""
+    spread = f.table("ordering_by_gamma")
+    walked = spread[(spread["system"] == system)
+                    & (spread["rule"] == rule)].sort_values("gamma")
+    if not len(walked):
+        return ""
+    row = walked.iloc[0]
+    return (f"{float(row['gap_pct']):+.2f}%, and the all-equity portfolio "
+            f"leads again" if float(row["gap_pct"]) > 0
+            else f"{float(row['gap_pct']):+.2f}%")
 
 
 def _gamma_walk(f: Any, rule: str,

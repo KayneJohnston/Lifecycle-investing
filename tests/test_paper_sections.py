@@ -1524,6 +1524,128 @@ class TestTheMechanismIsStatedAsAProposition:
         assert "Proposition 1(ii) against 1(iii)" in source
 
 
+class TestTheClaimsAreNoWiderThanTheEvidence:
+    """Four places where a second reader could widen a true claim into a
+    false one, each closed by a qualifier rather than by a retreat."""
+
+    @staticmethod
+    def _short() -> str:
+        import re
+
+        from pypdf import PdfReader
+
+        path = PAPER / "floor_beneath_the_portfolio.pdf"
+        if not path.exists():
+            pytest.skip("the short paper has not been built")
+        return re.sub(r"\s+", " ", "\n".join(
+            (page.extract_text() or "")
+            for page in PdfReader(str(path)).pages))
+
+    def test_the_menu_is_named_as_a_menu(self) -> None:
+        """"The only rule that never reads the balance" invites a referee
+        to construct a ninth rule and call the claim false. It is a
+        statement about the eight rules run here."""
+        text = self._short()
+        assert "only rule in this menu" in text
+        assert "not a taxonomy" in text
+
+    def test_the_third_condition_is_in_the_abstract(self) -> None:
+        """The ordering turns on risk aversion as well: at the lowest of
+        the three the reversal is absent. A reader told only about the
+        withdrawal rule meets that later and feels it was withheld."""
+        text = self._short()
+        abstract = text[text.index("Abstract"):]
+        head = abstract[:abstract.index("What the paper shows")]
+        assert "risk aversion" in head
+        assert "joint property" in head
+
+    def test_the_proposition_does_not_claim_the_taper_is_irrelevant(self
+                                                                    ) -> None:
+        """An earlier heading read "the sign belongs to the rule, not to
+        the test", which is false as worded: without a test there is no
+        threshold at all. What the rule owns is which side of it the
+        household falls on."""
+        text = self._short()
+        assert "governed by the withdrawal rule" in text
+        assert "the sign belongs to the rule" not in text
+        assert "without a test there is no threshold at all" in text
+
+    def test_the_default_claim_is_a_model_claim(self) -> None:
+        """A sentence a plan sponsor could act on needs to say what it
+        rests on. This one rests on a calibrated model with one household,
+        no annuity and no behavioural constraint."""
+        text = self._short()
+        block = text[text.index("Three implications follow"):]
+        assert "calibrated model rather than costed policy advice" in block
+        assert "the same fund is not the right default" not in text
+
+
+class TestTheCorollaryBridgesToThePortfolio:
+    """Proposition 1 signs a derivative. The gap a referee pushes on is
+    the step from there to an allocation, and one step of it is available
+    from the budget line alone -- which is worth taking, because it says
+    the corner in Section 8 is not a property of the calibration."""
+
+    @staticmethod
+    def _text(name: str) -> str:
+        import re
+
+        from pypdf import PdfReader
+
+        path = PAPER / name
+        if not path.exists():
+            pytest.skip(f"{name} has not been built")
+        return re.sub(r"\s+", " ", "\n".join(
+            (page.extract_text() or "")
+            for page in PdfReader(str(path)).pages))
+
+    def test_the_corollary_follows_the_proposition(self) -> None:
+        text = self._text("floor_beneath_the_portfolio.pdf")
+        assert "Corollary 1" in text
+        assert text.index("Proposition 1") < text.index("Corollary 1")
+
+    def test_the_cut_without_the_model_section_does_not_cite_them(self
+                                                                  ) -> None:
+        """The model section is the short paper's own. A citation of
+        "Proposition 1" shipped in the companion, which does not carry
+        one -- a dangling pointer of exactly the kind `COMPANION` exists
+        to catch, introduced by hand and so bypassing it."""
+        text = self._text("lifecycle_asset_allocation.pdf")
+        import re
+
+        for hit in re.finditer("Proposition 1", text):
+            m = hit.start()
+            tail = text[m:m + 80]
+            assert "of the companion study" in tail or "of Beyond" in tail, \
+                f"unqualified reference: ...{text[max(0, m - 90):m + 80]}"
+
+    def test_it_names_the_channel_the_algebra_misses(self) -> None:
+        """A fixed real rule can deplete, and a good return postpones
+        depletion -- a way for the return to reach consumption that the
+        one-period budget line does not see. Left out, the corollary
+        overstates itself."""
+        text = self._text("floor_beneath_the_portfolio.pdf")
+        block = text[text.index("Corollary 1"):]
+        block = block[:block.index("What that implies for the portfolio")]
+        assert "postpones depletion" in block
+        assert "outside the algebra" in block
+
+    def test_it_claims_only_what_the_budget_line_gives(self) -> None:
+        """Read off the page: the sentences are assembled from f-string
+        fragments, so a source match pins the line breaks and not the
+        claim."""
+        text = self._text("floor_beneath_the_portfolio.pdf")
+        block = text[text.index("Corollary 1"):]
+        block = block[:block.index("What that implies for the portfolio")]
+        assert "budget line and not about the investor" in block
+        assert "enters the objective positively only through the estate" \
+            in block
+        # No preference parameter may carry the derivation.
+        assert "no risk aversion, no return distribution and no horizon" \
+            in block
+
+
+
 class TestTheProseUsesOneDash:
     """Both documents set an em dash 190-odd times and set `--` thirteen
     times, all of them in prose written as a docstring-style ASCII dash and

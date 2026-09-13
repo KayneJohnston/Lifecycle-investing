@@ -9118,11 +9118,18 @@ def section_incidence(ctx: Any) -> List[Flowable]:
             f"is withdrawn against them at {taper:.1%} a year, and "
             f"consumption does not rise at all. The upside is confiscated "
             f"and the downside is not, and equity is dominated. Spend the "
-            f"gain as it arrives and the confiscation never happens. This "
-            f"is Proposition 1(ii) against 1(iii), and the sweep is what "
-            f"turns a signed derivative into a wanted equity share: the "
-            f"algebra says which side of the divide each rule falls on and "
-            f"cannot say how far, and the distance is the whole allocation."))
+            f"gain as it arrives and the confiscation never happens. "
+            + ("This is Proposition 1(ii) against 1(iii), and the sweep "
+               "is what turns a signed derivative into a wanted equity "
+               "share: the algebra says which side of the divide each "
+               "rule falls on and cannot say how far, and the distance "
+               "is the whole allocation."
+               if "model" in _SECTION_NUMBER else
+               "The budget line signs that difference and cannot size "
+               "it \u2014 which side of the divide each rule falls on is "
+               "algebra, and how far is this sweep. The derivation is "
+               "Proposition 1 of " + (COMPANION["name"] if COMPANION
+                                      else "the companion study") + ".")))
     out += ctx.figure(
         "fig66_incidence",
         "Two dials on the Australian arm. Charging the Superannuation "
