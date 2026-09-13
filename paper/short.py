@@ -1204,10 +1204,11 @@ def incidence(ctx: Any) -> List[Flowable]:
         f"not the same household measured three ways. The first is the "
         f"matched-contribution household, which saves only this paper's "
         f"own 10% because holding the contribution rate still is what "
-        f"lets a difference be attributed to the benefit formula. Section "
-        f"{SHORT_ORDER.index('incidence') + 1}'s carries the Superannuation "
+        f"lets a difference be attributed to the benefit formula. The "
+        f"second is this section's, which carries the Superannuation "
         f"Guarantee and holds the all-equity portfolio this sweep is run "
-        f"on. Section {SHORT_ORDER.index('introduction') + 1}'s is the same "
+        f"on. The third is Section "
+        f"{SHORT_ORDER.index('introduction') + 1}'s, the same "
         f"household at the portfolio the headline compares. Each is stated "
         f"where it is used; what they share, and all the objection above "
         f"needs, is that every one of them is several times the cut-off."))
@@ -2162,12 +2163,13 @@ def ordering(ctx: Any) -> List[Flowable]:
                 f"{SHORT_ORDER.index('ordering') + 1}.3 propagating into "
                 f"every difference built against it, which is what one "
                 f"should expect and is the reason to print both."))
-        diffs = (diffs[diffs["system"] == "australia_as_legislated"]
+        diffs = (diffs[diffs["system"] == HEADLINE_SYSTEM]
                  if systems_here else diffs)
         widest = diffs.loc[diffs["difference_pp"].abs().idxmax()]
         resolved_n = int(diffs["ci_excludes_zero"].sum())
         out.append(ctx.p(
-            f"<b>The widest rule effect is "
+            f"<b>The widest rule effect, on the household every "
+            f"comparison here is made on, is "
             f"{rule_label(str(widest['rule']))} at "
             f"{float(widest['difference_pp']):+.1f} percentage points, with "
             f"a standard error of {float(widest['standard_error']):.1f} and "
@@ -2856,17 +2858,15 @@ def conclusion(ctx: Any) -> List[Flowable]:
             f"standard error of "
             f"{float(contested['standard_error']):.1f} points on a gap of "
             f"{float(contested['gap_pct']):+.2f}%."))
-    _mt_rows = (gapped[gapped["system"]
-                       == matched["systems"]["means_tested/voluntary"]]
-                if matched.get("measured") else mt_rows)
+    legis_rows = gapped[gapped["system"] == LEGISLATED_SYSTEM]
     out.append(ctx.p(
         f"The other thing the panel resolves comfortably, and in every "
-        f"cell, is the withdrawal rule's effect. Under the system as "
-        f"legislated the rule moves the all-equity lead by "
+        f"cell, is the withdrawal rule's effect. At matched contributions "
+        f"the rule moves the all-equity lead by "
         f"{float(mt_rows['gap_pct'].max() - mt_rows['gap_pct'].min()):.0f} "
-        f"percentage points across the menu, and at matched contributions "
-        f"by "
-        f"{float(_mt_rows['gap_pct'].max() - _mt_rows['gap_pct'].min()):.0f} "
+        f"percentage points across the menu, and under the two "
+        f"institutions run together by "
+        f"{float(legis_rows['gap_pct'].max() - legis_rows['gap_pct'].min()):.0f} "
         f"— larger than either institutional effect under either "
         f"pension, and an order of magnitude larger than the remainder in "
         f"dispute. It is the one quantity in this paper that no choice "

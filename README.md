@@ -674,7 +674,7 @@ pip install numpy pandas scipy matplotlib pyyaml openpyxl pytest
 
 python main.py --quick      # ~1 min smoke run at reduced N
 python main.py              # ~1 h full run: N = 100,000 plus sweeps and searches
-python -m pytest tests/ -q  # 1817 tests
+python -m pytest tests/ -q  # 1818 tests
 ```
 
 Selected steps and alternative configurations:
@@ -751,7 +751,7 @@ python main.py --config other.yaml  # a different parameterisation
 │   ├── fees.py           # expense ratios, and the break-even differential
 │   ├── plots.py          # publication-quality figures
 │   └── report.py         # Markdown report generation
-├── tests/                # 1,817 unit + integration tests
+├── tests/                # 1,818 unit + integration tests
 ├── results/
 │   ├── figures/          # 69 PNGs
 │   └── tables/           # 279 CSVs

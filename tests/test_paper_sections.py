@@ -2384,3 +2384,42 @@ class TestTheCalibrationIsNotTheSubject:
         inherited = set(sh.SHORT_ORDER) - set(sh.OWN)
         assert set(sh.OPENING_TABLE) <= inherited
         assert set(sh.OPENING_TABLE) <= set(sh.REOPENING)
+
+
+class TestTheTwoRuleSpansAreTwoNumbers:
+    """The conclusion quotes the withdrawal rule's effect twice -- once at
+    matched contributions, once with both institutions running together --
+    to say it is large under either. Moving the headline household repointed
+    one frame and left the other reading it, so the paper printed one span,
+    called it two, and nothing in the build could tell: both numbers were
+    right, of one cell."""
+
+    @staticmethod
+    def _span(system: str) -> float:
+        import sys
+
+        sys.path.insert(0, str(PAPER.parent))
+        facts = pytest.importorskip("paper.facts")
+        gaps = facts.Facts(config_path=str(PAPER.parent / "config.yaml")) \
+            .table("ordering_gaps")
+        rows = gaps[gaps["system"] == system]
+        if not len(rows):
+            pytest.skip(f"{system} is not in the ordering grid")
+        return float(rows["gap_pct"].max() - rows["gap_pct"].min())
+
+    def test_the_conclusion_prints_both_of_them(self) -> None:
+        import re
+
+        from pypdf import PdfReader
+        from paper import short as sh
+
+        path = PAPER / "floor_beneath_the_portfolio.pdf"
+        if not path.exists():
+            pytest.skip("the short paper has not been built")
+        text = re.sub(r"\s+", " ", "\n".join(
+            (page.extract_text() or "")
+            for page in PdfReader(str(path)).pages))
+        head = text.index("The other thing the panel resolves comfortably")
+        block = text[head:head + 400]
+        for system in (sh.HEADLINE_SYSTEM, sh.LEGISLATED_SYSTEM):
+            assert f"{self._span(system):.0f} " in block, (system, block)
