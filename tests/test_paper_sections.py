@@ -1646,6 +1646,115 @@ class TestTheCorollaryBridgesToThePortfolio:
 
 
 
+class TestTheControlIsBesideTheSplit:
+    """Table 1 shows one pension and eight rules. On its own that is a
+    ranking of rules; the interaction needs the arm where the rule does
+    not change the sign. Without it a referee can read the whole result as
+    "balance-linked rules are better", which is true and is not the
+    finding."""
+
+    def test_the_untested_arm_is_reported_on_the_same_page(self) -> None:
+        import re
+
+        from pypdf import PdfReader
+
+        path = PAPER / "floor_beneath_the_portfolio.pdf"
+        if not path.exists():
+            pytest.skip("the short paper has not been built")
+        text = re.sub(r"\s+", " ", "\n".join(
+            (page.extract_text() or "")
+            for page in PdfReader(str(path)).pages))
+        assert "an interaction rather than a ranking of rules" in text
+        found = text.index("What we find")
+        assert text.index("not tested and none of them reverses", found) \
+            < text.index("differing in nothing else", found)
+
+    def test_the_control_arms_are_all_positive(self) -> None:
+        """The sentence claims every cell is positive under a pension that
+        is not asset-tested. Checked against the grid, because a rerun that
+        broke it would leave the claim on the page."""
+        import pandas as pd
+
+        path = (PAPER.parent / "results" / "tables" / "ordering_gaps.csv")
+        if not path.exists():
+            pytest.skip("the ordering grid has not been run")
+        gaps = pd.read_csv(path)
+        for arm in ("age_pension_untested", "us_social_security"):
+            block = gaps[gaps["system"] == arm]
+            assert len(block), arm
+            assert (block["gap_pct"] > 0).all(), (
+                arm, block.loc[block["gap_pct"] <= 0, "rule"].tolist())
+
+
+class TestTheReplicationSaysWhereItDeparts:
+    """Section 5 is called a replication and its international sleeve is
+    built differently from the replicated study's, which shows in the
+    output: the all-international column leads the fifty-fifty split,
+    which is not that study's headline. Stated as a deviation that is a
+    data-set difference; left for a reader to notice, it reads as a failed
+    replication."""
+
+    def test_the_deviations_are_tabulated(self) -> None:
+        import re
+
+        from pypdf import PdfReader
+
+        for name in ("floor_beneath_the_portfolio.pdf",
+                     "lifecycle_asset_allocation.pdf"):
+            path = PAPER / name
+            if not path.exists():
+                continue
+            text = re.sub(r"\s+", " ", "\n".join(
+                (page.extract_text() or "")
+                for page in PdfReader(str(path)).pages))
+            assert "Where this implementation departs" in text, name
+            assert "International sleeve" in text, name
+
+    def test_it_names_the_visible_consequence(self) -> None:
+        source = (PAPER / "content.py").read_text()
+        block = source[source.index("Where this implementation departs")
+                       - 3000:]
+        block = block[:block.index("Where this implementation departs")
+                      + 1500]
+        assert "all-international" in block
+        assert "fifty-fifty" in block
+
+
+class TestTheJackknifeStatesItsOwnDependence:
+    """The sixteen deletions are not independent draws, and one reason is
+    mechanical rather than historical: the international sleeve is a
+    leave-one-out average over the panel, so dropping a market rebuilds
+    every other market's foreign leg. Both make the standard error look
+    tighter than the evidence is, which is why the section leads with the
+    count."""
+
+    def test_the_deletion_rebuilds_the_panel(self) -> None:
+        """The premise. If the deletions ever stopped rebuilding the panel
+        the paragraph would be describing something the code no longer
+        does."""
+        source = open("main.py").read()
+        step = source[source.index("def step36_ordering"):
+                      source.index("def step37_ceiling")]
+        assert "build_tier_a(cfg, countries=list(kept))" in step
+
+    def test_the_paper_says_so_before_the_intervals(self) -> None:
+        import re
+
+        from pypdf import PdfReader
+
+        path = PAPER / "floor_beneath_the_portfolio.pdf"
+        if not path.exists():
+            pytest.skip("the short paper has not been built")
+        text = re.sub(r"\s+", " ", "\n".join(
+            (page.extract_text() or "")
+            for page in PdfReader(str(path)).pages))
+        head = text.index("How precisely the panel resolves")
+        caveat = text.index("also changes every other country", head)
+        table = text.index("Delete-one-country intervals", head)
+        assert caveat < table
+        assert "narrower than the evidence warrants" in text
+
+
 class TestTheProseUsesOneDash:
     """Both documents set an em dash 190-odd times and set `--` thirteen
     times, all of them in prose written as a docstring-style ASCII dash and

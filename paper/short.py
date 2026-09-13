@@ -504,6 +504,31 @@ def introduction(ctx: Any) -> List[Flowable]:
                  "year. Section #ordering gives the full grid, the "
                  "delete-one-country intervals and the other four pension "
                  "regimes."))
+        controls = []
+        for key, name in (("age_pension_untested",
+                           "the same flat pension without the test"),
+                          ("us_social_security",
+                           "an earnings-related pension")):
+            block = f.table("ordering_gaps")
+            block = block[block["system"] == key]
+            if not len(block):
+                continue
+            controls.append(
+                f"{float(block['gap_pct'].min()):+.2f}% to "
+                f"{float(block['gap_pct'].max()):+.2f}% under {name}")
+        if controls:
+            out.append(ctx.p(
+                f"<b>The control is what makes that an interaction rather "
+                f"than a ranking of rules.</b> Run the same eight rules "
+                f"against a pension that is not tested and none of them "
+                f"reverses anything: the eight run "
+                + _join(controls)
+                + f", every cell positive. The withdrawal rule is worth "
+                f"five to nine points of certainty-equivalent consumption "
+                f"whatever pension the household retires onto — that "
+                f"much is just a better rule — and it changes the "
+                f"<i>sign</i> of the portfolio comparison in one place "
+                f"only, which is where the test operates."))
         out.append(ctx.p(
             f"That is the paper's result, and the rest of it is an "
             f"account of why. The reversal below is the same fact stated "
@@ -1806,6 +1831,24 @@ def ordering(ctx: Any) -> List[Flowable]:
         "That is the error to weigh a sign against. Monte Carlo error is "
         "not: a hundred thousand paths drive it close to zero without "
         "adding a single country of evidence."))
+    out.append(ctx.p(
+        "Two things about that jackknife are worth stating before its "
+        "numbers are read, and both cut the same way. Each deletion "
+        "rebuilds the panel from the markets that remain, so removing one "
+        "country also changes every other country's international sleeve "
+        "— it is a leave-one-out average of the rest of the panel, "
+        "and dropping a market makes it an average of fourteen instead of "
+        "fifteen. That is the right counterfactual, since the question is "
+        "what this study would have concluded had the market never been "
+        "in the data, but it means the sixteen sub-panels overlap in their "
+        "construction as well as in their history. And the markets "
+        "themselves are not independent draws: they share the century's "
+        "wars and depressions, and the effective number of independent "
+        "long-run episodes is smaller than sixteen. Both make a standard "
+        "error built on these deletions narrower than the evidence "
+        "warrants, which is the second reason — the first being the "
+        "skew reported below — that this section leads with the count "
+        "of deletions that keep a sign rather than with the interval."))
     if band is not None and len(band):
         rows = [["Pension system", "Withdrawal rule", "Lead (%)",
                  "Jackknife s.e.", "95% interval", "Sign holds in all 16"]]

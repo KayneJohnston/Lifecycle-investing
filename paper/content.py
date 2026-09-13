@@ -2389,6 +2389,49 @@ def section_baseline(ctx: Any) -> List[Flowable]:
         f"conservative portfolio is not buying downside protection on this "
         f"panel. It is paying for the appearance of it."))
 
+    # What "replication" means here, in a table rather than in a reader's
+    # inference. This section reproduces a result on a panel and a pipeline
+    # that are close to the replicated study's and not identical to them,
+    # and one of the differences shows in the output: the all-international
+    # sleeve leads the fifty-fifty split, which is not that study's
+    # headline recommendation. Stated as a deviation it is a data-set
+    # difference; left for a reader to notice it is a failed replication.
+    out.extend(ctx.table(
+        [["What", "The replicated study", "Here", "Does it move the "
+          "ordering this paper is about?"],
+         ["Return panel", "Developed-market panel including proprietary "
+          "series", "Jordà–Schularick–Taylor, 16 markets, "
+          "openly licensed", "No: the all-equity lead over the glide "
+          "path survives, as the table above reports"],
+         ["International sleeve", "Broad global index",
+          "Leave-one-out average of the other 15 panel markets",
+          "It moves which <i>equity</i> sleeve wins — all-international "
+          "leads the fifty-fifty split here — and not the equity-"
+          "against-glide-path ordering"],
+         ["Public pension", "United States social security, fixed",
+          "A parameter; five regimes", "That is this paper's subject "
+          "rather than a deviation"],
+         ["Horizon", "Terminal age, certain",
+          "Terminal age in the baseline; survival-weighted alongside it",
+          "No: Section #ordering scores the whole grid under both "
+          "aggregations and no sign moves"],
+         ["Withdrawal rule", "Fixed real",
+          "Fixed real in the baseline; eight rules in the grid",
+          "Yes, and that is the paper's finding rather than an artefact "
+          "of the difference"]],
+        "Where this implementation departs from the study it replicates, "
+        "and what each departure does.",
+        anchor="baseline_deviations",
+        note="The first two rows are data-set differences and the last "
+             "three are design choices this paper makes deliberately. The "
+             "sleeve row is the one worth reading closely: a leave-one-out "
+             "international leg built from sixteen developed markets is a "
+             "different asset from a global index, and it is why the "
+             "all-international column wins a comparison the replicated "
+             "study does not report that way. Nothing in this paper turns "
+             "on that column.",
+        font_size=7.5))
+
     # A reader who meets Section #longevity first will have been told that
     # fixed-horizon ruin is the wrong measure, and will then find this
     # section leaning on it. The measure is the replicated study's and the
