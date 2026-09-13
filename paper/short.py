@@ -2616,38 +2616,64 @@ def limitations(ctx: Any) -> List[Flowable]:
             f"this panel, and no wider panel is available to say whether "
             f"they are representative.")
     line += (
+        " And the delete-one interval is not the only statement of that "
+        "uncertainty the paper makes. Section #ordering.7 resamples the "
+        "sixteen markets with replacement rather than deleting from them, "
+        "which drops the independence the jackknife assumes; the two agree "
+        "to within about a fifth of themselves and every sign survives "
+        "both. That is a check on the method of inference and not on the "
+        "panel: sixteen markets resampled sixteen at a time is still "
+        "sixteen markets, and the breadth limitation above is untouched by "
+        "it."
         " Nothing in this paper should be read as a point estimate, and "
         "every claim it makes is a claim about a sign.")
     out.append(ctx.p(line))
     out.append(ctx.h2("#limitations.2 One pension system, stylised"))
     out.append(ctx.p(
-        "Australia's Age Pension is modelled as an assets test alone: a "
-        "flat maximum rate, a free area, and a taper, re-assessed every "
-        "retirement year against the drawn-down balance. The real system "
-        "also applies an income test and a deeming rule, and pays the "
-        "lower of the two results; it treats the family home as exempt, "
-        "which moves a large share of Australian household wealth outside "
-        "the test entirely; and it pays couples at a different rate on "
-        "different thresholds. Each of those would change where a given "
-        "household sits against the cut-off. None of them changes the "
-        "shape of the budget line in Section "
+        f"Australia's Age Pension is modelled as an assets test alone: a "
+        f"flat maximum rate, a free area, and a taper, re-assessed every "
+        f"retirement year against the drawn-down balance. Two of the "
+        f"features that separate one real retiree from another under that "
+        f"test are carried: the family home's exemption, which moves a "
+        f"large share of Australian household wealth outside the test and "
+        f"which Section {SHORT_ORDER.index('incidence') + 1}.6 runs as its "
+        f"own free area, and a couple's joint assessment, which that "
+        f"section runs as its own threshold and rate. What is not carried "
+        f"is the income test and the deeming rule: the real scheme applies "
+        f"both and pays the lower of the two results, and a household whose "
+        f"income test binds harder than its assets test is solving a "
+        f"different problem from the one modelled here. That changes where "
+        f"a given household sits against the cut-off. It does not change "
+        f"the shape of the budget line in Section "
         f"{SHORT_ORDER.index('model') + 1}, which is what the argument "
-        f"turns on — but a reader wanting the number for a particular "
-        "Australian household will not find it here."))
+        f"turns on \u2014 but a reader wanting the number for a particular "
+        f"Australian household will not find it here."))
     out.append(ctx.h2("#limitations.3 The household is one household"))
     out.append(ctx.p(
         f"A single earner, a deterministic wage profile with a permanent "
         f"shock, no unemployment, no career break, no divorce, no "
-        f"bequest motive beyond a fixed weight, and a home that is not "
-        f"modelled. Section {SHORT_ORDER.index('incidence') + 1} moves the "
-        f"balance across the whole width of the assets test, which "
-        f"addresses the objection that the results were demonstrated on a "
-        f"household the test could not bind; it does not turn one "
-        f"household into a distribution of them. The households that "
-        f"actually cluster near the cut-off differ from this one in more "
-        f"than their balance, and whether those differences reinforce or "
-        f"offset the effect measured here is not something this design can "
-        f"say."))
+        f"bequest motive beyond a fixed weight, and no home held outside "
+        f"the portfolio. Section {SHORT_ORDER.index('incidence') + 1} "
+        f"moves the balance across the whole width of the assets test, and "
+        f"Section {SHORT_ORDER.index('incidence') + 1}.6 crosses that with "
+        f"the two schedule features that most separate real retirees "
+        f"\u2014 homeowner against renter, single against couple \u2014 "
+        f"finding the rule divide in every cell. Between them those answer "
+        f"the objection that the result was demonstrated on a household "
+        f"the test could not bind, and the objection that it was "
+        f"demonstrated on a household unlike the ones it does bind."))
+    out.append(ctx.p(
+        f"What they do not do is turn one household into a population. "
+        f"Every type in Section {SHORT_ORDER.index('incidence') + 1}.6 is "
+        f"run across the same grid of positions against its own test, "
+        f"which says whether the result holds for a kind of retiree and "
+        f"not how many retirees of that kind there are. Calibrating the "
+        f"wealth distribution to Australian household data would answer "
+        f"the second question and needs data this study does not carry. "
+        f"Nor is a couple here two people: the model has one earner, so a "
+        f"couple is one portfolio meeting a couple's schedule, which "
+        f"isolates the threshold and is not a couple's retirement "
+        f"problem."))
     out.append(ctx.h2("#limitations.4 No annuity, and no behaviour"))
     out.append(ctx.p(
         "The instrument that most directly supplies the floor this paper "

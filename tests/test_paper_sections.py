@@ -1760,6 +1760,67 @@ class TestTheJackknifeStatesItsOwnDependence:
         assert "narrower than the evidence warrants" not in text
 
 
+class TestTheLimitationsAreCurrent:
+    """A limitations section that lists as unmodelled something a later
+    section models is the defect a referee scores hardest, because it says
+    the two halves of the paper were written at different times.
+
+    Two ran stale at once when Sections 8.6 and 10.7 landed: 11.2 named
+    the family home's exemption and a couple's joint assessment as things
+    the model does not carry, and 11.3 said the balance sweep "does not
+    turn one household into a distribution of them" without mentioning the
+    four types now crossed with it.
+    """
+
+    @staticmethod
+    def _limitations() -> str:
+        import re
+
+        from pypdf import PdfReader
+
+        path = PAPER / "floor_beneath_the_portfolio.pdf"
+        if not path.exists():
+            pytest.skip("the short paper has not been built")
+        text = re.sub(r"\s+", " ", "\n".join(
+            (page.extract_text() or "")
+            for page in PdfReader(str(path)).pages))
+        head = text.index("What Would Change These Conclusions")
+        return text[head:text.index("12. Conclusion", head)]
+
+    def test_it_does_not_disown_the_two_features_now_modelled(self) -> None:
+        block = self._limitations()
+        assert "pays couples at a different rate on different thresholds" \
+            not in block
+        assert "a home that is not modelled" not in block
+
+    def test_it_names_what_is_still_missing(self) -> None:
+        """Narrowing a limitation is only honest if what remains is
+        stated. The income test and the deeming rule are still out."""
+        block = self._limitations()
+        assert "income test" in block
+        assert "deeming" in block
+
+    def test_it_points_at_the_section_that_answers_it(self) -> None:
+        block = self._limitations()
+        assert "homeowner against renter, single against couple" in block
+
+    def test_it_keeps_the_limitation_that_survives(self) -> None:
+        """The types answer "does it hold for this kind of retiree"; they
+        do not answer "how many are there". The section must not read as
+        though they did."""
+        block = self._limitations()
+        assert "turn one household into a population" in block
+        assert "wealth distribution to Australian household data" in block
+
+    def test_the_panel_limitation_cites_both_statements(self) -> None:
+        """Section 11.1 argued from the delete-one interval alone after
+        Section 10.7 gave the paper a second one."""
+        block = self._limitations()
+        assert "resamples the sixteen markets with replacement" in block
+        # And does not let the second one dissolve the first.
+        assert "still sixteen markets" in block
+
+
 class TestTheProseUsesOneDash:
     """Both documents set an em dash 190-odd times and set `--` thirteen
     times, all of them in prose written as a docstring-style ASCII dash and
