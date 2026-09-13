@@ -12596,6 +12596,228 @@ paths, gamma = {gamma:g}. Tables in `results/tables/ceiling_*.csv`.
     return _write(path, [intro, body])
 
 
+def write_doc_40(
+    path: str | Path,
+    cfg: Mapping[str, Any],
+    frames: Mapping[str, pd.DataFrame],
+    figures: Sequence[str],
+    notes: Mapping[str, Any],
+) -> Path:
+    """The interval the delete-one jackknife was understating, priced.
+
+    `docs/36` reports a delete-one-country jackknife and then concedes two
+    things that undercut it: the sixteen markets are not sixteen
+    independent draws, and the sub-panels overlap in construction because
+    the international sleeve is a leave-one-out average over whatever
+    markets remain. Both make its standard error too narrow. A section that
+    says so and then prints the interval owes a reader the factor.
+    """
+    found = notes["verdict"]
+    build = notes.get("construction", {})
+    gamma = float(notes["gamma"])
+    n_paths = int(notes["n_paths"])
+    draws = int(notes["draws"])
+    level = float(notes.get("level", 0.95))
+
+    intro = _header(
+        "40 - The Interval the Jackknife Understates",
+        "Resample the sixteen markets with replacement, rebuild the panel "
+        "from each draw -- which rebuilds the international sleeve with it "
+        "-- and re-run the cells the headlines come from. The spread across "
+        "resampled panels assumes nothing about how the deletions scatter "
+        "and nothing about their independence.")
+
+    band = frames.get("intervals")
+    band_tbl = ""
+    if band is not None and len(band):
+        band_tbl = md_table(band.rename(columns={
+            "system": "Pension system", "rule": "Withdrawal rule",
+            "gap_pct": "Lead (%)", "boot_se": "Resampled s.e.",
+            "ci_low": "Lower", "ci_high": "Upper",
+            "share_keeping_sign": "Share of panels keeping the sign"})[
+                ["Pension system", "Withdrawal rule", "Lead (%)",
+                 "Resampled s.e.", "Lower", "Upper",
+                 "Share of panels keeping the sign"]], floatfmt="{:.2f}")
+
+    compared = frames.get("compared")
+    compared_tbl = ""
+    if compared is not None and len(compared):
+        compared_tbl = md_table(compared.rename(columns={
+            "system": "Pension system", "rule": "Withdrawal rule",
+            "gap_pct": "Lead (%)", "jackknife_se": "Jackknife s.e.",
+            "bootstrap_se": "Resampled s.e.", "se_ratio": "Ratio",
+            "jackknife_excludes_zero": "Jackknife signs it",
+            "bootstrap_excludes_zero": "Resampling signs it"})[
+                ["Pension system", "Withdrawal rule", "Lead (%)",
+                 "Jackknife s.e.", "Resampled s.e.", "Ratio",
+                 "Jackknife signs it", "Resampling signs it"]],
+            floatfmt="{:.2f}")
+
+    if not found.get("measured"):
+        verdict_line = ("Nothing was classified, so this document reports "
+                        "no verdict.")
+    else:
+        lost = found["signs_lost"]
+        verdict_line = (
+            (f"**The jackknife was understating by about "
+             f"{found['median_se_ratio']:.2f} times.**"
+             if found["bootstrap_wider_everywhere"] else
+             f"**The jackknife was not materially understating.**")
+            + f" Across "
+            f"{found['cells']} cells the resampled standard error is "
+            f"{found['narrowest_se_ratio']:.2f} to "
+            f"{found['widest_se_ratio']:.2f} times the delete-one one, "
+            f"with a median of {found['median_se_ratio']:.2f}. Wider in "
+            f"every cell: {found['bootstrap_wider_everywhere']}. "
+            + ("That is the direction `docs/36` expected when it noted "
+               "that its deletions were neither independent of one "
+               "another nor independent in construction, and this is the "
+               "size of it."
+               if found["bootstrap_wider_everywhere"] else
+               "`docs/36` is right that its deletions are neither "
+               "independent of one another nor independent in "
+               "construction. It does not follow that the interval built "
+               "on them must be materially too narrow, and on this panel "
+               "it is not: the two statements of the same uncertainty "
+               "agree to within about a fifth of themselves.") + "\n\n"
+            + ("**And every sign the jackknife carried survives the "
+               "resampled interval.** No cell the delete-one interval "
+               "excluded zero "
+               "for is unsigned once the panel is resampled, so the "
+               "paper's findings do not rest on the assumption the "
+               "jackknife was making."
+               if found["every_sign_survives"] else
+               f"**And the wider interval costs the paper "
+               f"{len(lost)} of its signs**: {', '.join(lost)}. Those "
+               f"cells were signed under an assumption this document "
+               f"shows does not hold, and the paper reports them as "
+               f"unresolved."))
+    if found.get("headline"):
+        h = found["headline"]
+        verdict_line += (
+            f"\n\nThe cell the paper leads with, in full: "
+            f"{h['gap_pct']:+.2f}% with a delete-one standard error of "
+            f"{h['jackknife_se']:.2f} and a resampled one of "
+            f"{h['bootstrap_se']:.2f}, a factor of {h['se_ratio']:.2f}. "
+            + ("It is still signed." if h["still_signed"]
+               else "It is no longer signed."))
+
+    construction = frames.get("construction")
+    build_tbl = ""
+    if construction is not None and len(construction):
+        build_tbl = md_table(construction.rename(columns={
+            "arm_label": "Construction", "system": "Pension system",
+            "rule": "Withdrawal rule", "gap_pct": "Lead (%)"})[
+                ["Construction", "Pension system", "Withdrawal rule",
+                 "Lead (%)"]], floatfmt="{:.2f}")
+    if not build.get("measured"):
+        build_line = ("The construction choices were not swept in this "
+                      "run.")
+    elif build["every_sign_holds"]:
+        build_line = (
+            f"**Neither construction choice moves a sign.** Weighting the "
+            f"countries uniformly rather than by the length of their "
+            f"histories, and building the international sleeve by GDP "
+            f"rather than equally, move the leads by "
+            f"{build['median_move_pp']:.2f} percentage points at the "
+            f"median and {build['largest_move_pp']:.2f} at the worst "
+            f"({build['worst']}), and every sign holds in all "
+            f"{build['cells']} cells. The companion study reports the same "
+            f"for its own results; a headline this paper carries is now "
+            f"checked in this paper.")
+    else:
+        build_line = (
+            f"**A construction choice does move a sign.** Of "
+            f"{build['cells']} cells across {build['arms']} arms, "
+            f"{build['signs_held']} hold their sign and the rest do not, "
+            f"the worst move being {build['largest_move_pp']:.2f} "
+            f"percentage points at {build['worst']}. That is a finding "
+            f"about the panel's construction rather than about pensions, "
+            f"and the paper reports it as one.")
+
+    body = f"""
+## 1. Why the delete-one interval is not enough
+
+`docs/36` recomputes every cell sixteen times, once with each market's
+history removed, and reports the spread as the sampling error the panel
+carries. It then concedes two things about that procedure.
+
+The markets are not independent draws. They share the century's wars and
+depressions, so the effective number of independent long-run episodes is
+smaller than sixteen.
+
+And the deletions overlap in *construction*, not only in history. The
+international sleeve is a leave-one-out average over whatever markets
+remain, so removing one country rebuilds every other country's foreign
+leg. That is the right counterfactual -- the question is what the study
+would have concluded had the market never been recorded -- but it means
+the sub-panels are built from one another.
+
+Both push the same way: the standard error is too narrow. Conceding that
+and then printing the interval is not a stable position, and the machinery
+that produced the deletions can answer the obvious question.
+
+## 2. What this does instead
+
+Draw sixteen markets with replacement from the sixteen, rebuild the panel
+from the draw, and re-run the cells the headlines come from. {draws:,}
+replicates at {n_paths:,} paths each.
+
+A draw can take the same market twice and omit others. `build_tier_a`
+collapses the duplicate when it builds the panel, so the multiplicity is
+carried where it belongs instead: a market drawn twice is made twice as
+likely to be the market a simulated lifetime lives in. Without that the
+resampling would quietly degenerate into sampling subsets without
+replacement, which is a weaker and different statement.
+
+The sleeve is built from the *distinct* markets of each draw, so the
+resampling is exact in the domestic dimension and approximate in the
+foreign one. A fifteen-market average changes little when one of its
+members is duplicated, and saying so is better than leaving a reader to
+assume it was handled either way.
+
+## 3. The resampled intervals
+
+{band_tbl}
+
+Percentile intervals at the {level:.0%} level, not normal-approximation
+ones: the reason for running this at all is that `docs/36` distrusts the
+normal approximation its own deletions support.
+
+## 4. Against the delete-one interval
+
+{compared_tbl}
+
+{verdict_line}
+
+## 5. And the two construction choices
+
+{build_tbl}
+
+{build_line}
+
+## 6. What this cannot do
+
+It cannot manufacture information the panel does not carry. Sixteen
+developed markets resampled sixteen at a time is still sixteen markets,
+and the resampling inherits every selection effect in what was recorded
+and openly licensed. This is a better-calibrated statement of the same
+evidence, not more evidence. The paper's breadth limitation is unchanged
+and is set out in its own section.
+
+## 7. Reproduction
+
+```
+python main.py --steps 40
+```
+
+At risk aversion {gamma:g}. The point estimate is recomputed on the same
+cells at the same path count as the replicates, so the comparison is not
+part Monte Carlo difference.
+"""
+    return _write(path, [intro, body])
+
+
 def write_doc_39(
     path: str | Path,
     cfg: Mapping[str, Any],

@@ -4844,3 +4844,71 @@ def plot_typology(best: pd.DataFrame, divide: pd.DataFrame,
         fig.suptitle("The rule divide, by the household the test sees",
                      fontsize=9.5, y=0.995)
         return _save(fig, directory, name)
+
+
+def plot_resample(replicates: pd.DataFrame, band: pd.DataFrame,
+                  compared: pd.DataFrame, construction: pd.DataFrame,
+                  directory: str | Path,
+                  name: str = "fig69_resample") -> Path:
+    """What the panel's uncertainty looks like when the panel is resampled.
+
+    Left, the sampling distribution of the headline cell across resampled
+    panels, with the point estimate and the percentile interval drawn on
+    it. Right, the two intervals side by side for every cell a headline is
+    drawn from: the delete-one jackknife, which assumes the deletions are
+    independent, and the resampled one, which does not.
+
+    The figure exists to make one comparison visible: how much of the
+    jackknife's precision was the independence assumption.
+    """
+    with plt.rc_context(STYLE):
+        fig, axes = _grid(2, 3.0, max_cols=2, hspace=0.5)
+        left, right = axes[0], axes[1]
+
+        head = None
+        if len(band):
+            head = band.iloc[int(band["gap_pct"].abs().idxmin())] \
+                if "gap_pct" in band else band.iloc[0]
+        if len(replicates) and head is not None:
+            block = replicates[(replicates["system"] == head["system"])
+                               & (replicates["rule"] == head["rule"])]
+            values = block["gap_pct"].to_numpy(dtype=float)
+            values = values[np.isfinite(values)]
+            if len(values):
+                left.hist(values, bins=28, color=PALETTE[0], alpha=0.75,
+                          edgecolor="white", linewidth=0.4)
+                left.axvline(0.0, color="black", linewidth=1.0)
+                left.axvline(float(head["gap_pct"]), color=PALETTE[1],
+                             linewidth=1.8, label="point estimate")
+                for edge in ("ci_low", "ci_high"):
+                    left.axvline(float(head[edge]), color=PALETTE[1],
+                                 linewidth=1.0, linestyle="--")
+                left.legend(fontsize=6.8, loc="upper right")
+        left.set_title("The headline cell across resampled panels",
+                       fontsize=8)
+        left.set_xlabel("All-equity lead (%)", fontsize=7)
+        left.set_ylabel("Resampled panels", fontsize=7)
+
+        if len(compared):
+            order = compared.reset_index(drop=True)
+            y = np.arange(len(order))
+            for offset, (se_col, colour, shown) in enumerate((
+                    ("jackknife_se", PALETTE[2], "delete-one jackknife"),
+                    ("bootstrap_se", PALETTE[0], "resampled panel"))):
+                centre = order["gap_pct"].to_numpy(dtype=float)
+                half = 1.96 * order[se_col].to_numpy(dtype=float)
+                right.errorbar(centre, y + (offset - 0.5) * 0.28,
+                               xerr=half, fmt="o", markersize=3.2,
+                               linewidth=1.4, color=colour, label=shown)
+            right.axvline(0.0, color="black", linewidth=1.0)
+            right.set_yticks(y)
+            right.set_yticklabels(
+                [f"{SYSTEM_LABEL.get(str(r['system']), str(r['system']))}\\n"
+                 f"{r['rule']}" for _, r in order.iterrows()], fontsize=6)
+            right.legend(fontsize=6.8, loc="lower right")
+        right.set_title("Two intervals on the same cells", fontsize=8)
+        right.set_xlabel("All-equity lead (%)", fontsize=7)
+
+        fig.suptitle("What the delete-one interval was assuming",
+                     fontsize=9.5, y=0.995)
+        return _save(fig, directory, name)

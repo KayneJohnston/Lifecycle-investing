@@ -1329,6 +1329,39 @@ typology:
   # half again as generous as the published pair.
   free_area_ratios: [1.00, 1.25, 1.50, 1.75, 2.25]
 
+# ---------------------------------------------------------------------
+# Step 40 - the interval the jackknife understates
+# ---------------------------------------------------------------------
+# Section #ordering.3 concedes two things about its delete-one jackknife:
+# the sixteen markets are not sixteen independent draws, and the sub-panels
+# overlap in construction because the international sleeve is a
+# leave-one-out average over whatever remains. Both make its standard error
+# too narrow, and a section that says so without saying by how much is in
+# an unstable position. This resamples the panel instead.
+resample:
+  enabled: true
+  # Per replicate. Lower than the jackknife's 50,000 because there are
+  # hundreds of replicates rather than sixteen deletions, and Monte Carlo
+  # error inside a replicate is averaged away across them where panel
+  # uncertainty -- the thing being measured -- is not.
+  n_paths: 20000
+  replicates: 200
+  seed: 20260913
+  # Only the cells a headline is drawn from. Running the whole 5 x 8 grid
+  # two hundred times would cost forty times as much to populate rows
+  # nothing in the argument reads.
+  systems: [us_social_security, age_pension_matched, australia_as_legislated]
+  rules: [fixed_real_rule, "amortisation at 6%"]
+  # The cell the paper leads with, reported in full.
+  headline_system: age_pension_matched
+  headline_rule: fixed_real_rule
+  level: 0.95
+  # And the two construction choices the panel's design makes, which the
+  # paper has been taking on the companion study's word. A headline this
+  # paper carries should be checked in this paper.
+  construction_enabled: true
+  construction_n_paths: 50000
+
 gate:
   enabled: true
   # Matched to the leisure study's count so a row here can be set beside a

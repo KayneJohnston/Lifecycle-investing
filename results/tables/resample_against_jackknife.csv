@@ -1,0 +1,7 @@
+system,rule,gap_pct,jackknife_se,bootstrap_se,se_ratio,jackknife_excludes_zero,bootstrap_excludes_zero,agree
+age_pension_matched,fixed_real_rule,-12.928185416976524,4.568642978727865,4.776957207945749,1.0455965218091716,True,True,True
+age_pension_matched,amortisation at 6%,19.535181652999366,3.294590520232791,2.618112998249899,0.7946702275052097,True,True,True
+australia_as_legislated,fixed_real_rule,-3.901822747367756,10.345255591840624,6.040259960338796,0.5838676392976497,False,False,True
+australia_as_legislated,amortisation at 6%,24.564037593702402,3.718343399064312,3.0253026131323675,0.8136157122802745,True,True,True
+us_social_security,fixed_real_rule,11.004403403001373,2.3461834830330246,1.9110821580276434,0.8145493188610702,True,True,True
+us_social_security,amortisation at 6%,20.145817628202998,3.7515693034702617,3.015642643942932,0.80383498211093,True,True,True

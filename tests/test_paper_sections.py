@@ -1752,7 +1752,12 @@ class TestTheJackknifeStatesItsOwnDependence:
         caveat = text.index("also changes every other country", head)
         table = text.index("Delete-one-country intervals", head)
         assert caveat < table
-        assert "narrower than the evidence warrants" in text
+        # And it stops at the dependence rather than inferring a
+        # direction from it. The resampling in Section 10.7 measures the
+        # direction and does not support the inference, so a section that
+        # still asserted it would contradict the one after it.
+        assert "Neither is a reason to trust" in text
+        assert "narrower than the evidence warrants" not in text
 
 
 class TestTheProseUsesOneDash:
@@ -2217,10 +2222,10 @@ class TestTheFigureAndTheTableNameTheArmsAlike:
         from src import plots
 
         source = (PAPER / "short.py").read_text()
-        block = source[source.index('    label = {"us_social_security"'):]
+        block = source[source.index("SYSTEM_LABEL: Dict[str, str] = {"):]
         block = block[:block.index("}")]
         paper_names = dict(re.findall(r'"([a-z_]+)":\s*"([^"]+)"', block))
-        assert paper_names, "the ordering section's label map moved"
+        assert paper_names, "the paper's own system-label map moved"
         for key, name in paper_names.items():
             assert plots.SYSTEM_LABEL.get(key) == name, (
                 f"{key} is '{name}' in the table and "

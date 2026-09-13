@@ -19,6 +19,7 @@ import contextlib
 from typing import Any, Dict, List, Sequence, Tuple
 
 import numpy as np
+import pandas as pd
 
 from reportlab.platypus import (Flowable, NextPageTemplate, PageBreak,
                                 Paragraph)
@@ -31,6 +32,18 @@ from reportlab.platypus import (Flowable, NextPageTemplate, PageBreak,
 from . import build_paper as _bp
 
 ct = _bp.content
+
+#: The pension regimes as a table column names them. Two sections print
+#: them now -- Section #ordering's grid and Section #ordering.7's interval
+#: comparison -- and a map defined inside one function that a second
+#: function needs is how a heading ends up saying `age_pension_matched`.
+SYSTEM_LABEL: Dict[str, str] = {
+    "us_social_security": "United States, 10% saving",
+    "us_matched_saving": "United States, 20.2% saving",
+    "age_pension_untested": "Age Pension, no means test",
+    "age_pension_matched": "Means-tested, 10% saving",
+    "australia_as_legislated": "Australia as legislated",
+}
 
 #: The reading order of the short paper. The middle three sections are the
 #: argument; the rest is the minimum a reader needs to evaluate it.
@@ -1723,11 +1736,7 @@ def ordering(ctx: Any) -> List[Flowable]:
                          "age_pension_untested", "age_pension_matched",
                          "australia_as_legislated")
              if x in set(gapped["system"])]
-    label = {"us_social_security": "United States, 10% saving",
-             "us_matched_saving": "United States, 20.2% saving",
-             "age_pension_untested": "Age Pension, no means test",
-             "age_pension_matched": "Means-tested, 10% saving",
-             "australia_as_legislated": "Australia as legislated"}
+    label = SYSTEM_LABEL
 
     out: List[Flowable] = [
         ctx.h1("#ordering. Which Portfolio Wins, and Under Which Rule")]
@@ -2000,11 +2009,14 @@ def ordering(ctx: Any) -> List[Flowable]:
         "construction as well as in their history. And the markets "
         "themselves are not independent draws: they share the century's "
         "wars and depressions, and the effective number of independent "
-        "long-run episodes is smaller than sixteen. Both make a standard "
-        "error built on these deletions narrower than the evidence "
-        "warrants, which is the second reason — the first being the "
-        "skew reported below — that this section leads with the count "
-        "of deletions that keep a sign rather than with the interval."))
+        "long-run episodes is smaller than sixteen. Neither is a reason to "
+        "trust a standard error built on these deletions without checking "
+        "it, and the first reason — the skew reported below — is "
+        "why this section leads with the count of deletions that keep a "
+        "sign rather than with the interval. Section #ordering.7 checks "
+        "the interval itself, by resampling the panel rather than deleting "
+        "from it, and reports how far the two statements of the same "
+        "uncertainty differ."))
     if band is not None and len(band):
         rows = [["Pension system", "Withdrawal rule", "Lead (%)",
                  "Jackknife s.e.", "95% interval", "Sign holds in all 16"]]
@@ -2269,6 +2281,205 @@ def ordering(ctx: Any) -> List[Flowable]:
         "shared scale; the zero line is the ranking, the outlined bar is "
         "the rule the rest of this paper spends by, and the whiskers are "
         "delete-one-country 95% intervals where they were computed.")
+    out.extend(_resampled(ctx, f))
+    return out
+
+
+def _resampled(ctx: Any, f: Any) -> List[Flowable]:
+    """The interval the section above concedes it is not printing.
+
+    Section #ordering.3 says two things that undercut its own jackknife:
+    the sixteen markets are not independent draws, and the sub-panels
+    overlap in construction because the international sleeve is a
+    leave-one-out average over whatever remains. Both make its standard
+    error too narrow.
+
+    Conceding that and then printing the interval is not a position a
+    paper can hold. The machinery that produced the deletions answers the
+    obvious question -- by how much -- and this reports the answer.
+    """
+    out: List[Flowable] = []
+    try:
+        compared = f.table("resample_against_jackknife")
+    except (FileNotFoundError, OSError):
+        return out
+    if not len(compared):
+        return out
+    from src import resample as rs
+
+    baseline_rule = str(f.cfg["lifecycle"]["retirement"]["rule"])
+    block = f.cfg.get("resample", {})
+    head = (str(block.get("headline_system", "age_pension_matched")),
+            str(block.get("headline_rule", baseline_rule)))
+    found = rs.verdict(compared, head)
+    if not found.get("measured"):
+        return out
+    draws = int(block.get("replicates", 0))
+
+    out.append(ctx.h2("#ordering.7 How much of that precision was the "
+                      "assumption"))
+    out.append(ctx.p(
+        f"Section #ordering.3 reports a delete-one interval and says, "
+        f"before printing it, that the markets are not independent draws "
+        f"and that the deletions overlap in construction. The natural "
+        f"inference is that the standard error is too narrow, and a "
+        f"natural inference is not a measurement. So the panel is "
+        f"resampled instead: {draws:,} times, sixteen markets "
+        f"drawn from the sixteen <i>with replacement</i>, the panel and "
+        f"its international sleeve rebuilt from each draw, and the cells "
+        f"the headlines come from re-run on it. The spread across "
+        f"resampled panels assumes nothing about how the deletions "
+        f"scatter and nothing about their independence, because it has no "
+        f"deletions in it."))
+    out.extend(ctx.table(
+        [["Pension system", "Withdrawal rule", "Lead (%)",
+          "Delete-one s.e.", "Resampled s.e.", "Ratio", "Signed by both?"]]
+        + [[SYSTEM_LABEL.get(str(r["system"]), str(r["system"])),
+            rule_label(str(r["rule"])),
+            f"{float(r['gap_pct']):+.2f}",
+            f"{float(r['jackknife_se']):.2f}",
+            f"{float(r['bootstrap_se']):.2f}",
+            f"{float(r['se_ratio']):.2f}",
+            ("yes" if bool(r["jackknife_excludes_zero"])
+             and bool(r["bootstrap_excludes_zero"])
+             else "neither" if not bool(r["jackknife_excludes_zero"])
+             and not bool(r["bootstrap_excludes_zero"])
+             else "delete-one only")]
+           for _, r in compared.iterrows()],
+        "The same cells under two statements of the panel's uncertainty: "
+        "the delete-one jackknife, and sixteen markets resampled with "
+        "replacement.",
+        anchor="resample_against_jackknife",
+        note="Resampled intervals are percentile intervals over the "
+             "replicates rather than normal approximations, because the "
+             "normal approximation is the part Section #ordering.3 "
+             "distrusts. The point estimate is recomputed on the same "
+             "cells at the same path count as the replicates, so the "
+             "ratio is not part Monte Carlo difference. A draw may take a "
+             "market twice; the multiplicity is carried in how likely "
+             "that market is to be the one a simulated lifetime lives in, "
+             "because the panel builder collapses the duplicate.",
+        font_size=7.2))
+
+    lead = ("<b>The concession was right, and this is its size.</b>"
+            if found["bootstrap_wider_everywhere"] else
+            "<b>The concession turns out to have been too pessimistic.</b>")
+    wider_in = int((compared["se_ratio"] > 1.0).sum())
+    out.append(ctx.p(
+        f"{lead} The resampled standard error runs "
+        f"{found['narrowest_se_ratio']:.2f} to "
+        f"{found['widest_se_ratio']:.2f} times the delete-one one, with a "
+        f"median of {found['median_se_ratio']:.2f}"
+        + (f" — wider in every cell. A reader should discount every "
+           f"delete-one number in this paper by about that factor rather "
+           f"than by an unstated one."
+           if found["bootstrap_wider_everywhere"] else
+           f". It is not uniformly wider: at the median it is "
+           f"<i>narrower</i>, and it exceeds the delete-one figure in "
+           f"{_spelled(wider_in)} of {_spelled(len(compared))} cells. The "
+           f"two statements of the panel's uncertainty agree to within "
+           f"about a fifth of themselves. Section #ordering.3 is right "
+           f"that its deletions are neither independent of one another "
+           f"nor independent in construction; it does not follow that its "
+           f"interval is materially too narrow, and on this panel it is "
+           f"not. We would rather report that than leave a hedge standing "
+           f"that the measurement does not support.")))
+
+    if found["every_sign_survives"]:
+        out.append(ctx.p(
+            f"<b>And every sign survives it.</b> No cell the delete-one "
+            f"interval excluded zero for is unsigned once the panel is "
+            f"resampled. The paper's findings therefore do not rest on "
+            f"the assumption the jackknife was making, which is the point "
+            f"of measuring rather than conceding: a concession leaves a "
+            f"reader to guess whether the finding would survive being "
+            f"priced properly, and this says that it does."))
+    else:
+        lost = ", ".join(str(x) for x in found["signs_lost"])
+        out.append(ctx.p(
+            f"<b>And it costs the paper a sign.</b> "
+            f"{lost} is signed by the delete-one interval and not by the "
+            f"resampled one. That cell was signed under an assumption "
+            f"this measurement shows does not hold, so it joins the "
+            f"legislated cell among the results this cross-section cannot "
+            f"resolve, and every sentence resting on it is withdrawn."))
+
+    if found.get("headline"):
+        h = found["headline"]
+        out.append(ctx.p(
+            f"The cell the paper leads with, in full: "
+            f"{h['gap_pct']:+.2f}% with a delete-one standard error of "
+            f"{h['jackknife_se']:.2f} and a resampled one of "
+            f"{h['bootstrap_se']:.2f}, a factor of {h['se_ratio']:.2f}. "
+            + ("It is still signed, and it is signed on the statistic "
+               "this section has argued for throughout rather than on the "
+               "one it distrusts."
+               if h["still_signed"] else
+               "It is no longer signed, and the paper's headline is "
+               "withdrawn to the count of sub-panels that keep it.")))
+
+    try:
+        construction = f.table("resample_construction")
+    except (FileNotFoundError, OSError):
+        construction = None
+    if construction is not None and len(construction):
+        build = rs.construction_verdict(construction, "baseline")
+        if build.get("measured"):
+            body = (
+                f"<b>Two construction choices, checked here rather than "
+                f"cited.</b> How a lifetime's home market is drawn "
+                f"— in proportion to the length of its recorded "
+                f"history, or uniformly — and how the international "
+                f"sleeve is weighted are decisions the panel's design "
+                f"makes, and this paper has been taking the companion "
+                f"study's word that neither matters. Across "
+                f"{_spelled(build['arms'])} arms and "
+                f"{_spelled(build['cells'])} cells they move the leads by "
+                f"{build['median_move_pp']:.2f} percentage points at the "
+                f"median and {build['largest_move_pp']:.2f} at the worst"
+            )
+            already = rs.moved_signs_were_already_unsigned(
+                build,
+                f.table("ordering_intervals") if _has(f, "ordering_intervals")
+                else pd.DataFrame())
+            if build["every_sign_holds"]:
+                body += ", and every sign holds."
+            elif already.get("all_already_unsigned"):
+                worst = (
+                    f"{build['worst_arm_label']}, "
+                    f"{SYSTEM_LABEL.get(build['worst_system'], build['worst_system'])}"
+                    f" under {rule_label(build['worst_rule'])}")
+                body += (
+                    f", and one sign does not hold: {worst}. That "
+                    f"cell is the legislated arm under a fixed real "
+                    f"withdrawal — the one this paper has declined to "
+                    f"sign since Section #introduction.1, on an interval "
+                    f"containing zero and a count of eight sub-panels in "
+                    f"sixteen. A construction choice that moves only the "
+                    f"sign the paper already refuses to report is a check "
+                    f"that agreed with it, and every cell the paper does "
+                    f"sign holds its sign under both choices.")
+            else:
+                body += (
+                    f", and a sign the paper reports does not hold: "
+                    f"{', '.join(already.get('signed_cells_moved', ()))}. "
+                    f"That is a result about the panel's construction "
+                    f"rather than about pensions, and the cell is "
+                    f"withdrawn to construction-dependent.")
+            out.append(ctx.p(body))
+
+    out.append(ctx.p(
+        "None of this manufactures evidence. Sixteen developed markets "
+        "resampled sixteen at a time is still sixteen markets, and the "
+        "resampling inherits every selection effect in what was recorded "
+        "and openly licensed. What it does is stop the paper quoting an "
+        "interval it has told the reader not to believe."))
+    out.extend(ctx.figure(
+        "fig69_resample",
+        "What the delete-one interval was assuming. Left, the headline "
+        "cell across resampled panels, with the point estimate and the "
+        "percentile interval on it. Right, the same cells under both "
+        "statements of the panel's uncertainty."))
     return out
 
 

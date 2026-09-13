@@ -1,0 +1,19 @@
+arm,arm_label,system,rule,challenger,incumbent,gap_pct,leader,best_strategy,best_cec
+baseline,"as configured (history weighting, equal sleeve)",age_pension_matched,fixed_real_rule,0.4129805244728724,0.47503031130224693,-13.062279469971372,target_date_fund,target_date_fund,0.47503031130224693
+baseline,"as configured (history weighting, equal sleeve)",age_pension_matched,amortisation at 6%,1.0313238541990613,0.8616385155689527,19.693332594128865,balanced_all_equity,international_equity,1.1109680332891951
+baseline,"as configured (history weighting, equal sleeve)",australia_as_legislated,fixed_real_rule,0.64111077903984,0.6546978833282056,-2.0753243036764513,target_date_fund,target_date_fund,0.6546978833282056
+baseline,"as configured (history weighting, equal sleeve)",australia_as_legislated,amortisation at 6%,1.3361507086736706,1.0700553077456825,24.867443673409674,balanced_all_equity,international_equity,1.4578544088786938
+baseline,"as configured (history weighting, equal sleeve)",us_social_security,fixed_real_rule,1.0493326019515596,0.9446112745066872,11.086182249895549,balanced_all_equity,international_equity,1.1094293553441226
+baseline,"as configured (history weighting, equal sleeve)",us_social_security,amortisation at 6%,1.2431410086727492,1.033845582770962,20.244360414136864,balanced_all_equity,international_equity,1.3474845436465455
+uniform_countries,countries weighted uniformly,age_pension_matched,fixed_real_rule,0.42091243654458693,0.47673551300961053,-11.70944369397089,target_date_fund,target_date_fund,0.47673551300961053
+uniform_countries,countries weighted uniformly,age_pension_matched,amortisation at 6%,1.0304511503060334,0.8610355340251981,19.675798452689342,balanced_all_equity,international_equity,1.1108278256245008
+uniform_countries,countries weighted uniformly,australia_as_legislated,fixed_real_rule,0.6498764810377372,0.6585382755458278,-1.3153061605889582,target_date_fund,target_date_fund,0.6585382755458278
+uniform_countries,countries weighted uniformly,australia_as_legislated,amortisation at 6%,1.3333829930094856,1.0687595518324116,24.759866774839235,balanced_all_equity,international_equity,1.4578391070913161
+uniform_countries,countries weighted uniformly,us_social_security,fixed_real_rule,1.0490432850238272,0.9448723064516035,11.024873716897243,balanced_all_equity,international_equity,1.1101647905062293
+uniform_countries,countries weighted uniformly,us_social_security,amortisation at 6%,1.2422497273472761,1.0340651129001137,20.13264076410941,balanced_all_equity,international_equity,1.3488332486440415
+gdp_sleeve,GDP-weighted international sleeve,age_pension_matched,fixed_real_rule,0.4179751455117532,0.47507574186488877,-12.019261629522425,target_date_fund,target_date_fund,0.47507574186488877
+gdp_sleeve,GDP-weighted international sleeve,age_pension_matched,amortisation at 6%,1.0618640705202027,0.876053819963137,21.20991271573751,balanced_all_equity,international_equity,1.12592652050983
+gdp_sleeve,GDP-weighted international sleeve,australia_as_legislated,fixed_real_rule,0.6652249504489965,0.6608825898312901,0.6570547756167944,balanced_all_equity,balanced_all_equity,0.6652249504489965
+gdp_sleeve,GDP-weighted international sleeve,australia_as_legislated,amortisation at 6%,1.3824793843221475,1.0932756761447209,26.452953677453216,balanced_all_equity,international_equity,1.465151598937889
+gdp_sleeve,GDP-weighted international sleeve,us_social_security,fixed_real_rule,1.072391566376725,0.9564767875710347,12.118932765744894,balanced_all_equity,international_equity,1.1109122166039078
+gdp_sleeve,GDP-weighted international sleeve,us_social_security,amortisation at 6%,1.2822425112338107,1.0516123143275309,21.931104625164053,balanced_all_equity,international_equity,1.3608318916936806

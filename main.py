@@ -62,6 +62,7 @@ from src import sensitivity as sn
 from src import spending as spg
 from src import tax as tx
 from src import turnover as tn
+from src import resample as rs
 from src import typology as ty
 from src import utility as ut
 
@@ -5756,6 +5757,212 @@ def step39_typology(cfg: Dict[str, Any],
     return state
 
 
+def step40_resample(cfg: Dict[str, Any],
+                    state: Dict[str, Any]) -> Dict[str, Any]:
+    """Resample the panel, and price what the jackknife was understating."""
+    block = cfg.get("resample", {})
+    if not block.get("enabled", False):
+        LOGGER.info("resample study disabled; skipping step 40")
+        return state
+    LOGGER.info("=== STEP 40: the interval the jackknife understates ===")
+    started = time.perf_counter()
+
+    panel = state.get("panel") or dl.build_panel(cfg)
+    spec = state.get("spec") or lc.spec_from_config(cfg)
+    ordering_cfg = cfg.get("ordering", {})
+    gamma = float(cfg["utility"]["baseline_risk_aversion"])
+    beta = float(cfg["utility"]["discount_factor"])
+    util = cfg["utility"]
+    seed = int(cfg["run"]["seed"])
+    chunk_size = int(cfg["bootstrap"].get("chunk_size", 25000))
+    countries = list(panel.countries)
+
+    # The same regimes and the same rule menu as Section #ordering builds,
+    # so the cells resampled here are the cells whose intervals this is
+    # widening rather than a re-specified approximation of them.
+    designed = pn.default_systems(
+        spec.savings_rate, pn.from_config(cfg),
+        float(cfg.get("pension", {}).get("sg_rate", pn.SG_RATE)),
+        float(cfg.get("pension", {}).get("sg_contributions_tax",
+                                         pn.SG_CONTRIBUTIONS_TAX)))
+    by_key = pn.specs(spec, designed)
+    systems = [str(x) for x in block.get("systems", tuple(by_key))]
+    unknown = [x for x in systems if x not in by_key]
+    if unknown:
+        raise ValueError(f"unknown pension regime {unknown!r}; the design "
+                         f"carries {sorted(by_key)}")
+    strategies = [str(x) for x in
+                  ordering_cfg.get("strategies", odr.HEADLINE)]
+
+    baseline_rule = str(spec.retirement_rule)
+    menu: List[Tuple[str, Any]] = [
+        (baseline_rule, spg.from_spec(baseline_rule, spec.rule_rate))]
+    percent = float(ordering_cfg.get("percent_rate", spec.rule_rate))
+    menu.append((f"constant_percent at {percent:.0%}",
+                 spg.build("constant_percent", rate=percent)))
+    for value in [float(x) for x in
+                  ordering_cfg.get("assumed_return_grid", ())]:
+        menu.append((f"amortisation at {value:.0%}",
+                     spg.build("amortisation", assumed_return=value)))
+    wanted = set(str(x) for x in block.get("rules", ()))
+    rules = [(key, rule) for key, rule in menu if key in wanted]
+    missing = wanted - {key for key, _ in rules}
+    if missing:
+        raise ValueError(f"resample rules not in the ordering menu: "
+                         f"{sorted(missing)}; it carries "
+                         f"{[k for k, _ in menu]}")
+    _rule_key = {id(rule): key for key, rule in rules}
+
+    def _cells_on(active_panel: Any, n_paths: int,
+                  probs: "np.ndarray | None" = None) -> pd.DataFrame:
+        """The headline cells, on one panel, at one path count."""
+        sampler = bs.from_config(active_panel, cfg)
+        if probs is not None:
+            # Multiplicity, carried where it belongs. A resample can draw
+            # the same market twice, and `build_tier_a` collapses the
+            # duplicate -- so without this the bootstrap would quietly
+            # degenerate into sampling *subsets* without replacement,
+            # which is a different and weaker statement. A market drawn
+            # twice is instead made twice as likely to be the market a
+            # lifetime lives in.
+            sampler.country_probs = probs
+
+        def _score(outcome: Any) -> Dict[str, Any]:
+            return {"cec": float(ut.crra_certainty_equivalent(
+                ut.bundle_from_outcome(outcome, cfg, spec), gamma, beta,
+                float(util["bequest_weight"]),
+                bool(util["bequest_enabled"])))}
+
+        cache: Dict[Any, Any] = {}
+
+        def _simulate(system: str, rule: Any, strategy: str) -> Any:
+            key = (system, _rule_key[id(rule)])
+            hit = cache.get(key)
+            if hit is None:
+                aged = by_key[system]
+                hit = lc.run_chunked(sampler, lc.build_strategies(cfg, aged),
+                                     aged, n_paths, chunk_size,
+                                     income_seed=seed, spending=rule)
+                cache.clear()
+                cache[key] = hit
+            return hit[strategy]
+
+        return odr.gaps(odr.sweep(_simulate, systems, rules, strategies,
+                                  _score, log_every=0))
+
+    def _probs_for(markets: Sequence[str], distinct: Sequence[str],
+                   built: Any) -> "np.ndarray":
+        """Country-draw probabilities carrying each market's multiplicity."""
+        counts = {c: markets.count(c) for c in distinct}
+        base = bs.country_probabilities(
+            built, str(cfg["bootstrap"].get("country_weighting", "history")))
+        order = list(built.countries)
+        weights = np.array([counts[c] for c in order], dtype=float) * base
+        total = weights.sum()
+        return weights / total if total > 0 else base
+
+    n_paths = int(block.get("n_paths", 20000))
+    replicates = int(block.get("replicates", 200))
+    LOGGER.info("%d resampled panels x %d systems x %d rules at %s paths",
+                replicates, len(systems), len(rules), f"{n_paths:,}")
+
+    def _gaps_for(markets: Sequence[str]) -> pd.DataFrame:
+        distinct = sorted(set(markets))
+        built = dl.build_tier_a(cfg, countries=distinct)
+        return _cells_on(built, n_paths,
+                         _probs_for(list(markets), distinct, built))
+
+    boot = rs.bootstrap(_gaps_for, countries, replicates,
+                        int(block.get("seed", seed)))
+
+    # The point estimate on the same cells and the same path count, so the
+    # comparison is not part Monte Carlo difference.
+    point = _cells_on(panel, n_paths)
+    band = rs.interval(boot, point, level=float(block.get("level", 0.95)))
+
+    jack = pd.DataFrame()
+    tables = cfg["run"]["table_dir"]
+    jack_path = Path(tables) / "ordering_intervals.csv"
+    if jack_path.exists():
+        jack = pd.read_csv(jack_path)
+    compared = rs.compare_to_jackknife(band, jack)
+    headline = (str(block.get("headline_system", "")),
+                str(block.get("headline_rule", "")))
+    found = rs.verdict(compared, headline)
+    if found.get("measured"):
+        LOGGER.info("the resampled standard error is %.2fx the jackknife's "
+                    "at the median and %.2fx at the widest; wider in every "
+                    "cell: %s; signs the jackknife had and the bootstrap "
+                    "does not: %s",
+                    found["median_se_ratio"], found["widest_se_ratio"],
+                    found["bootstrap_wider_everywhere"],
+                    found["signs_lost"] or "none")
+        if "headline" in found:
+            h = found["headline"]
+            LOGGER.info("  the headline cell: %+.2f%%, jackknife s.e. %.2f, "
+                        "resampled %.2f, still signed: %s",
+                        h["gap_pct"], h["jackknife_se"], h["bootstrap_se"],
+                        h["still_signed"])
+
+    # -- and the two construction choices ---------------------------------
+    construction = pd.DataFrame()
+    build_found: Dict[str, Any] = {"measured": False}
+    if block.get("construction_enabled", True):
+        build_paths = int(block.get("construction_n_paths", 50000))
+        base_weighting = str(cfg["bootstrap"].get("country_weighting",
+                                                  "history"))
+        base_sleeve = str(cfg["data"].get("international_weighting", "equal"))
+        arms = [
+            ("baseline", f"as configured ({base_weighting} weighting, "
+             f"{base_sleeve} sleeve)", (None, None)),
+            ("uniform_countries", "countries weighted uniformly",
+             ("uniform", None)),
+            ("gdp_sleeve", "GDP-weighted international sleeve",
+             (None, "gdp")),
+        ]
+
+        def _build(_key: str, setting: Any) -> pd.DataFrame:
+            weighting, sleeve = setting
+            built = (dl.build_tier_a(cfg, weighting=sleeve)
+                     if sleeve else panel)
+            probs = (bs.country_probabilities(built, weighting)
+                     if weighting else None)
+            return _cells_on(built, build_paths, probs)
+
+        LOGGER.info("%d construction arms at %s paths", len(arms),
+                    f"{build_paths:,}")
+        construction = rs.construction_sweep(_build, arms)
+        build_found = rs.construction_verdict(construction, "baseline")
+        if build_found.get("measured"):
+            LOGGER.info("across %d construction arms every sign holds: %s; "
+                        "largest move %.2f pp (%s)",
+                        build_found["arms"], build_found["every_sign_holds"],
+                        build_found["largest_move_pp"], build_found["worst"])
+
+    _save_table(boot, tables, "resample_replicates")
+    _save_table(band, tables, "resample_intervals")
+    if len(compared):
+        _save_table(compared, tables, "resample_against_jackknife")
+    if len(construction):
+        _save_table(construction, tables, "resample_construction")
+
+    plots.plot_resample(boot, band, compared, construction,
+                        cfg["run"]["figure_dir"])
+
+    elapsed = time.perf_counter() - started
+    rp.write_doc_40(
+        Path("docs") / "40_resample.md", cfg,
+        {"replicates": boot, "intervals": band, "compared": compared,
+         "construction": construction}, [],
+        {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
+         "verdict": found, "construction": build_found,
+         "draws": replicates, "level": float(block.get("level", 0.95))})
+    LOGGER.info("docs/40 written (%.0fs)", elapsed)
+    state["resample"] = {"intervals": band, "compared": compared,
+                         "found": found, "construction": build_found}
+    return state
+
+
 STEPS = {1: step1_dataset, 2: step2_bootstrap, 3: step3_lifecycle,
          4: step4_report, 5: step5_sensitivity, 6: step6_spending,
          7: step7_glide_path, 8: step8_hedging, 9: step9_retirement_timing,
@@ -5774,11 +5981,12 @@ STEPS = {1: step1_dataset, 2: step2_bootstrap, 3: step3_lifecycle,
          34: step34_longevity,
          35: step35_incidence,
          36: step36_ordering, 37: step37_ceiling,
-         38: step38_gate, 39: step39_typology}
+         38: step38_gate, 39: step39_typology,
+         40: step40_resample}
 
 
 def run(config_path: str = "config.yaml",
-        steps: Sequence[int] = tuple(range(1, 40)),
+        steps: Sequence[int] = tuple(range(1, 41)),
         quick: bool = False) -> Dict[str, Any]:
     """Execute the pipeline and return the accumulated state."""
     cfg = dl.load_config(config_path)
@@ -5808,8 +6016,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--steps", nargs="+", type=int,
-                        default=list(range(1, 40)),
-                        choices=list(range(1, 40)))
+                        default=list(range(1, 41)),
+                        choices=list(range(1, 41)))
     parser.add_argument("--quick", action="store_true",
                         help="small N for smoke tests")
     parser.add_argument("--verbose", action="store_true")

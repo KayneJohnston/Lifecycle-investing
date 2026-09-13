@@ -137,13 +137,14 @@ is the read-through; the table below is the build.
 | [`docs/33_retirement_tax.md`](docs/33_retirement_tax.md) | The tax each system actually charges in retirement. Every other document here is tax-free, which is harmless until two countries are compared -- one of which exempts the fund's earnings and the other does not |
 | [`docs/34_uncertain_horizon.md`](docs/34_uncertain_horizon.md) | The withdrawal rule scored against a lifespan drawn from a mortality table rather than one that ends at ninety-three with certainty, which is not a neutral change: a fixed horizon flatters the rules that divide by it |
 | [`docs/39_typology.md`](docs/39_typology.md) | The rule divide crossed with the household the assets test sees — homeowner against renter, single against couple — which is a test of Corollary 1's claim that no threshold should move the sign |
+| [`docs/40_resample.md`](docs/40_resample.md) | The panel resampled with replacement rather than deleted from, which is the interval `docs/36` says it owes a reader once it has conceded that its deletions are neither independent of one another nor independent in construction |
 | [`docs/35_incidence.md`](docs/35_incidence.md) | Two assumptions the earlier sections make for free, removed: who actually pays for the Superannuation Guarantee, and what the retiree wants once the balance is scaled until the assets test genuinely binds -- where the answer stops being a fact about the pension and becomes one about the withdrawal rule |
 | [`docs/36_ordering.md`](docs/36_ordering.md) | The portfolio comparison crossed with the pension system and the withdrawal rule, because the project's headline (two portfolios) and its second finding (two countries) had been glossed as the same quantity -- with delete-one-country intervals on every cell, on the differences between them, and the same grid re-scored at three risk aversions |
 | [`docs/37_ceiling.md`](docs/37_ceiling.md) | Whether the retiree's corner is the household's or the grid's: the balance sweep re-run with room above the whole portfolio, which finds the 100% censored by the ceiling it was chosen from, the predicted shape across the assets test refuted in the part that distinguishes it, and the price borrowing would have to reach before the unlevered corner comes back |
 
 | [`docs/38_gate.md`](docs/38_gate.md) | Whether the pension's start date was ever given a chance to matter: the feature 2x2 of `docs/32` re-read at every retirement date rather than at each arm's own optimum -- two of which land on the eligibility age, where the gate is slack and the arms are the same simulation -- plus a sweep of the partial benefit paid before that age, an undisclosed consumption floor the timing arm turns out to be largely made of |
 
-All thirty-nine are **generated** by `main.py` from live pipeline objects --
+All forty are **generated** by `main.py` from live pipeline objects --
 edit `src/report.py`, not the Markdown.
 
 ## How much of this data is real
@@ -656,7 +657,7 @@ pip install numpy pandas scipy matplotlib pyyaml openpyxl pytest
 
 python main.py --quick      # ~1 min smoke run at reduced N
 python main.py              # ~1 h full run: N = 100,000 plus sweeps and searches
-python -m pytest tests/ -q  # 1778 tests
+python -m pytest tests/ -q  # 1807 tests
 ```
 
 Selected steps and alternative configurations:
@@ -697,13 +698,14 @@ python main.py --steps 36           # which portfolio wins, and under what
 python main.py --steps 37           # is the retiree's corner the grid's?
 python main.py --steps 38           # was the pension gate ever given a chance?
 python main.py --steps 39           # which households the interaction reaches
+python main.py --steps 40           # the interval the jackknife understates
 python main.py --config other.yaml  # a different parameterisation
 ```
 
 ## Layout
 
 ```
-├── docs/                 # generated analysis documents (39 files)
+├── docs/                 # generated analysis documents (40 files)
 ├── data/
 │   ├── raw/              # primary source files, unmodified
 │   ├── processed/        # standardised real return panels (.csv and .npz)
