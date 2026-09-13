@@ -856,13 +856,17 @@ class TestShortPaper:
         assert set(sh.DROPPED) <= inherited
 
     def test_the_argument_sections_are_all_present(self) -> None:
-        """The chain the paper's thesis runs along: the pension reverses
-        the ordering, one of its two features does the work, a rule can
-        restore it, and the last section says which portfolio wins where."""
+        """The chain the paper's thesis runs along: the pension becomes a
+        parameter, the incidence section says whom its test binds, a rule
+        can restore the ordering, and the last section says which portfolio
+        wins where. The country-comparison section that used to sit between
+        the second and the third is the companion study's, which is why
+        `leisure` is not in this list."""
         from paper import short as sh
 
-        for key in ("pension", "leisure", "longevity", "ordering"):
+        for key in ("pension", "incidence", "longevity", "ordering"):
             assert key in sh.SHORT_ORDER, key
+        assert "leisure" not in sh.SHORT_ORDER
 
     def test_a_section_it_drops_still_resolves_to_the_companion(self
                                                                 ) -> None:
@@ -934,13 +938,13 @@ class TestSubsectionRenumbering:
         from paper import short as sh
 
         original = dict(sh.ct.RENUMBERED)
-        sh.ct.RENUMBERED = {"leisure": {5: 1, 6: 2}}
+        sh.ct.RENUMBERED = {"pension": {5: 1, 6: 2}}
         try:
             with sh.renumbered():
-                n = sh.SHORT_ORDER.index("leisure") + 1
-                assert sh.ct.resolve_sections("#leisure.5") == f"{n}.1"
-                assert sh.ct.resolve_sections("#leisure.6") == f"{n}.2"
-                assert sh.ct.resolve_sections("#leisure") == str(n)
+                n = sh.SHORT_ORDER.index("pension") + 1
+                assert sh.ct.resolve_sections("#pension.5") == f"{n}.1"
+                assert sh.ct.resolve_sections("#pension.6") == f"{n}.2"
+                assert sh.ct.resolve_sections("#pension") == str(n)
         finally:
             sh.ct.RENUMBERED = original
 
@@ -948,11 +952,11 @@ class TestSubsectionRenumbering:
         from paper import short as sh
 
         original = dict(sh.ct.RENUMBERED)
-        sh.ct.RENUMBERED = {"leisure": {5: 1}}
+        sh.ct.RENUMBERED = {"pension": {5: 1}}
         try:
             with sh.renumbered():
-                n = sh.SHORT_ORDER.index("leisure") + 1
-                assert sh.ct.resolve_sections("#leisure.9") == f"{n}.9"
+                n = sh.SHORT_ORDER.index("pension") + 1
+                assert sh.ct.resolve_sections("#pension.9") == f"{n}.9"
         finally:
             sh.ct.RENUMBERED = original
 
@@ -1784,8 +1788,11 @@ class TestTheLimitationsAreCurrent:
         text = re.sub(r"\s+", " ", "\n".join(
             (page.extract_text() or "")
             for page in PdfReader(str(path)).pages))
+        from paper import short as sh
+
         head = text.index("What Would Change These Conclusions")
-        return text[head:text.index("12. Conclusion", head)]
+        after = f"{sh.SHORT_ORDER.index('conclusion') + 1}. Conclusion"
+        return text[head:text.index(after, head)]
 
     def test_it_does_not_disown_the_two_features_now_modelled(self) -> None:
         block = self._limitations()
@@ -2305,3 +2312,75 @@ class TestTheFigureAndTheTableNameTheArmsAlike:
         assert not any(n.count("matched saving") for n in names), (
             "'matched' describes a relation between two arms, not a "
             "contribution rate; naming an arm by it hides the rate")
+
+
+class TestTheCalibrationIsNotTheSubject:
+    """One country supplies the thresholds, the taper and the rate. That
+    makes it the source of a calibration, and the paper's claim is about
+    the shape of the schedule rather than about the country -- so the
+    findings are stated in institutional terms and the country appears
+    where the calibration, the panel or the literature puts it.
+
+    Three drafts stated the reversal on one household and its recovery on
+    another, because the recovery was read off the cell that moves the
+    benefit formula and the contribution rate together. Nothing in the
+    build could see it: both numbers were true, of two different workers.
+    """
+
+    def test_the_recovery_is_read_on_the_household_the_reversal_is(self
+                                                                   ) -> None:
+        """`_recommended` answers "what does the selected rule do to the
+        cell this paper reports", so it has to default to that cell."""
+        import inspect
+
+        from paper import short as sh
+
+        default = inspect.signature(sh._recommended).parameters["system"]
+        assert default.default == sh.HEADLINE_SYSTEM
+        assert sh.HEADLINE_SYSTEM != sh.LEGISLATED_SYSTEM
+
+    def test_the_abstract_states_the_finding_without_a_country(self) -> None:
+        """The abstract is the claim. Naming a country in it makes the
+        claim about that country, which is not what the panel supports."""
+        import re
+
+        from pypdf import PdfReader
+
+        path = PAPER / "floor_beneath_the_portfolio.pdf"
+        if not path.exists():
+            pytest.skip("the short paper has not been built")
+        text = re.sub(r"\s+", " ", "\n".join(
+            (page.extract_text() or "")
+            for page in PdfReader(str(path)).pages[:3]))
+        head = text.index("Abstract")
+        block = text[head:text.index("Keywords", head)]
+        assert "Austral" not in block, block
+
+    def test_no_regime_is_labelled_by_a_country(self) -> None:
+        """The five settings are a factorial over two institutions. Naming
+        a column after a country invites the reader to read the grid as a
+        comparison of countries, which is the other ordering and moves the
+        other way."""
+        from paper import short as sh
+
+        for key, label in sh.SYSTEM_LABEL.items():
+            assert "Austral" not in label, (key, label)
+            assert "United States" not in label, (key, label)
+
+    def test_the_menu_and_the_label_map_carry_the_same_regimes(self) -> None:
+        """The menu prints the design order and the grids print the
+        reading order. Two orders of one set, so the set has to match."""
+        from paper import short as sh
+
+        assert set(sh.MENU_ORDER) == set(sh.SYSTEM_LABEL)
+        assert len(sh.MENU_ORDER) == len(set(sh.MENU_ORDER))
+
+    def test_every_opening_table_belongs_to_an_inherited_section(self
+                                                                 ) -> None:
+        """A float attached to the reopening of a section this paper writes
+        itself would never be rendered."""
+        from paper import short as sh
+
+        inherited = set(sh.SHORT_ORDER) - set(sh.OWN)
+        assert set(sh.OPENING_TABLE) <= inherited
+        assert set(sh.OPENING_TABLE) <= set(sh.REOPENING)

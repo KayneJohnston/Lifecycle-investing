@@ -52,9 +52,14 @@ sweep. Every table above pays the same public pension in all sixteen
 countries -- the US primary-insurance-amount schedule, worth about 44% of
 average earnings, paid for life regardless of what the retiree owns. That is
 a risk-free real annuity, and a large part of what looks like portfolio
-performance is standing on it. Swap it for Australia's means-tested Age
-Pension plus its compulsory 12% Superannuation Guarantee and the ordering
-above reverses: the de-risking glide path wins. Not because of the taper --
+performance is standing on it. Swap it for a means-tested schedule -- Australia's Age
+Pension supplies the thresholds, the taper and the rate -- and the ordering
+above reverses: the de-risking glide path wins. It reverses under one
+withdrawal rule of eight, and that rule is the fixed real withdrawal the
+literature assumes: a payment that never reads the balance turns a good
+return into assessable assets while consumption stands still. Under the
+seven rules whose payment does read the balance the all-equity portfolio
+keeps the lead. Not because of the taper --
 this household is past the assets test's cut-off before the test is applied,
 so the taper reaches them only in the left tail -- but because the means test
 removes the floor. An unconditional annuity is what lets a retiree carry the
@@ -88,6 +93,18 @@ python paper/build_paper.py
 Every number in its prose is resolved at build time from `results/tables/`, so
 the paper cannot drift away from the pipeline that produced it. See
 [`paper/README.md`](paper/README.md).
+
+A second, shorter paper carries one thesis out of the same sections and is
+the one written for a journal:
+[`paper/floor_beneath_the_portfolio.pdf`](paper/floor_beneath_the_portfolio.pdf).
+It reuses the long paper's section writers rather than forking the prose, so
+the two can never disagree about a number, and it selects, retitles and
+reopens what its argument needs. Where a cross-reference points at a section
+it does not carry, the reference resolves to the long paper instead.
+
+```bash
+python -m paper.short
+```
 
 ## Documentation
 
@@ -657,7 +674,7 @@ pip install numpy pandas scipy matplotlib pyyaml openpyxl pytest
 
 python main.py --quick      # ~1 min smoke run at reduced N
 python main.py              # ~1 h full run: N = 100,000 plus sweeps and searches
-python -m pytest tests/ -q  # 1812 tests
+python -m pytest tests/ -q  # 1817 tests
 ```
 
 Selected steps and alternative configurations:
@@ -734,10 +751,10 @@ python main.py --config other.yaml  # a different parameterisation
 │   ├── fees.py           # expense ratios, and the break-even differential
 │   ├── plots.py          # publication-quality figures
 │   └── report.py         # Markdown report generation
-├── tests/                # 627 unit + integration tests
+├── tests/                # 1,817 unit + integration tests
 ├── results/
-│   ├── figures/          # 42 PNGs
-│   └── tables/           # 110+ CSVs
+│   ├── figures/          # 69 PNGs
+│   └── tables/           # 279 CSVs
 ├── config.yaml           # every tunable parameter
 └── main.py               # entry point
 ```

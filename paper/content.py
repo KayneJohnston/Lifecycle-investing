@@ -9215,9 +9215,9 @@ def section_ordering(ctx: Any) -> List[Flowable]:
     order = [x for x in ("us_social_security", "age_pension_untested",
                          "australia_as_legislated")
              if x in set(gapped["system"])]
-    label = {"us_social_security": "United States",
-             "age_pension_untested": "Age Pension, no means test",
-             "australia_as_legislated": "Australia as legislated"}
+    label = {"us_social_security": "Earnings-related, 10% saving",
+             "age_pension_untested": "Flat rate, no means test",
+             "australia_as_legislated": "Means-tested, 20.2% saving"}
 
     out: List[Flowable] = [
         ctx.h1("#ordering. Which Portfolio Wins, and Under Which Rule")]
@@ -10697,8 +10697,10 @@ def section_pension(ctx: Any) -> List[Flowable]:
         "Working-life consumption is unchanged by the guarantee here, because "
         "its statutory incidence is on the employer. If the true incidence is "
         "on workers through lower wages — which is what most of the empirical "
-        "literature finds — an Australian is paying for it in forgone pay and "
-        "the comparison below is generous to them by that amount. It does not "
+        "literature finds — a worker under the mandate is paying for it in "
+        "forgone pay, and every comparison that scores the mandate against "
+        "a voluntary-saving regime is generous to them by that amount. It "
+        "does not "
         "touch the certainty equivalents, because the utility window in this "
         "paper is retirement only. It does mean this is a comparison of "
         "<i>systems as legislated</i> rather than of two workers with the "

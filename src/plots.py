@@ -3326,11 +3326,11 @@ SYSTEM_LABEL: Mapping[str, str] = {
     # *contribution rate* rather than by "matched", which described the
     # 20.2% American arm and the 10% means-tested arm with one phrase --
     # and they are matched to each other, not to a common rate.
-    "us_social_security": "United States, 10% saving",
-    "us_matched_saving": "United States, 20.2% saving",
-    "age_pension_untested": "Age Pension, no means test",
+    "us_social_security": "Earnings-related, 10% saving",
+    "us_matched_saving": "Earnings-related, 20.2% saving",
+    "age_pension_untested": "Flat rate, no means test",
     "age_pension_matched": "Means-tested, 10% saving",
-    "australia_as_legislated": "Australia as legislated",
+    "australia_as_legislated": "Means-tested, 20.2% saving",
     "australia_non_homeowner": "Australia, non-homeowner",
 }
 
