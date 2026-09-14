@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 from src import accumulation as acc
+from src import annuity as anu
 from src import allocation as al
 from src import bootstrap as bs
 from src import cohorts as coh
@@ -5963,6 +5964,198 @@ def step40_resample(cfg: Dict[str, Any],
     return state
 
 
+def step41_annuity(cfg: Dict[str, Any],
+                   state: Dict[str, Any]) -> Dict[str, Any]:
+    """Put the floor in the choice set and see what the reversal does.
+
+    The paper says a means test reverses the portfolio ordering by removing
+    an unconditional floor. A life annuity is the floor a market sells, and
+    until this step it was outside the choice set -- conceded in the
+    limitations rather than measured. Two forces pull against each other:
+    an annuity supplies the missing floor and, where the scheme exempts it,
+    shelters wealth from the test as well; against that, it is bought at a
+    load and it gives up the estate this project's objective prices.
+
+    Scored on the survival-weighted objective Section #longevity argues
+    for. That is not a preference: an annuity priced on a survival curve
+    and then paid for thirty years with certainty collects the mortality
+    credit twice, and :func:`src.annuity.horizon_distortion` measures how
+    much that is worth so the choice is a number rather than an assertion.
+    """
+    block = cfg.get("annuity", {})
+    if not block.get("enabled", False):
+        LOGGER.info("annuity study disabled; skipping step 41")
+        return state
+    LOGGER.info("=== STEP 41: the floor, bought rather than legislated ===")
+    started = time.perf_counter()
+
+    panel = state.get("panel") or dl.build_panel(cfg)
+    spec = state.get("spec") or lc.spec_from_config(cfg)
+    gamma = float(cfg["utility"]["baseline_risk_aversion"])
+    beta = float(cfg["utility"]["discount_factor"])
+    util = cfg["utility"]
+    n_paths = int(block.get("n_paths", 25000))
+    chunk_size = int(cfg["bootstrap"]["chunk_size"])
+    seed = int(cfg["run"]["seed"])
+
+    # The pension study's own factorial, exactly as step 36 reads it, so
+    # this section audits the headline on the headline's own household.
+    designed = pn.default_systems(
+        spec.savings_rate, pn.from_config(cfg),
+        float(cfg.get("pension", {}).get("sg_rate", pn.SG_RATE)),
+        float(cfg.get("pension", {}).get("sg_contributions_tax",
+                                         pn.SG_CONTRIBUTIONS_TAX)))
+    by_key = pn.specs(spec, designed)
+    systems = [str(x) for x in block.get("systems", tuple(by_key))]
+    unknown = [x for x in systems if x not in by_key]
+    if unknown:
+        raise ValueError(f"unknown pension regime {unknown!r}; the design "
+                         f"carries {sorted(by_key)}")
+    strategies = [str(x) for x in block.get("strategies", odr.HEADLINE)]
+    baseline_rule = str(spec.retirement_rule)
+    rules: List[Tuple[str, Any]] = [
+        (baseline_rule, spg.from_spec(baseline_rule, spec.rule_rate))]
+    percent = float(block.get("percent_rate", spec.rule_rate))
+    rules.append((f"constant_percent at {percent:.0%}",
+                  spg.build("constant_percent", rate=percent)))
+    for value in [float(x) for x in block.get("assumed_return_grid", ())]:
+        rules.append((f"amortisation at {value:.0%}",
+                      spg.build("amortisation", assumed_return=value)))
+
+    fractions = [float(x) for x in block.get("fractions", (0.0,))]
+    worths = [float(x) for x in block.get("moneys_worth", (1.0,))]
+    survive = mrt.survival(spec, float(block.get("modal_age", 88.0)),
+                           float(block.get("dispersion", 10.0)))
+
+    # One `run_chunked` per (system, rule, fraction, treatment, load),
+    # cached, because it returns every strategy at once.
+    cache: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
+
+    def _outcomes(system: str, rule_key: str, rule: Any, fraction: float,
+                  assessed: float, worth: float) -> Dict[str, Any]:
+        key = (system, rule_key, fraction, assessed, worth)
+        hit = cache.get(key)
+        if hit is None:
+            aged = dataclasses.replace(
+                by_key[system], annuity_fraction=fraction,
+                annuity_moneys_worth=worth,
+                annuity_real_rate=float(block.get("real_rate", 0.02)),
+                annuity_modal_age=float(block.get("modal_age", 88.0)),
+                annuity_dispersion=float(block.get("dispersion", 10.0)),
+                annuity_assessed=assessed)
+            hit = lc.run_chunked(
+                bs.from_config(panel, cfg),
+                lc.build_strategies(cfg, aged), aged, n_paths,
+                chunk_size, income_seed=seed, spending=rule)
+            cache.clear()
+            cache[key] = hit
+        return hit
+
+    def _score(outcome: Any, aged: Any) -> Dict[str, Any]:
+        window = outcome.consumption[:, spec.n_working:]
+        bundle = ut.bundle_from_outcome(outcome, cfg, aged)
+        return {
+            "cec": float(ut.crra_certainty_equivalent(
+                bundle, gamma, beta, float(util["bequest_weight"]),
+                bool(util["bequest_enabled"]))),
+            "cec_survival": float(mrt.certainty_equivalent(
+                outcome, aged, cfg, gamma, survive)),
+            "prob_ruin": float(np.mean(outcome.ruin)),
+            "prob_ruin_survival": float(mrt.probability_of_ruin(
+                outcome, aged, survive, cfg)),
+            "mean_consumption": float(window.mean()),
+            "p5_consumption": float(np.percentile(window, 5)),
+            "median_bequest": float(np.median(outcome.bequest)),
+        }
+
+    _rule_key = {id(rule): key for key, rule in rules}
+    frames: List[pd.DataFrame] = []
+    for worth in worths:
+        def _simulate(system: str, rule: Any, strategy: str,
+                      fraction: float, assessed: float,
+                      _w: float = worth) -> Any:
+            return _outcomes(system, _rule_key[id(rule)], rule, fraction,
+                             assessed, _w)[strategy]
+
+        def _scored(outcome: Any, _w: float = worth) -> Dict[str, Any]:
+            return _score(outcome, spec)
+
+        LOGGER.info("money's worth %.2f: %d systems x %d rules x %d "
+                    "strategies x %d shares x %d treatments", worth,
+                    len(systems), len(rules), len(strategies),
+                    len(fractions), len(anu.TREATMENTS))
+        part = anu.sweep(_simulate, systems, rules, strategies, fractions,
+                         anu.TREATMENTS, _scored)
+        part["moneys_worth"] = worth
+        frames.append(part)
+    swept = pd.concat(frames, ignore_index=True)
+
+    # Everything below reads the household's own money's worth rather than
+    # the fair one, because a fair annuity is not on sale anywhere and a
+    # section that answered the objection at a price nobody is quoted would
+    # be answering a different objection.
+    priced_at = float(block.get("headline_moneys_worth", min(worths)
+                                if len(worths) > 1 else worths[0]))
+    at_price = swept[swept["moneys_worth"] == priced_at]
+    gapped = anu.gaps(at_price, odr.HEADLINE)
+    wanted = anu.wanted(at_price, odr.HEADLINE[0])
+    found = anu.verdict(gapped, wanted,
+                        str(block.get("headline_system",
+                                      "age_pension_matched")),
+                        str(block.get("legislated_system",
+                                      "australia_as_legislated")),
+                        baseline_rule, odr.HEADLINE[0])
+    horizon = anu.horizon_distortion(at_price)
+    # The load is the obvious way for this section to be wrong, so it is
+    # swept and the crossing share read at each price rather than the
+    # headline being defended at one.
+    loads = anu.by_load(swept, odr.HEADLINE,
+                        str(block.get("headline_system",
+                                      "age_pension_matched")), baseline_rule)
+    load_found = anu.load_verdict(loads)
+
+    if found.get("measured"):
+        for arm in found["treatments"]:
+            LOGGER.info("%s: no-annuity gap %+.2f%%, at the full share "
+                        "%+.2f%%; the sign survives every share: %s",
+                        arm["treatment"], arm["no_annuity_gap_pct"],
+                        arm["gap_at_full_pct"],
+                        arm["sign_survives_every_share"])
+            LOGGER.info("  wanted share %.0f%% under the means test against "
+                        "%.0f%% under the earnings-related pension",
+                        100.0 * arm["wanted_under_means_test"],
+                        100.0 * arm["wanted_under_earnings_related"])
+    if horizon.get("measured"):
+        LOGGER.info("the fixed horizon overpays a full annuity by %.1f "
+                    "points (%.1f%% against %.1f%% on a real lifespan)",
+                    horizon["overpaid_pp"], horizon["gain_fixed_horizon_pct"],
+                    horizon["gain_real_lifespan_pct"])
+
+    tables = cfg["run"]["table_dir"]
+    _save_table(swept, tables, "annuity_sweep")
+    _save_table(gapped, tables, "annuity_gaps")
+    _save_table(wanted, tables, "annuity_wanted")
+    if len(loads):
+        _save_table(loads, tables, "annuity_by_load")
+
+    plots.plot_annuity(gapped, wanted, swept, cfg["run"]["figure_dir"],
+                       rule=baseline_rule)
+
+    elapsed = time.perf_counter() - started
+    rp.write_doc_41(
+        Path("docs") / "41_annuity.md", cfg,
+        {"sweep": swept, "gaps": gapped, "wanted": wanted,
+         "loads": loads}, [],
+        {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
+         "verdict": found, "horizon": horizon, "priced_at": priced_at,
+         "load": load_found, "rule": baseline_rule})
+    LOGGER.info("docs/41 written (%.0fs)", elapsed)
+    state["annuity"] = {"sweep": swept, "gaps": gapped, "wanted": wanted,
+                        "found": found, "horizon": horizon, "loads": loads,
+                        "load_found": load_found, "priced_at": priced_at}
+    return state
+
+
 STEPS = {1: step1_dataset, 2: step2_bootstrap, 3: step3_lifecycle,
          4: step4_report, 5: step5_sensitivity, 6: step6_spending,
          7: step7_glide_path, 8: step8_hedging, 9: step9_retirement_timing,
@@ -5982,11 +6175,11 @@ STEPS = {1: step1_dataset, 2: step2_bootstrap, 3: step3_lifecycle,
          35: step35_incidence,
          36: step36_ordering, 37: step37_ceiling,
          38: step38_gate, 39: step39_typology,
-         40: step40_resample}
+         40: step40_resample, 41: step41_annuity}
 
 
 def run(config_path: str = "config.yaml",
-        steps: Sequence[int] = tuple(range(1, 41)),
+        steps: Sequence[int] = tuple(range(1, 42)),
         quick: bool = False) -> Dict[str, Any]:
     """Execute the pipeline and return the accumulated state."""
     cfg = dl.load_config(config_path)
@@ -6016,8 +6209,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--steps", nargs="+", type=int,
-                        default=list(range(1, 41)),
-                        choices=list(range(1, 41)))
+                        default=list(range(1, 42)),
+                        choices=list(range(1, 42)))
     parser.add_argument("--quick", action="store_true",
                         help="small N for smoke tests")
     parser.add_argument("--verbose", action="store_true")

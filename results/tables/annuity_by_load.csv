@@ -1,0 +1,7 @@
+moneys_worth,treatment,no_annuity_gap_pct,deepest_gap_pct,deepest_at_share,flips_at_share,deepens
+0.8,assessed at its remaining value,-11.38143298321591,-12.183047294771221,0.1,0.9,True
+0.8,exempt from the assets test,-11.38143298321591,-14.017882935382753,0.5,0.9,True
+0.9,assessed at its remaining value,-11.38143298321591,-12.005333335933987,0.1,0.9,True
+0.9,exempt from the assets test,-11.38143298321591,-12.938773276923198,0.5,0.9,True
+1.0,assessed at its remaining value,-11.38143298321591,-11.829167951545895,0.1,0.9,True
+1.0,exempt from the assets test,-11.38143298321591,-12.830359742538377,0.1,0.9,True

@@ -308,7 +308,10 @@ def front(ctx: Any) -> List[Flowable]:
         f"contribution, worth "
         f"{matched['contribution_effect_means_tested']:+.1f} points here, "
         f"or a withdrawal rule that cannot deplete, worth up to "
-        f"{abs(widest_pp):.0f} points \u2014 offsets most of it. Near the "
+        f"{abs(widest_pp):.0f} points \u2014 offsets most of it. Buying "
+        f"the floor instead does not: with a real life annuity in the "
+        f"choice set a partial purchase widens the reversal rather than "
+        f"closing it. Near the "
         f"test, the drawdown default and the portfolio default are one "
         f"decision."
         if matched.get("measured") and matched_rules.get("measured") else
@@ -359,7 +362,14 @@ def front(ctx: Any) -> List[Flowable]:
         f"\u2014 0% under a fixed real withdrawal and 100% under a "
         f"percentage of balance, in every one of twelve cells crossing "
         f"homeowners with renters, singles with couples, and all three "
-        f"positions against each household's own thresholds."))
+        f"positions against each household's own thresholds. (vii) The "
+        f"floor can be bought, and buying it does not undo the reversal: "
+        f"put a real life annuity in the choice set and a partial purchase "
+        f"makes the ordering <i>wider</i>, because sheltering wealth from "
+        f"an assets test is worth more to the portfolio holding less of "
+        f"it. The sign turns only past nine-tenths of the balance "
+        f"converted, at every price from a heavy load to actuarial "
+        f"fairness."))
     out.append(ctx.p(
         "<b>Keywords:</b> lifecycle asset allocation; public pension "
         "design; means testing; target-date funds; certainty-equivalent "
@@ -715,6 +725,25 @@ def introduction(ctx: Any) -> List[Flowable]:
         f"institutions rather than one \u2014 and, as the next paragraph "
         f"but one reports, on a preference as well."))
     out.append(ctx.p(
+        f"<b>But a floor that is bought does not do the same work as a "
+        f"floor that is built.</b> The obvious objection to a mechanism "
+        f"about missing floors is that floors are for sale, so Section "
+        f"{SHORT_ORDER.index('ordering') + 1}.8 puts a real life annuity "
+        f"in the choice set and sweeps the share of the balance converted. "
+        f"A partial purchase makes the reversal <i>deeper</i>, not "
+        f"shallower, and the reason is the test rather than the "
+        f"instrument: sheltering a dollar from an assets test is worth "
+        f"more to the portfolio that holds fewer of them, so the "
+        f"target-date fund gains the more from annuitising. The ordering "
+        f"turns only past nine-tenths of the balance converted \u2014 "
+        f"where a tenth is left to allocate and the question has largely "
+        f"stopped being a portfolio question \u2014 and it does so at "
+        f"every price on the grid, including an actuarially fair one. "
+        f"What the exercise does establish is an appetite: an assets test "
+        f"that exempts annuitised wealth makes the instrument far more "
+        f"valuable to the household it tests than to the household it "
+        f"does not."))
+    out.append(ctx.p(
         "It is worth being exact about what that sentence compares, because "
         "two orderings are easy to run together. One is between "
         "<i>portfolios</i>: which of two funds a given retiree should hold. "
@@ -864,8 +893,9 @@ def introduction(ctx: Any) -> List[Flowable]:
         f"{SHORT_ORDER.index('longevity') + 1} finds the withdrawal rule a "
         f"retiree should actually use, and Section "
         f"{SHORT_ORDER.index('ordering') + 1} asks what that rule does to "
-        f"the portfolio ordering and how precisely sixteen countries can "
-        f"resolve each answer. Section "
+        f"the portfolio ordering, how precisely sixteen countries can "
+        f"resolve each answer, and what changes when the household is "
+        f"allowed to buy a floor rather than build one. Section "
         f"{SHORT_ORDER.index('limitations') + 1} says what would change "
         f"these conclusions. The two systems also differ in their tax "
         f"treatment, and Section {LONG_NUMBER_ALL['tax']} of the companion "
@@ -2326,7 +2356,185 @@ def ordering(ctx: Any) -> List[Flowable]:
         "the rule the rest of this paper spends by, and the whiskers are "
         "delete-one-country 95% intervals where they were computed.")
     out.extend(_resampled(ctx, f))
+    out.extend(_annuity(ctx, f))
     return out
+
+
+def _annuity(ctx: Any, f: Any) -> List[Flowable]:
+    """The floor the paper says is missing, put on sale.
+
+    The mechanism this paper argues for invites one objection above all
+    others: a means test removes an unconditional floor, and the market
+    sells floors. Earlier drafts conceded the annuity's absence in the
+    limitations, which is not the same as knowing what it would have done.
+    """
+    out: List[Flowable] = []
+    if not (_has(f, "annuity_gaps") and _has(f, "annuity_wanted")):
+        return out
+    from src import annuity as anu
+    from src import ordering as odr
+
+    block = f.cfg.get("annuity", {})
+    rule = str(f.cfg["lifecycle"]["retirement"]["rule"])
+    head = str(block.get("headline_system", "age_pension_matched"))
+    gapped, want = f.table("annuity_gaps"), f.table("annuity_wanted")
+    swept = f.table("annuity_sweep") if _has(f, "annuity_sweep") else None
+    found = anu.verdict(gapped, want, head,
+                        str(block.get("legislated_system",
+                                      "australia_as_legislated")),
+                        rule, odr.HEADLINE[0])
+    if not found.get("measured"):
+        return out
+    arms = {str(a["treatment"]): a for a in found["treatments"]}
+    exempt = arms.get("exempt from the assets test")
+    assessed = arms.get("assessed at its remaining value")
+    if exempt is None or assessed is None:
+        return out
+    horizon = anu.horizon_distortion(
+        swept[swept["moneys_worth"] == swept["moneys_worth"].min()]) \
+        if swept is not None and len(swept) else {"measured": False}
+    loads = (anu.load_verdict(f.table("annuity_by_load"))
+             if _has(f, "annuity_by_load") else {"measured": False})
+    priced = min(float(x) for x in block.get("moneys_worth", (1.0,)))
+
+    out.append(ctx.h2("#ordering.8 And if the household could buy the "
+                      "floor instead"))
+    out.append(ctx.p(
+        f"One instrument has been missing from the choice set throughout, "
+        f"and it is the one the mechanism is about. If a means test "
+        f"reverses the ordering by withdrawing an unconditional floor, a "
+        f"household can go and buy a floor: a real life annuity is exactly "
+        f"that, and no household in this paper has been allowed one. So "
+        f"the grid is re-run with a real annuity on offer, priced on the "
+        f"survival curve Section "
+        f"{SHORT_ORDER.index('longevity') + 1} uses and charged a money's "
+        f"worth of {priced:.2f}, and the share of the balance converted "
+        f"is swept from nothing to all of it."))
+    out.append(ctx.p(
+        f"<b>The reversal is not an artefact of the missing instrument. "
+        f"Buying part of the floor makes it deeper.</b> Under a "
+        f"{rule_label(rule)} withdrawal and a means-tested pension at "
+        f"matched contributions, the all-equity lead runs "
+        f"{exempt['no_annuity_gap_pct']:+.2f}% with nothing annuitised and "
+        f"{exempt['deepest_interior_gap_pct']:+.2f}% at "
+        f"{exempt['deepest_at_share']:.0%} where annuitised wealth is "
+        f"exempt from the test, and "
+        f"{assessed['deepest_interior_gap_pct']:+.2f}% at "
+        f"{assessed['deepest_at_share']:.0%} where it is assessed. The "
+        f"sign turns only at "
+        f"{exempt['first_interior_share_that_flips_it']:.0%} of the "
+        f"balance converted, which leaves "
+        f"{exempt['portfolio_left_at_the_flip']:.0%} of it to allocate "
+        f"between the two portfolios this paper is comparing \u2014 a thin "
+        f"version of the question rather than an answer to it."))
+    out.extend(_annuity_table(ctx, gapped, head, rule))
+    out += ctx.figure(
+        "fig70_annuity",
+        "The all-equity portfolio's lead over the target-date fund as the "
+        "retiree converts the balance into a real life annuity, under a "
+        "fixed real withdrawal. Left, every pension regime with annuitised "
+        "wealth exempt from the assets test; right, the two readings of "
+        "the test under the regime the headline is drawn from. The shaded "
+        "band is past nine-tenths converted, where a tenth of the balance "
+        "is left to allocate and the comparison has largely stopped being "
+        "one between portfolios.")
+    out.append(ctx.p(
+        f"<b>The direction is what the arithmetic of the test predicts, "
+        f"once it is followed through.</b> Sheltering a dollar from an "
+        f"assets test is worth more to the portfolio that holds fewer of "
+        f"them: it sits lower on the taper and recovers more pension per "
+        f"dollar sheltered. The target-date fund arrives with the smaller "
+        f"balance, so the shelter is worth more to it, and a partial "
+        f"purchase widens rather than closes the gap. The same reasoning "
+        f"says the effect should be larger where the annuity is exempt "
+        f"than where it is assessed, and it is: "
+        f"{exempt['deepest_interior_gap_pct']:+.2f}% against "
+        f"{assessed['deepest_interior_gap_pct']:+.2f}%."))
+    if loads.get("measured"):
+        out.append(ctx.p(
+            f"<b>It is not a pricing artefact.</b> An annuity cheap enough "
+            f"rescues any portfolio and one dear enough rescues none, so "
+            f"the load is swept rather than chosen: across "
+            f"{_spelled(int(loads['loads']))} prices, from a money's worth "
+            f"of {loads['dearest_price']:.2f} to "
+            f"{loads['cheapest_price']:.2f}, a partial purchase widens the "
+            f"gap at "
+            f"{'every one of them' if loads['deepens_at_every_price'] else 'some of them'} "
+            f"and the sign turns at "
+            f"{'the same share throughout' if loads['one_crossing_share'] else 'shares between %.0f%% and %.0f%%' % (100 * loads['earliest_crossing'], 100 * loads['latest_crossing'])}. "
+            f"That range includes an actuarially fair annuity, which no "
+            f"insurer sells and which is on the grid as the bound rather "
+            f"than as a calibration."))
+    out.append(ctx.p(
+        f"<b>What the model does want is the corner, and the corner is "
+        f"Yaari's rather than ours.</b> Offered the instrument, this "
+        f"household asks for "
+        f"{exempt['wanted_under_means_test']:.0%} of its balance under the "
+        f"means test and "
+        f"{exempt['wanted_under_earnings_related']:.0%} under the "
+        f"earnings-related pension. That is the full-annuitisation result "
+        f"of Yaari (1965), and a model with no health shock, no liquidity "
+        f"need, no bequest motive beyond a fixed weight and no "
+        f"annuity-market friction beyond a load is bound to reproduce it. "
+        f"Observed voluntary annuitisation is close to zero, so we report "
+        f"the wanted share as the benchmark it is and not as advice. What "
+        f"the comparison does establish is a difference in appetite: the "
+        f"purchase is worth "
+        f"{exempt['gain_under_means_test_pct']:+.0f}% of "
+        f"certainty-equivalent consumption to the means-tested household "
+        f"against {exempt['gain_under_earnings_related_pct']:+.0f}% to the "
+        f"earnings-related one, so an assets test that exempts annuitised "
+        f"wealth crowds the instrument <i>in</i> rather than out."))
+    if horizon.get("measured"):
+        out.append(ctx.note(
+            f"Scored on the survival-weighted objective Section "
+            f"{SHORT_ORDER.index('longevity') + 1} argues for, and that is "
+            f"not a preference here but a requirement. An annuity priced "
+            f"on a survival curve and then paid for the full fixed horizon "
+            f"with certainty collects the mortality credit twice: "
+            f"converting the whole balance is worth "
+            f"{horizon['gain_fixed_horizon_pct']:+.1f}% over the fixed "
+            f"horizon against {horizon['gain_real_lifespan_pct']:+.1f}% "
+            f"over a real lifespan, a difference of "
+            f"{horizon['overpaid_pp']:.1f} points. Two readings of the "
+            f"grid's top row are also wrong and are labelled where they "
+            f"appear: a household that converts everything holds no "
+            f"portfolio, so the comparison there is between two "
+            f"accumulation histories rather than two retirement "
+            f"portfolios, and its probability of ruin is one by "
+            f"construction while the annuity pays regardless."))
+    return out
+
+
+def _annuity_table(ctx: Any, gapped: Any, system: str,
+                   rule: str) -> List[Flowable]:
+    """The lead against the annuitised share, both readings of the test."""
+    block = gapped[(gapped["system"] == system) & (gapped["rule"] == rule)]
+    arms = list(dict.fromkeys(block["treatment"]))
+    shares = sorted({float(x) for x in block["fraction"]})
+    if not arms or not shares:
+        return []
+    rows = [["Share of the balance annuitised"]
+            + [f"{s:.0%}" for s in shares]]
+    for arm in arms:
+        part = block[block["treatment"] == arm].set_index("fraction")
+        rows.append([ct.opens(str(arm))]
+                    + [f"{float(part.loc[s, 'gap_pct']):+.2f}%"
+                       if s in part.index else "\u2014" for s in shares])
+    return list(ctx.table(
+        rows,
+        "The all-equity portfolio's lead over the target-date fund as the "
+        "retiree converts more of the balance into a real life annuity, "
+        "under a means-tested pension at matched contributions and the "
+        "withdrawal rule the reversal happens under.",
+        note="The rightmost column leaves no portfolio to allocate, so the "
+             "comparison there is between what two accumulation strategies "
+             "bought rather than between two retirement portfolios; it is "
+             "printed because omitting it would be choosing the range that "
+             "suits the argument. Each portfolio converts the same share "
+             "of its own balance rather than the same number of dollars, "
+             "so what is held fixed across a column is the household's "
+             "decision."))
 
 
 def _resampled(ctx: Any, f: Any) -> List[Flowable]:
@@ -2738,17 +2946,31 @@ def limitations(ctx: Any) -> List[Flowable]:
         f"couple is one portfolio meeting a couple's schedule, which "
         f"isolates the threshold and is not a couple's retirement "
         f"problem."))
-    out.append(ctx.h2("#limitations.4 No annuity, and no behaviour"))
+    out.append(ctx.h2("#limitations.4 One annuity, and no behaviour"))
     out.append(ctx.p(
-        "The instrument that most directly supplies the floor this paper "
-        "is about — a life annuity — is not in the choice set, and if it "
-        "were it would dominate part of the grid. Nor is there any "
-        "behavioural constraint: the household rebalances annually without "
-        "hesitation, never panics, and follows its withdrawal rule for "
-        "thirty years. The rule comparison in Section "
+        f"The instrument that most directly supplies the floor this paper "
+        f"is about — a life annuity — is in the choice set, and Section "
+        f"{SHORT_ORDER.index('ordering') + 1}.8 reports what it does. It "
+        f"is one instrument and a stylised one: a real, level, immediate "
+        f"life annuity bought in a single transaction on the retirement "
+        f"date, priced on the model's own survival curve and charged a "
+        f"flat load. A deferred annuity bought later, a variable one, a "
+        f"pooled product without a guarantee, or a purchase staged across "
+        f"the retirement years would each price the same floor "
+        f"differently, and none of them is here. Nor is there any "
+        f"adverse selection: the insurer prices the household's own "
+        f"mortality rather than the mortality of the households that "
+        f"choose to buy."))
+    out.append(ctx.p(
+        f"Nor is there any behavioural constraint: the household "
+        f"rebalances annually without hesitation, never panics, and "
+        f"follows its withdrawal rule for thirty years. The rule "
+        f"comparison in Section "
         f"{SHORT_ORDER.index('longevity') + 1} should be read as what the "
         f"rules deliver if followed, which is an upper bound on what they "
-        f"achieve in practice."))
+        f"achieve in practice — and the same caveat covers an annuity the "
+        f"model buys without hesitating over a decision real households "
+        f"very largely decline to make."))
     out.append(ctx.h2("#limitations.5 What is settled, and what is not"))
     out.append(ctx.p(
         "Two things in this paper are robust to all of the above, because "

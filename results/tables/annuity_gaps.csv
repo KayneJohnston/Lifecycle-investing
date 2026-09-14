@@ -1,0 +1,145 @@
+system,rule,treatment,assessed,fraction,balanced_all_equity,target_date_fund,gap_pct,winner
+age_pension_matched,amortisation at 6%,assessed at its remaining value,1.0,0.0,1.049821053148697,0.8921955760830518,17.66714398626117,balanced_all_equity
+age_pension_matched,amortisation at 6%,assessed at its remaining value,1.0,0.1,1.0513535757011592,0.9028171817398096,16.452543988485747,balanced_all_equity
+age_pension_matched,amortisation at 6%,assessed at its remaining value,1.0,0.25,1.046284561997871,0.9094986717146312,15.039702039956172,balanced_all_equity
+age_pension_matched,amortisation at 6%,assessed at its remaining value,1.0,0.5,1.0246702438763262,0.9063019963808248,13.060574506973,balanced_all_equity
+age_pension_matched,amortisation at 6%,assessed at its remaining value,1.0,0.75,0.989442871234426,0.8910129003862222,11.046974831176737,balanced_all_equity
+age_pension_matched,amortisation at 6%,assessed at its remaining value,1.0,0.9,0.9608127606356496,0.8766927399189,9.595154252621207,balanced_all_equity
+age_pension_matched,amortisation at 6%,assessed at its remaining value,1.0,0.95,0.949074624082494,0.8706250234863739,9.010722007733317,balanced_all_equity
+age_pension_matched,amortisation at 6%,assessed at its remaining value,1.0,1.0,0.9307593910020182,0.8614115619062784,8.050487381696513,balanced_all_equity
+age_pension_matched,amortisation at 6%,exempt from the assets test,0.0,0.0,1.049821053148697,0.8921955760830518,17.66714398626117,balanced_all_equity
+age_pension_matched,amortisation at 6%,exempt from the assets test,0.0,0.1,1.076550769659682,0.9198565274518148,17.03463937380989,balanced_all_equity
+age_pension_matched,amortisation at 6%,exempt from the assets test,0.0,0.25,1.1092665394380703,0.9537998932197552,16.299713107904033,balanced_all_equity
+age_pension_matched,amortisation at 6%,exempt from the assets test,0.0,0.5,1.1451857541814758,0.9926662933249668,15.364625744029281,balanced_all_equity
+age_pension_matched,amortisation at 6%,exempt from the assets test,0.0,0.75,1.142168208508152,1.000623479625423,14.145653361613642,balanced_all_equity
+age_pension_matched,amortisation at 6%,exempt from the assets test,0.0,0.9,1.112434434769035,0.9897008599083806,12.401077924901083,balanced_all_equity
+age_pension_matched,amortisation at 6%,exempt from the assets test,0.0,0.95,1.0970233570087649,0.983532590445091,11.539095670669575,balanced_all_equity
+age_pension_matched,amortisation at 6%,exempt from the assets test,0.0,1.0,1.0684430329416603,0.9716739397654924,9.959008800783774,balanced_all_equity
+age_pension_matched,constant_percent at 4%,assessed at its remaining value,1.0,0.0,0.67380130432689,0.6003540795099088,12.233984464124713,balanced_all_equity
+age_pension_matched,constant_percent at 4%,assessed at its remaining value,1.0,0.1,0.7044227311337917,0.630594592120244,11.707702529657894,balanced_all_equity
+age_pension_matched,constant_percent at 4%,assessed at its remaining value,1.0,0.25,0.7450452075912553,0.6723042645044104,10.819646241641179,balanced_all_equity
+age_pension_matched,constant_percent at 4%,assessed at its remaining value,1.0,0.5,0.8077299781317231,0.7388232362410732,9.32655316056763,balanced_all_equity
+age_pension_matched,constant_percent at 4%,assessed at its remaining value,1.0,0.75,0.872169837661442,0.805314746203042,8.301734417954387,balanced_all_equity
+age_pension_matched,constant_percent at 4%,assessed at its remaining value,1.0,0.9,0.9139673550738447,0.8438510831640311,8.309081224013104,balanced_all_equity
+age_pension_matched,constant_percent at 4%,assessed at its remaining value,1.0,0.95,0.9275753834641522,0.8555601495318832,8.417319807575407,balanced_all_equity
+age_pension_matched,constant_percent at 4%,assessed at its remaining value,1.0,1.0,0.9307593910020182,0.8614115619062784,8.050487381696513,balanced_all_equity
+age_pension_matched,constant_percent at 4%,exempt from the assets test,0.0,0.0,0.67380130432689,0.6003540795099088,12.233984464124713,balanced_all_equity
+age_pension_matched,constant_percent at 4%,exempt from the assets test,0.0,0.1,0.7309628264182361,0.6544800773550863,11.68603166229829,balanced_all_equity
+age_pension_matched,constant_percent at 4%,exempt from the assets test,0.0,0.25,0.8139624490586767,0.7361458858347232,10.570807325197018,balanced_all_equity
+age_pension_matched,constant_percent at 4%,exempt from the assets test,0.0,0.5,0.9541042617138704,0.8716310002042763,9.461946797471121,balanced_all_equity
+age_pension_matched,constant_percent at 4%,exempt from the assets test,0.0,0.75,1.0695111641524575,0.9605922301731384,11.338727355694655,balanced_all_equity
+age_pension_matched,constant_percent at 4%,exempt from the assets test,0.0,0.9,1.093796152808618,0.977690835450862,11.875463402928798,balanced_all_equity
+age_pension_matched,constant_percent at 4%,exempt from the assets test,0.0,0.95,1.0919896542068048,0.9797200346520304,11.45935732493717,balanced_all_equity
+age_pension_matched,constant_percent at 4%,exempt from the assets test,0.0,1.0,1.0684430329416603,0.9716739397654924,9.959008800783774,balanced_all_equity
+age_pension_matched,fixed_real_rule,assessed at its remaining value,1.0,0.0,0.4453337149970984,0.5025286799240993,-11.38143298321591,target_date_fund
+age_pension_matched,fixed_real_rule,assessed at its remaining value,1.0,0.1,0.4678206116351873,0.5327224382352457,-12.183047294771221,target_date_fund
+age_pension_matched,fixed_real_rule,assessed at its remaining value,1.0,0.25,0.5237159800722516,0.5800285908775498,-9.708592247168434,target_date_fund
+age_pension_matched,fixed_real_rule,assessed at its remaining value,1.0,0.5,0.6122121196139301,0.6759774956127936,-9.433061960303624,target_date_fund
+age_pension_matched,fixed_real_rule,assessed at its remaining value,1.0,0.75,0.7542019614503445,0.7859585483357879,-4.040491315055461,target_date_fund
+age_pension_matched,fixed_real_rule,assessed at its remaining value,1.0,0.9,0.8752363809124892,0.8393625510785457,4.273937381152781,balanced_all_equity
+age_pension_matched,fixed_real_rule,assessed at its remaining value,1.0,0.95,0.913023662998359,0.8536255887460089,6.95832869063906,balanced_all_equity
+age_pension_matched,fixed_real_rule,assessed at its remaining value,1.0,1.0,0.9307593910020182,0.8614115619062784,8.050487381696513,balanced_all_equity
+age_pension_matched,fixed_real_rule,exempt from the assets test,0.0,0.0,0.4453337149970984,0.5025286799240993,-11.38143298321591,target_date_fund
+age_pension_matched,fixed_real_rule,exempt from the assets test,0.0,0.1,0.4725731205016372,0.5431352686892842,-12.991634359876947,target_date_fund
+age_pension_matched,fixed_real_rule,exempt from the assets test,0.0,0.25,0.5406062368356005,0.6124345219267077,-11.728320746050812,target_date_fund
+age_pension_matched,fixed_real_rule,exempt from the assets test,0.0,0.5,0.6628700745403406,0.7709394664499605,-14.017882935382753,target_date_fund
+age_pension_matched,fixed_real_rule,exempt from the assets test,0.0,0.75,0.8785691652689749,0.9392883841591364,-6.464385157335695,target_date_fund
+age_pension_matched,fixed_real_rule,exempt from the assets test,0.0,0.9,1.045171561310467,0.9740420696570022,7.30250713693632,balanced_all_equity
+age_pension_matched,fixed_real_rule,exempt from the assets test,0.0,0.95,1.076156574949065,0.9776152102157276,10.079770005991673,balanced_all_equity
+age_pension_matched,fixed_real_rule,exempt from the assets test,0.0,1.0,1.0684430329416603,0.9716739397654924,9.959008800783774,balanced_all_equity
+australia_as_legislated,amortisation at 6%,assessed at its remaining value,1.0,0.0,1.3829707475349955,1.1248753601186934,22.944354242861962,balanced_all_equity
+australia_as_legislated,amortisation at 6%,assessed at its remaining value,1.0,0.1,1.395271070740306,1.1558619147366087,20.712608742563553,balanced_all_equity
+australia_as_legislated,amortisation at 6%,assessed at its remaining value,1.0,0.25,1.3953745636324693,1.1758701231051616,18.66740520183083,balanced_all_equity
+australia_as_legislated,amortisation at 6%,assessed at its remaining value,1.0,0.5,1.3673906722659632,1.1764837363125815,16.22690820629069,balanced_all_equity
+australia_as_legislated,amortisation at 6%,assessed at its remaining value,1.0,0.75,1.3122603083032978,1.1525794428970693,13.854217719245643,balanced_all_equity
+australia_as_legislated,amortisation at 6%,assessed at its remaining value,1.0,0.9,1.26487275693439,1.127786779466838,12.155309847873873,balanced_all_equity
+australia_as_legislated,amortisation at 6%,assessed at its remaining value,1.0,0.95,1.24451480229355,1.116524302612588,11.463297250357485,balanced_all_equity
+australia_as_legislated,amortisation at 6%,assessed at its remaining value,1.0,1.0,1.1970434555521563,1.0917451617400369,9.644951725207896,balanced_all_equity
+australia_as_legislated,amortisation at 6%,exempt from the assets test,0.0,0.0,1.3829707475349955,1.1248753601186934,22.944354242861962,balanced_all_equity
+australia_as_legislated,amortisation at 6%,exempt from the assets test,0.0,0.1,1.4346543254093025,1.1818738802246542,21.388106583470567,balanced_all_equity
+australia_as_legislated,amortisation at 6%,exempt from the assets test,0.0,0.25,1.4935016312148046,1.244912584477978,19.968393752005163,balanced_all_equity
+australia_as_legislated,amortisation at 6%,exempt from the assets test,0.0,0.5,1.5661107281068067,1.3229732245384351,18.37811219899772,balanced_all_equity
+australia_as_legislated,amortisation at 6%,exempt from the assets test,0.0,0.75,1.5942284889917202,1.361588378396863,17.08593538884109,balanced_all_equity
+australia_as_legislated,amortisation at 6%,exempt from the assets test,0.0,0.9,1.557111460316409,1.3488607852615622,15.439004330937255,balanced_all_equity
+australia_as_legislated,amortisation at 6%,exempt from the assets test,0.0,0.95,1.52873441955923,1.3361896793375163,14.409985588062435,balanced_all_equity
+australia_as_legislated,amortisation at 6%,exempt from the assets test,0.0,1.0,1.4304842966765312,1.2916187378909232,10.751280909129646,balanced_all_equity
+australia_as_legislated,constant_percent at 4%,assessed at its remaining value,1.0,0.0,0.8646139966343699,0.7417301037118694,16.56719773237565,balanced_all_equity
+australia_as_legislated,constant_percent at 4%,assessed at its remaining value,1.0,0.1,0.917994396669282,0.7921347821684477,15.888661542710825,balanced_all_equity
+australia_as_legislated,constant_percent at 4%,assessed at its remaining value,1.0,0.25,0.9810809117082284,0.8534520169205422,14.954431210813901,balanced_all_equity
+australia_as_legislated,constant_percent at 4%,assessed at its remaining value,1.0,0.5,1.0672009905138429,0.9424476610308404,13.237162618298438,balanced_all_equity
+australia_as_legislated,constant_percent at 4%,assessed at its remaining value,1.0,0.75,1.1461570391670846,1.0282844657661174,11.463031614811658,balanced_all_equity
+australia_as_legislated,constant_percent at 4%,assessed at its remaining value,1.0,0.9,1.1978171926366228,1.0803438914683086,10.873695135042126,balanced_all_equity
+australia_as_legislated,constant_percent at 4%,assessed at its remaining value,1.0,0.95,1.216166993934436,1.096803942795969,10.882806532787171,balanced_all_equity
+australia_as_legislated,constant_percent at 4%,assessed at its remaining value,1.0,1.0,1.1970434555521563,1.0917451617400369,9.644951725207896,balanced_all_equity
+australia_as_legislated,constant_percent at 4%,exempt from the assets test,0.0,0.0,0.8646139966343699,0.7417301037118694,16.56719773237565,balanced_all_equity
+australia_as_legislated,constant_percent at 4%,exempt from the assets test,0.0,0.1,0.9509629110517118,0.8202665003494428,15.933408306518771,balanced_all_equity
+australia_as_legislated,constant_percent at 4%,exempt from the assets test,0.0,0.25,1.066104913647605,0.926463921992112,15.072469455176684,balanced_all_equity
+australia_as_legislated,constant_percent at 4%,exempt from the assets test,0.0,0.5,1.2623467057590545,1.1136385343920223,13.353360787593216,balanced_all_equity
+australia_as_legislated,constant_percent at 4%,exempt from the assets test,0.0,0.75,1.467713620888592,1.2910629420226578,13.68257682225642,balanced_all_equity
+australia_as_legislated,constant_percent at 4%,exempt from the assets test,0.0,0.9,1.5397613922673965,1.3389158601421365,15.000608933255787,balanced_all_equity
+australia_as_legislated,constant_percent at 4%,exempt from the assets test,0.0,0.95,1.5401096020516625,1.34179908287631,14.779449599134441,balanced_all_equity
+australia_as_legislated,constant_percent at 4%,exempt from the assets test,0.0,1.0,1.4304842966765312,1.2916187378909232,10.751280909129646,balanced_all_equity
+australia_as_legislated,fixed_real_rule,assessed at its remaining value,1.0,0.0,0.669557912827888,0.6733438413656428,-0.5622578399286149,target_date_fund
+australia_as_legislated,fixed_real_rule,assessed at its remaining value,1.0,0.1,0.7022182008660479,0.7154375592727201,-1.8477305580811842,target_date_fund
+australia_as_legislated,fixed_real_rule,assessed at its remaining value,1.0,0.25,0.7596518940246197,0.7743564480559859,-1.8989386694308275,target_date_fund
+australia_as_legislated,fixed_real_rule,assessed at its remaining value,1.0,0.5,0.8653329562267181,0.8774179386230082,-1.3773347756322218,target_date_fund
+australia_as_legislated,fixed_real_rule,assessed at its remaining value,1.0,0.75,1.0241050148334796,0.99864548091853,2.549406611396532,balanced_all_equity
+australia_as_legislated,fixed_real_rule,assessed at its remaining value,1.0,0.9,1.1464392540046613,1.0718040664902393,6.963510388500804,balanced_all_equity
+australia_as_legislated,fixed_real_rule,assessed at its remaining value,1.0,0.95,1.192397818251027,1.0921517153910338,9.178770810619575,balanced_all_equity
+australia_as_legislated,fixed_real_rule,assessed at its remaining value,1.0,1.0,1.1970434555521563,1.0917451617400369,9.644951725207896,balanced_all_equity
+australia_as_legislated,fixed_real_rule,exempt from the assets test,0.0,0.0,0.669557912827888,0.6733438413656428,-0.5622578399286149,target_date_fund
+australia_as_legislated,fixed_real_rule,exempt from the assets test,0.0,0.1,0.7090941792559593,0.7274122816861361,-2.5182558627846685,target_date_fund
+australia_as_legislated,fixed_real_rule,exempt from the assets test,0.0,0.25,0.7842158504168001,0.8126766712258985,-3.5021087496170056,target_date_fund
+australia_as_legislated,fixed_real_rule,exempt from the assets test,0.0,0.5,0.9420004728613864,0.9959386911871468,-5.41581713844923,target_date_fund
+australia_as_legislated,fixed_real_rule,exempt from the assets test,0.0,0.75,1.2334067652954426,1.236284242137804,-0.23275204393009563,target_date_fund
+australia_as_legislated,fixed_real_rule,exempt from the assets test,0.0,0.9,1.4571034419967703,1.326746454304488,9.825312686486033,balanced_all_equity
+australia_as_legislated,fixed_real_rule,exempt from the assets test,0.0,0.95,1.506905456938158,1.3336087227997897,12.994571134368972,balanced_all_equity
+australia_as_legislated,fixed_real_rule,exempt from the assets test,0.0,1.0,1.4304842966765312,1.2916187378909232,10.751280909129646,balanced_all_equity
+us_social_security,amortisation at 6%,assessed at its remaining value,1.0,0.0,1.294297236743299,1.0849270357801788,19.298090475970177,balanced_all_equity
+us_social_security,amortisation at 6%,assessed at its remaining value,1.0,0.1,1.301262579403175,1.0981067133727107,18.500557692293306,balanced_all_equity
+us_social_security,amortisation at 6%,assessed at its remaining value,1.0,0.25,1.3029781729618186,1.1100333502223667,17.381894219736772,balanced_all_equity
+us_social_security,amortisation at 6%,assessed at its remaining value,1.0,0.5,1.2878498514880825,1.1153413053564447,15.466884020448513,balanced_all_equity
+us_social_security,amortisation at 6%,assessed at its remaining value,1.0,0.75,1.2518398723914277,1.106176345594153,13.168201198429674,balanced_all_equity
+us_social_security,amortisation at 6%,assessed at its remaining value,1.0,0.9,1.2170622973423162,1.09303567292189,11.346987796736752,balanced_all_equity
+us_social_security,amortisation at 6%,assessed at its remaining value,1.0,0.95,1.2006108305116472,1.0859214135528656,10.561484056525439,balanced_all_equity
+us_social_security,amortisation at 6%,assessed at its remaining value,1.0,1.0,1.1650054836679296,1.069986634662209,8.880377186741018,balanced_all_equity
+us_social_security,amortisation at 6%,exempt from the assets test,0.0,0.0,1.294297236743299,1.0849270357801788,19.298090475970177,balanced_all_equity
+us_social_security,amortisation at 6%,exempt from the assets test,0.0,0.1,1.301262579403175,1.0981067133727107,18.500557692293306,balanced_all_equity
+us_social_security,amortisation at 6%,exempt from the assets test,0.0,0.25,1.3029781729618186,1.1100333502223667,17.381894219736772,balanced_all_equity
+us_social_security,amortisation at 6%,exempt from the assets test,0.0,0.5,1.2878498514880825,1.1153413053564447,15.466884020448513,balanced_all_equity
+us_social_security,amortisation at 6%,exempt from the assets test,0.0,0.75,1.2518398723914277,1.106176345594153,13.168201198429674,balanced_all_equity
+us_social_security,amortisation at 6%,exempt from the assets test,0.0,0.9,1.2170622973423162,1.09303567292189,11.346987796736752,balanced_all_equity
+us_social_security,amortisation at 6%,exempt from the assets test,0.0,0.95,1.2006108305116472,1.0859214135528656,10.561484056525439,balanced_all_equity
+us_social_security,amortisation at 6%,exempt from the assets test,0.0,1.0,1.1650054836679296,1.069986634662209,8.880377186741018,balanced_all_equity
+us_social_security,constant_percent at 4%,assessed at its remaining value,1.0,0.0,1.133277428383734,0.9763525104979291,16.07256766367864,balanced_all_equity
+us_social_security,constant_percent at 4%,assessed at its remaining value,1.0,0.1,1.1514363106316756,0.9953646828029192,15.679843832640628,balanced_all_equity
+us_social_security,constant_percent at 4%,assessed at its remaining value,1.0,0.25,1.172784633413222,1.0191061996706927,15.07972709735137,balanced_all_equity
+us_social_security,constant_percent at 4%,assessed at its remaining value,1.0,0.5,1.1965157701212086,1.0503917595451042,13.911382038962937,balanced_all_equity
+us_social_security,constant_percent at 4%,assessed at its remaining value,1.0,0.75,1.2066307439085753,1.0739713475194776,12.352228641434193,balanced_all_equity
+us_social_security,constant_percent at 4%,assessed at its remaining value,1.0,0.9,1.204200737321008,1.0839282447347962,11.095982890974376,balanced_all_equity
+us_social_security,constant_percent at 4%,assessed at its remaining value,1.0,0.95,1.2000121852483083,1.085015401731977,10.598631441799377,balanced_all_equity
+us_social_security,constant_percent at 4%,assessed at its remaining value,1.0,1.0,1.1650054836679296,1.069986634662209,8.880377186741018,balanced_all_equity
+us_social_security,constant_percent at 4%,exempt from the assets test,0.0,0.0,1.133277428383734,0.9763525104979291,16.07256766367864,balanced_all_equity
+us_social_security,constant_percent at 4%,exempt from the assets test,0.0,0.1,1.1514363106316756,0.9953646828029192,15.679843832640628,balanced_all_equity
+us_social_security,constant_percent at 4%,exempt from the assets test,0.0,0.25,1.172784633413222,1.0191061996706927,15.07972709735137,balanced_all_equity
+us_social_security,constant_percent at 4%,exempt from the assets test,0.0,0.5,1.1965157701212086,1.0503917595451042,13.911382038962937,balanced_all_equity
+us_social_security,constant_percent at 4%,exempt from the assets test,0.0,0.75,1.2066307439085753,1.0739713475194776,12.352228641434193,balanced_all_equity
+us_social_security,constant_percent at 4%,exempt from the assets test,0.0,0.9,1.204200737321008,1.0839282447347962,11.095982890974376,balanced_all_equity
+us_social_security,constant_percent at 4%,exempt from the assets test,0.0,0.95,1.2000121852483083,1.085015401731977,10.598631441799377,balanced_all_equity
+us_social_security,constant_percent at 4%,exempt from the assets test,0.0,1.0,1.1650054836679296,1.069986634662209,8.880377186741018,balanced_all_equity
+us_social_security,fixed_real_rule,assessed at its remaining value,1.0,0.0,1.078510472624128,0.9761877399379452,10.481870289898044,balanced_all_equity
+us_social_security,fixed_real_rule,assessed at its remaining value,1.0,0.1,1.1034927696214665,0.9985114347172936,10.513783944186471,balanced_all_equity
+us_social_security,fixed_real_rule,assessed at its remaining value,1.0,0.25,1.12579493606396,1.0208389882734017,10.281342013403695,balanced_all_equity
+us_social_security,fixed_real_rule,assessed at its remaining value,1.0,0.5,1.152942211798047,1.0478007387932982,10.034491207348761,balanced_all_equity
+us_social_security,fixed_real_rule,assessed at its remaining value,1.0,0.75,1.1758705627569048,1.069479650568776,9.947913654228714,balanced_all_equity
+us_social_security,fixed_real_rule,assessed at its remaining value,1.0,0.9,1.1879310832544252,1.0803051624023934,9.962548046395735,balanced_all_equity
+us_social_security,fixed_real_rule,assessed at its remaining value,1.0,0.95,1.1904282329015488,1.082321315828708,9.988430930057568,balanced_all_equity
+us_social_security,fixed_real_rule,assessed at its remaining value,1.0,1.0,1.1650054836679296,1.069986634662209,8.880377186741018,balanced_all_equity
+us_social_security,fixed_real_rule,exempt from the assets test,0.0,0.0,1.078510472624128,0.9761877399379452,10.481870289898044,balanced_all_equity
+us_social_security,fixed_real_rule,exempt from the assets test,0.0,0.1,1.1034927696214665,0.9985114347172936,10.513783944186471,balanced_all_equity
+us_social_security,fixed_real_rule,exempt from the assets test,0.0,0.25,1.12579493606396,1.0208389882734017,10.281342013403695,balanced_all_equity
+us_social_security,fixed_real_rule,exempt from the assets test,0.0,0.5,1.152942211798047,1.0478007387932982,10.034491207348761,balanced_all_equity
+us_social_security,fixed_real_rule,exempt from the assets test,0.0,0.75,1.1758705627569048,1.069479650568776,9.947913654228714,balanced_all_equity
+us_social_security,fixed_real_rule,exempt from the assets test,0.0,0.9,1.1879310832544252,1.0803051624023934,9.962548046395735,balanced_all_equity
+us_social_security,fixed_real_rule,exempt from the assets test,0.0,0.95,1.1904282329015488,1.082321315828708,9.988430930057568,balanced_all_equity
+us_social_security,fixed_real_rule,exempt from the assets test,0.0,1.0,1.1650054836679296,1.069986634662209,8.880377186741018,balanced_all_equity

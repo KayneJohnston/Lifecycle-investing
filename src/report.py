@@ -13258,3 +13258,299 @@ Runtime {float(notes['elapsed_seconds']):.0f}s at {int(notes['n_paths']):,}
 paths, gamma = {gamma:g}. Tables in `results/tables/gate_*.csv`.
 """
     return _write(path, [intro, body])
+
+
+def write_doc_41(
+    path: str | Path,
+    cfg: Mapping[str, Any],
+    frames: Mapping[str, pd.DataFrame],
+    figures: Sequence[str],
+    notes: Mapping[str, Any],
+) -> Path:
+    """The floor, bought rather than legislated.
+
+    The paper's mechanism is that a means test reverses the portfolio
+    ordering by removing an unconditional floor. `docs/36` shows a
+    withdrawal rule can build one. Neither answers the objection a reader
+    reaches for first, which is that the market sells floors -- and the
+    limitations conceded the annuity's absence rather than measuring it.
+    """
+    found = notes["verdict"]
+    horizon = notes.get("horizon", {})
+    gamma = float(notes["gamma"])
+    n_paths = int(notes["n_paths"])
+    priced_at = float(notes.get("priced_at", 1.0))
+    rule = str(notes.get("rule", "fixed_real_rule"))
+
+    intro = _header(
+        "41 - The Floor, Bought Rather Than Legislated",
+        "A real life annuity in the retiree's choice set, priced on the "
+        "same Gompertz curve the mortality section uses and charged a "
+        "money's worth load. Crossed with the pension regime, the "
+        "withdrawal rule, the portfolio and the share of the balance "
+        "annuitised -- and with how much of the annuity the assets test "
+        "counts, because a scheme that exempts it pays the household to "
+        "buy one.")
+
+    gapped = frames.get("gaps")
+    gap_tbl = ""
+    if gapped is not None and len(gapped):
+        block = gapped[gapped["rule"] == rule] if "rule" in gapped else gapped
+        gap_tbl = md_table(block.rename(columns={
+            "system": "Pension system", "treatment": "Assets-test treatment",
+            "fraction": "Annuitised share", "gap_pct": "All-equity lead (%)",
+            "winner": "Best portfolio"})[
+                ["Pension system", "Assets-test treatment",
+                 "Annuitised share", "All-equity lead (%)",
+                 "Best portfolio"]], floatfmt="{:.2f}")
+
+    wanted = frames.get("wanted")
+    want_tbl = ""
+    if wanted is not None and len(wanted):
+        want_tbl = md_table(wanted.rename(columns={
+            "system": "Pension system", "rule": "Withdrawal rule",
+            "treatment": "Assets-test treatment",
+            "best_fraction": "Wanted share",
+            "gain_pct": "Worth (%)",
+            "at_the_corner": "At the top of the grid"})[
+                ["Pension system", "Withdrawal rule",
+                 "Assets-test treatment", "Wanted share", "Worth (%)",
+                 "At the top of the grid"]], floatfmt="{:.3f}")
+
+    if not found.get("measured"):
+        verdict_line = "The annuity sweep produced no comparable cells."
+    else:
+        parts: List[str] = []
+        for arm in found["treatments"]:
+            survived = arm.get("sign_survives_every_interior_share")
+            turns = arm.get("first_interior_share_that_flips_it")
+            if survived:
+                head = (f"**{str(arm['treatment']).capitalize()}: the "
+                        f"reversal survives every share at which a "
+                        f"portfolio still exists.**")
+            elif turns == turns:
+                head = (f"**{str(arm['treatment']).capitalize()}: the "
+                        f"reversal holds until {turns:.0%} of the balance "
+                        f"is annuitised.**")
+            else:
+                head = (f"**{str(arm['treatment']).capitalize()}: the "
+                        f"reversal does not survive.**")
+            body = (
+                f" The all-equity lead runs {arm['no_annuity_gap_pct']:+.2f}% "
+                f"with nothing annuitised, "
+                f"{arm['deepest_interior_gap_pct']:+.2f}% at its worst "
+                f"({arm['deepest_at_share']:.0%} annuitised) and "
+                f"{arm['gap_at_full_pct']:+.2f}% at "
+                f"{arm['full_fraction']:.0%}, a span of "
+                f"{arm['widest_move_pp']:.1f} points.")
+            if arm.get("annuity_deepens_it"):
+                body += (" Buying part of the floor makes the reversal "
+                         "deeper rather than shallower.")
+            if arm.get("flip_needs_the_corner"):
+                body += (
+                    " The sign changes at the full share and nowhere below "
+                    "it, which is the cell in which no retirement portfolio "
+                    "remains: both arms liquidated at the pension age, both "
+                    "hold nothing, and what the number compares is which "
+                    "accumulation strategy bought the larger income.")
+            elif not survived and arm.get(
+                    "first_interior_share_that_flips_it") == arm.get(
+                        "first_interior_share_that_flips_it"):
+                body += (
+                    f" The sign first changes at "
+                    f"{arm['first_interior_share_that_flips_it']:.0%} "
+                    f"annuitised, which leaves "
+                    f"{arm['portfolio_left_at_the_flip']:.0%} of the "
+                    f"balance to allocate -- a thin version of the "
+                    f"question rather than an answer to it.")
+            body += (
+                f" The household wants {arm['wanted_under_means_test']:.0%} "
+                f"under the means test against "
+                f"{arm['wanted_under_earnings_related']:.0%} under the "
+                f"earnings-related pension, worth "
+                f"{arm['gain_under_means_test_pct']:+.1f}% and "
+                f"{arm['gain_under_earnings_related_pct']:+.1f}% of "
+                f"certainty-equivalent consumption respectively"
+                f"{', so the means test makes the annuity more attractive rather than less' if arm['means_test_wants_more'] else ''}.")
+            parts.append(head + body)
+        verdict_line = "\n\n".join(parts)
+        if found.get("reversal_survives_under_every_treatment"):
+            verdict_line += (
+                "\n\n**So the reversal is not an artefact of the missing "
+                "instrument.** Putting the floor on sale does not return "
+                "the all-equity portfolio to first place under either "
+                "reading of the assets test, at any share of the balance "
+                "that leaves a portfolio to hold. The paper's finding "
+                "stands with the annuity in the choice set, which is a "
+                "stronger statement than the limitation it replaces.")
+            if found.get("every_flip_needs_the_corner"):
+                verdict_line += (
+                    " The sign does turn where the whole balance is "
+                    "annuitised, and that is reported above rather than "
+                    "buried -- but a household holding no portfolio is not "
+                    "an answer to a question about which portfolio to "
+                    "hold.")
+            if found.get("annuity_deepens_it_everywhere"):
+                verdict_line += (
+                    " It moves the other way: a partial purchase widens "
+                    "the gap. Sheltering wealth from a means test is worth "
+                    "more to the portfolio that holds less of it, so the "
+                    "target-date fund gains more pension per dollar "
+                    "annuitised than the all-equity portfolio does.")
+        elif found.get("reversal_survives_under_no_treatment"):
+            flips = [t.get("first_interior_share_that_flips_it")
+                     for t in found["treatments"]]
+            flips = [f for f in flips if f == f]
+            edge = min(flips) if flips else float("nan")
+            verdict_line += (
+                f"\n\n**So the reversal is conditional on the annuity, and "
+                f"on buying almost all of one.** Under either reading of "
+                f"the assets test the sign turns, but not until "
+                f"{edge:.0%} of the balance has been converted, leaving "
+                f"{1.0 - edge:.0%} of it to allocate between the two "
+                f"portfolios the paper is comparing. Below that the "
+                f"ordering the means test produced is intact at every "
+                f"share on the grid. The finding is therefore narrower "
+                f"than the pension alone and wider than the corner: it "
+                f"holds for any household that does not annuitise the "
+                f"bulk of its wealth, which is very nearly all of them.")
+        elif found.get("reversal_survives_under_no_treatment"):
+            pass
+        else:
+            verdict_line += (
+                "\n\n**So the answer turns on how the assets test treats "
+                "annuitised wealth**, which is a question about the "
+                "schedule rather than about the portfolio. The two "
+                "readings bracket the real rule, and the paper reports "
+                "both rather than choosing.")
+        if found.get("annuity_deepens_it_everywhere"):
+            verdict_line += (
+                "\n\n**A partial purchase makes it worse, under both "
+                "readings.** That is the direction the mechanism predicts "
+                "once the arithmetic of the test is followed through: "
+                "sheltering a dollar from an assets test is worth more to "
+                "the portfolio holding fewer of them, because it sits "
+                "lower on the taper and recovers more pension per dollar "
+                "sheltered. The target-date fund arrives with the smaller "
+                "balance, so it is the one the shelter helps.")
+        if found.get("wanted_share_is_a_corner") or (
+                found.get("lowest_wanted_share") == found.get(
+                    "lowest_wanted_share")
+                and found.get("lowest_wanted_share", 0.0) >= 0.9):
+            verdict_line += (
+                "\n\n**The share the model wants is not a share anyone "
+                "buys.** It asks for essentially the whole balance, which "
+                "is Yaari's full-annuitisation corner and is what a model "
+                "with no health shock, no liquidity need, no bequest "
+                "motive beyond a fixed weight and no annuity-market "
+                "friction beyond a load is bound to produce. Observed "
+                "voluntary annuitisation is close to zero. So the wanted "
+                "share is reported as the benchmark it is rather than as "
+                "advice, and the reading that matters is the one over the "
+                "shares households actually hold -- where the reversal is "
+                "not merely intact but wider.")
+
+    load = notes.get("load", {})
+    loads = frames.get("loads")
+    load_tbl = ""
+    if loads is not None and len(loads):
+        load_tbl = md_table(loads.rename(columns={
+            "moneys_worth": "Money's worth", "treatment": "Treatment",
+            "no_annuity_gap_pct": "Lead, no annuity (%)",
+            "deepest_gap_pct": "Deepest lead (%)",
+            "deepest_at_share": "At share",
+            "flips_at_share": "Sign turns at"})[
+                ["Money's worth", "Treatment", "Lead, no annuity (%)",
+                 "Deepest lead (%)", "At share", "Sign turns at"]],
+            floatfmt="{:.2f}")
+    if not load.get("measured"):
+        load_line = "The price was not swept in this run."
+    else:
+        load_line = (
+            f"**The answer is not a pricing artefact.** The obvious way for "
+            f"this section to be wrong is the load: an annuity cheap enough "
+            f"rescues any portfolio and one dear enough rescues none. "
+            f"Across {load['loads']} prices, from a money's worth of "
+            f"{load['dearest_price']:.2f} to {load['cheapest_price']:.2f}, "
+            f"a partial purchase widens the gap at "
+            f"{'every one of them' if load['deepens_at_every_price'] else 'some but not all of them'}"
+            f", and the sign turns at "
+            f"{'the same share throughout' if load['one_crossing_share'] else 'shares between %.0f%% and %.0f%%' % (100 * load['earliest_crossing'], 100 * load['latest_crossing'])}"
+            f". That includes an actuarially fair annuity, which no insurer "
+            f"offers and which is on the grid as the bound rather than as a "
+            f"calibration"
+            f"{': the reversal deepens even when the household is handed the instrument at cost' if load['holds_at_an_actuarially_fair_price'] else ''}.")
+
+    if not horizon.get("measured"):
+        horizon_line = ("The horizon distortion was not measured in this "
+                        "run.")
+    else:
+        horizon_line = (
+            f"**Why this section is scored on a real lifespan.** An annuity "
+            f"priced on a survival curve and then paid for the full fixed "
+            f"horizon with certainty collects the mortality credit twice. "
+            f"Annuitising {horizon['full_fraction']:.0%} of the balance is "
+            f"worth {horizon['gain_fixed_horizon_pct']:+.1f}% scored over "
+            f"the fixed horizon and {horizon['gain_real_lifespan_pct']:+.1f}% "
+            f"scored over a real lifespan, a difference of "
+            f"{horizon['overpaid_pp']:.1f} points"
+            f"{' in the annuity favour' if horizon['fixed_horizon_flatters_it'] else ' against it'}"
+            f". Every headline above is the second number.")
+
+    method = textwrap.dedent(f"""
+        ## How it is priced
+
+        The premium for one unit of real income a year for life is the
+        expected present value of the stream on the Gompertz curve
+        `src.mortality` uses, discounted at the insurer's real rate and
+        divided by a money's worth ratio. A money's worth of one is
+        actuarially fair and is on the grid as an upper bound rather than
+        as a calibration; the headline is read at {priced_at:.2f}, which is
+        inside the range real annuities are sold at.
+
+        The purchase happens on the retirement date, out of the balance
+        that arrives. Everything downstream sees the residual portfolio:
+        the withdrawal rule's own reference level, the assets test, and the
+        estate -- which this project's objective prices, and which an
+        annuity gives up. A household that annuitises half arrives with
+        half the portfolio and a real income for life, and that is the
+        whole of the trade.
+
+        Two readings of the assets test are run rather than one chosen.
+        Exempting annuitised wealth is the strong form of the crowding-in
+        mechanism: buying a floor raises the pension as well. Assessing it
+        at the remaining actuarial value leaves only the floor. Real
+        schedules sit between the two, and this model carries no income
+        test, so the exempt arm flatters the annuity by exactly the test it
+        omits.
+
+        Each portfolio annuitises the same *share* of its own balance, not
+        the same number of dollars, so the comparison holds the household's
+        decision fixed rather than the insurer's payout.
+
+        Two readings of the grid's top row are wrong and worth naming. A
+        share of one leaves no portfolio, so the strategy comparison there
+        is between two accumulation histories rather than between two
+        retirement portfolios, and the probability of ruin in that row is
+        one by construction -- the portfolio is empty from the first year
+        and the annuity pays anyway, which is not the hardship the measure
+        was built to count. Both are labelled where they appear.
+
+        {n_paths:,} simulated lifetimes per cell, gamma = {gamma:g}, common
+        random numbers throughout.
+    """)
+
+    return _write(path, [
+        intro,
+        "## What the annuity does to the ordering",
+        verdict_line,
+        load_line,
+        horizon_line,
+        "### The lead against the annuitised share",
+        gap_tbl,
+        "### The share each regime would buy",
+        want_tbl,
+        "### The same cell at every price",
+        load_tbl,
+        method,
+    ])

@@ -180,6 +180,31 @@ class LifecycleSpec:
     #: arms differ in the state variable alone. See `docs/35`.
     retirement_balance_scale: float = 1.0
 
+    #: The share of the balance at retirement converted into a real life
+    #: annuity, and what the household is charged for it. Zero -- the
+    #: default -- leaves every other result in the project bit-identical.
+    #: The premium is the expected present value of the income stream on
+    #: the same Gompertz curve :mod:`src.mortality` uses, divided by a
+    #: money's worth ratio: one is actuarially fair, below one is the
+    #: load. See `docs/41`.
+    #:
+    #: The instrument matters here because the paper's mechanism is a
+    #: missing floor, and an annuity is the floor a market sells. Leaving
+    #: it out of the choice set was a limitation the paper conceded rather
+    #: than measured.
+    annuity_fraction: float = 0.0
+    annuity_moneys_worth: float = 1.0
+    annuity_real_rate: float = 0.02
+    annuity_modal_age: float = 88.0
+    annuity_dispersion: float = 10.0
+    #: How much of the annuity's remaining actuarial value the assets test
+    #: counts. Zero exempts it, which is the strong form of the
+    #: crowding-in mechanism: annuitising raises the pension as well as
+    #: supplying a floor. One assesses it in full, leaving only the floor.
+    #: Real schedules sit between, and this model carries no income test,
+    #: so both ends are run rather than a point chosen.
+    annuity_assessed: float = 0.0
+
     retirement_rule: str = "fixed_real_rule"
     rule_rate: float = 0.04
     allow_ruin: bool = True
@@ -198,6 +223,12 @@ class LifecycleSpec:
         if not 0.0 <= self.pre_eligibility_benefit_share <= 1.0:
             raise ValueError(
                 "pre_eligibility_benefit_share must lie in [0, 1]")
+        if not 0.0 <= self.annuity_fraction <= 1.0:
+            raise ValueError("annuity_fraction must lie in [0, 1]")
+        if not 0.0 < self.annuity_moneys_worth <= 1.0:
+            raise ValueError("annuity_moneys_worth must lie in (0, 1]")
+        if not 0.0 <= self.annuity_assessed <= 1.0:
+            raise ValueError("annuity_assessed must lie in [0, 1]")
         if (self.benefit_start_age is not None
                 and not self.age_start <= self.benefit_start_age
                 <= self.age_death):
@@ -442,6 +473,10 @@ def spec_from_config(cfg: Mapping[str, Any]) -> LifecycleSpec:
     income = life["income"]
     ss = life["social_security"]
     ret = life["retirement"]
+    # Absent from every config that predates the annuity study, which is
+    # every one of them but this project's own -- so it defaults to a
+    # purchase of nothing and leaves those runs bit-identical.
+    ann = life.get("annuity", {})
     return LifecycleSpec(
         age_start=int(life["age_start"]),
         age_retire=int(life["age_retire"]),
@@ -477,6 +512,12 @@ def spec_from_config(cfg: Mapping[str, Any]) -> LifecycleSpec:
         retirement_rule=str(ret["rule"]),
         rule_rate=float(ret["rule_rate"]),
         allow_ruin=bool(ret["allow_ruin"]),
+        annuity_fraction=float(ann.get("fraction", 0.0)),
+        annuity_moneys_worth=float(ann.get("moneys_worth", 1.0)),
+        annuity_real_rate=float(ann.get("real_rate", 0.02)),
+        annuity_modal_age=float(ann.get("modal_age", 88.0)),
+        annuity_dispersion=float(ann.get("dispersion", 10.0)),
+        annuity_assessed=float(ann.get("assessed", 0.0)),
     )
 
 
@@ -794,6 +835,40 @@ def simulate(
     # response to the balance rather than to what was given up for it.
     if spec.retirement_balance_scale != 1.0:
         wealth[:, spec.n_working] *= float(spec.retirement_balance_scale)
+
+    # The annuity is bought on the retirement date out of the balance that
+    # arrives, so everything downstream -- the withdrawal rule's own
+    # reference level, the assets test, the estate -- sees the residual
+    # portfolio and not the pre-purchase one. A household that annuitises
+    # half arrives at the pension age with half the portfolio and a real
+    # income for life; that is the trade, and the price of it is in the
+    # premium rather than in any adjustment made here.
+    annuity_income = np.zeros(n_paths, dtype=float)
+    annuity_assessable = None
+    # What the assets test would have seen had nothing been annuitised. The
+    # annuity's assessed value is a share of it, so it is captured before
+    # the purchase rather than reconstructed after it.
+    pre_annuity_wealth = wealth[:, spec.n_working].copy()
+    if spec.annuity_fraction > 0.0:
+        from . import annuity as ann
+        from . import mortality as mrt
+
+        priced = ann.layer(
+            mrt.survival(spec, spec.annuity_modal_age,
+                         spec.annuity_dispersion),
+            spec.n_retired, spec.annuity_real_rate,
+            spec.annuity_moneys_worth, spec.annuity_fraction)
+        premium = float(priced["premium_share"]) * wealth[:, spec.n_working]
+        annuity_income = (float(priced["income_per_wealth"])
+                          * wealth[:, spec.n_working])
+        wealth[:, spec.n_working] -= premium
+        if spec.annuity_assessed > 0.0:
+            # Per unit of the *pre-purchase* balance, so the path's own
+            # wealth scales it the same way the income was scaled.
+            annuity_assessable = (
+                float(spec.annuity_assessed)
+                * np.asarray(priced["assessable_per_wealth"], dtype=float))
+
     wealth_at_retirement = wealth[:, spec.n_working].copy()
 
     # --- social security --------------------------------------------------
@@ -860,7 +935,11 @@ def simulate(
         eligible = h >= benefit_from
         share = 1.0 if eligible else float(spec.pre_eligibility_benefit_share)
         if means_tested:
-            benefit = (share * spec.means_tested_benefit(available) if share
+            assessed = available
+            if annuity_assessable is not None:
+                assessed = available + (annuity_assessable[h - spec.n_working]
+                                        * pre_annuity_wealth)
+            benefit = (share * spec.means_tested_benefit(assessed) if share
                        else nothing)
             benefit_paid[:, h - spec.n_working] = benefit
         else:
@@ -876,7 +955,8 @@ def simulate(
         owed = (regime.tax(benefit, withdrawal, economy_average)
                 if regime is not None else 0.0)
         tax_paid[:, h - spec.n_working] = owed
-        consumption[:, h] = np.maximum(benefit + withdrawal - owed, 0.0)
+        consumption[:, h] = np.maximum(
+            benefit + withdrawal + annuity_income - owed, 0.0)
         wealth[:, h + 1] = np.maximum(available - withdrawal, 0.0) * (1.0 + rp[:, h])
 
         # Ruin is running out of money with retirement years still to fund.

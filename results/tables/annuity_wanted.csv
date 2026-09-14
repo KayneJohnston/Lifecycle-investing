@@ -1,0 +1,19 @@
+system,rule,treatment,assessed,strategy,best_fraction,best_value,no_annuity_value,gain_pct,at_the_corner
+us_social_security,fixed_real_rule,exempt from the assets test,0.0,balanced_all_equity,0.95,1.1904282329015488,1.078510472624128,10.377067549943519,False
+us_social_security,fixed_real_rule,assessed at its remaining value,1.0,balanced_all_equity,0.95,1.1904282329015488,1.078510472624128,10.377067549943519,False
+us_social_security,constant_percent at 4%,exempt from the assets test,0.0,balanced_all_equity,0.75,1.2066307439085753,1.133277428383734,6.472670653068335,False
+us_social_security,constant_percent at 4%,assessed at its remaining value,1.0,balanced_all_equity,0.75,1.2066307439085753,1.133277428383734,6.472670653068335,False
+us_social_security,amortisation at 6%,exempt from the assets test,0.0,balanced_all_equity,0.25,1.3029781729618186,1.294297236743299,0.6707065403587231,False
+us_social_security,amortisation at 6%,assessed at its remaining value,1.0,balanced_all_equity,0.25,1.3029781729618186,1.294297236743299,0.6707065403587231,False
+age_pension_matched,fixed_real_rule,exempt from the assets test,0.0,balanced_all_equity,0.95,1.076156574949065,0.4453337149970984,141.6517184098843,False
+age_pension_matched,fixed_real_rule,assessed at its remaining value,1.0,balanced_all_equity,1.0,0.9307593910020182,0.4453337149970984,109.00267813948976,True
+age_pension_matched,constant_percent at 4%,exempt from the assets test,0.0,balanced_all_equity,0.9,1.093796152808618,0.67380130432689,62.332151301086,False
+age_pension_matched,constant_percent at 4%,assessed at its remaining value,1.0,balanced_all_equity,1.0,0.9307593910020182,0.67380130432689,38.13558760201907,True
+age_pension_matched,amortisation at 6%,exempt from the assets test,0.0,balanced_all_equity,0.5,1.1451857541814758,1.049821053148697,9.083900608275531,False
+age_pension_matched,amortisation at 6%,assessed at its remaining value,1.0,balanced_all_equity,0.1,1.0513535757011592,1.049821053148697,0.14597940743004134,False
+australia_as_legislated,fixed_real_rule,exempt from the assets test,0.0,balanced_all_equity,0.95,1.506905456938158,0.669557912827888,125.05976377363979,False
+australia_as_legislated,fixed_real_rule,assessed at its remaining value,1.0,balanced_all_equity,1.0,1.1970434555521563,0.669557912827888,78.78116778523685,True
+australia_as_legislated,constant_percent at 4%,exempt from the assets test,0.0,balanced_all_equity,0.95,1.5401096020516625,0.8646139966343699,78.12684134732413,False
+australia_as_legislated,constant_percent at 4%,assessed at its remaining value,1.0,balanced_all_equity,0.95,1.216166993934436,0.8646139966343699,40.66010944404497,False
+australia_as_legislated,amortisation at 6%,exempt from the assets test,0.0,balanced_all_equity,0.75,1.5942284889917202,1.3829707475349955,15.275647864083176,False
+australia_as_legislated,amortisation at 6%,assessed at its remaining value,1.0,balanced_all_equity,0.25,1.3953745636324693,1.3829707475349955,0.8968964903691701,False

@@ -4912,3 +4912,74 @@ def plot_resample(replicates: pd.DataFrame, band: pd.DataFrame,
         fig.suptitle("What the delete-one interval was assuming",
                      fontsize=9.5, y=0.995)
         return _save(fig, directory, name)
+
+
+def plot_annuity(gapped: pd.DataFrame, wanted: pd.DataFrame,
+                 swept: pd.DataFrame, directory: str | Path,
+                 rule: str = "fixed_real_rule",
+                 name: str = "fig70_annuity") -> Path:
+    """What buying the floor does to the portfolio ordering.
+
+    Drawn under the rule the reversal happens under, because that is the
+    only cell in the grid where the sign is in question -- under every
+    other rule the all-equity portfolio leads at every annuitised share
+    and the picture has nothing to show.
+
+    Left, the lead against the annuitised share, one line per pension
+    regime, with annuitised wealth exempt from the assets test. Right, the
+    two readings of the test for the regime the paper's headline is drawn
+    from, which separates the shelter the annuity provides from the floor.
+    The shaded band is the region where so little portfolio remains that
+    the comparison has stopped being a portfolio comparison.
+    """
+    exempt = "exempt from the assets test"
+    with plt.rc_context(STYLE):
+        fig, axes = _grid(2, 3.2, max_cols=2, wspace=0.28)
+        left, right = axes[0], axes[1]
+        block = gapped[gapped["rule"] == rule] if len(gapped) else gapped
+
+        def _dress(ax: Any) -> None:
+            ax.axhline(0.0, color="black", linewidth=1.0)
+            ax.axvspan(90.0, 100.0, color="0.85", alpha=0.55, zorder=0)
+            ax.set_xlabel("Share of the balance annuitised (%)", fontsize=7)
+            ax.set_ylabel("All-equity lead (%)", fontsize=7)
+
+        head = None
+        if len(block):
+            systems = list(dict.fromkeys(block["system"]))
+            head = "age_pension_matched" if "age_pension_matched" in systems \
+                else (systems[0] if systems else None)
+            shown = block[block["treatment"] == exempt]
+            for i, system in enumerate(systems):
+                part = shown[shown["system"] == system].sort_values("fraction")
+                if not len(part):
+                    continue
+                left.plot(100.0 * part["fraction"], part["gap_pct"],
+                          marker="o", markersize=3.4, linewidth=2.0,
+                          color=PALETTE[i % len(PALETTE)],
+                          label=_legend(SYSTEM_LABEL.get(str(system),
+                                                         str(system))))
+            left.legend(fontsize=6.4, loc="center left", framealpha=0.95)
+        _dress(left)
+        left.set_title("Every pension regime, annuity exempt", fontsize=8)
+
+        if head is not None:
+            part_of = block[block["system"] == head]
+            for i, arm in enumerate(dict.fromkeys(part_of["treatment"])):
+                part = part_of[part_of["treatment"] == arm] \
+                    .sort_values("fraction")
+                right.plot(100.0 * part["fraction"], part["gap_pct"],
+                           marker="o", markersize=3.4, linewidth=2.0,
+                           color=PALETTE[i % len(PALETTE)],
+                           label=_legend(str(arm)))
+            right.legend(fontsize=6.4, loc="upper left", framealpha=0.95)
+            right.set_title(
+                _legend(f"Shelter against floor: "
+                        f"{SYSTEM_LABEL.get(str(head), str(head))}"),
+                fontsize=8)
+        _dress(right)
+
+        fig.suptitle("The floor, bought rather than legislated: the "
+                     "all-equity lead under a fixed real withdrawal",
+                     fontsize=9.5, y=0.99)
+        return _save(fig, directory, name)

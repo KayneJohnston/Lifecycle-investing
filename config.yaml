@@ -1419,3 +1419,48 @@ longevity:
   # inside the grid rather than a mismatch between two calibrations.
   mortality_modal_age: 88.0
   mortality_dispersion: 10.0
+
+annuity:
+  enabled: true
+  # The instrument the paper's mechanism is about, put in the choice set.
+  # A means test reverses the portfolio ordering by removing an
+  # unconditional floor; the market sells floors; until this section the
+  # limitations conceded the absence rather than measuring it.
+  n_paths: 25000
+  # The three systems a headline is drawn from. The full five would cost
+  # five times the runtime to populate rows nothing in the argument reads,
+  # and the question here is what a floor does to the *reversal* -- which
+  # lives in the means-tested arms, with the earnings-related one as the
+  # control that says how much of any gain is the annuity rather than the
+  # test.
+  systems: [us_social_security, age_pension_matched,
+            australia_as_legislated]
+  headline_system: age_pension_matched
+  legislated_system: australia_as_legislated
+  strategies: [balanced_all_equity, target_date_fund]
+  # The rule the reversal happens under, and the rule section #longevity
+  # selects. An annuity and an amortisation rule are two ways of buying the
+  # same floor, so running both is what separates "a floor helps" from "a
+  # floor bought in this particular way helps".
+  percent_rate: 0.04
+  assumed_return_grid: [0.06]
+  # The share of the balance at retirement converted to a real life
+  # annuity. Zero is the paper's existing cell, so the sweep carries its
+  # own control and the comparison is a difference inside one table.
+  # The top of the grid leaves no portfolio, so it is carried as a
+  # labelled corner rather than as an answer; 0.90 and 0.95 are here
+  # to resolve the interior approach to it.
+  fractions: [0.00, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 1.00]
+  # What the buyer gets back per unit of actuarial value. One is
+  # actuarially fair -- which no insurer offers, and which is here as the
+  # upper bound rather than as a calibration. Real annuity money's worth in
+  # developed markets runs roughly 0.75 to 0.95.
+  moneys_worth: [1.00, 0.90, 0.80]
+  # The insurer's pricing rate. Held below the panel's real equity return
+  # by construction: an annuity is a bond-like claim and pricing it at an
+  # equity return would be assuming the answer.
+  real_rate: 0.02
+  # Gompertz, matching #mortality and the actuarial spending rule, so the
+  # insurer and the household are reading one table.
+  modal_age: 88.0
+  dispersion: 10.0
