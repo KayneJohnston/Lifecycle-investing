@@ -6113,6 +6113,15 @@ def step41_annuity(cfg: Dict[str, Any],
                         str(block.get("headline_system",
                                       "age_pension_matched")), baseline_rule)
     load_found = anu.load_verdict(loads)
+    # Which half of the certainty equivalent the annuity acts on, and
+    # whether it acts at all without a test to interact with. A draft
+    # asserted a mechanism in prose that this measurement does not
+    # support, so the prose now reads off it.
+    channels = anu.channel(at_price, odr.HEADLINE, baseline_rule,
+                           anu.TREATMENTS[0][0])
+    channel_found = anu.channel_verdict(
+        channels, str(block.get("headline_system", "age_pension_matched")),
+        "us_social_security")
 
     if found.get("measured"):
         for arm in found["treatments"]:
@@ -6125,6 +6134,14 @@ def step41_annuity(cfg: Dict[str, Any],
                         "%.0f%% under the earnings-related pension",
                         100.0 * arm["wanted_under_means_test"],
                         100.0 * arm["wanted_under_earnings_related"])
+    if channel_found.get("measured"):
+        LOGGER.info("the mean ratio moves %.3f under the test against %.3f "
+                    "without it, a factor of %.0f: it is the test and not "
+                    "the instrument: %s",
+                    channel_found["mean_span_under_the_test"],
+                    channel_found["mean_span_without_it"],
+                    channel_found["ratio_of_spans"],
+                    channel_found["it_is_the_test_and_not_the_instrument"])
     if horizon.get("measured"):
         LOGGER.info("the fixed horizon overpays a full annuity by %.1f "
                     "points (%.1f%% against %.1f%% on a real lifespan)",
@@ -6137,6 +6154,8 @@ def step41_annuity(cfg: Dict[str, Any],
     _save_table(wanted, tables, "annuity_wanted")
     if len(loads):
         _save_table(loads, tables, "annuity_by_load")
+    if len(channels):
+        _save_table(channels, tables, "annuity_channel")
 
     plots.plot_annuity(gapped, wanted, swept, cfg["run"]["figure_dir"],
                        rule=baseline_rule)
@@ -6145,14 +6164,16 @@ def step41_annuity(cfg: Dict[str, Any],
     rp.write_doc_41(
         Path("docs") / "41_annuity.md", cfg,
         {"sweep": swept, "gaps": gapped, "wanted": wanted,
-         "loads": loads}, [],
+         "loads": loads, "channels": channels}, [],
         {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
          "verdict": found, "horizon": horizon, "priced_at": priced_at,
-         "load": load_found, "rule": baseline_rule})
+         "load": load_found, "channel": channel_found,
+         "rule": baseline_rule})
     LOGGER.info("docs/41 written (%.0fs)", elapsed)
     state["annuity"] = {"sweep": swept, "gaps": gapped, "wanted": wanted,
                         "found": found, "horizon": horizon, "loads": loads,
-                        "load_found": load_found, "priced_at": priced_at}
+                        "load_found": load_found, "priced_at": priced_at,
+                        "channels": channels, "channel": channel_found}
     return state
 
 

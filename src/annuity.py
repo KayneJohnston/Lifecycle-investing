@@ -463,3 +463,81 @@ def load_verdict(frame: pd.DataFrame) -> Dict[str, Any]:
         "cheapest_price": float(frame["moneys_worth"].max()),
         "dearest_price": float(frame["moneys_worth"].min()),
     }
+
+
+def channel(swept: pd.DataFrame, pair: Tuple[str, str], rule: str,
+            treatment: str, ceiling: float = 0.75) -> pd.DataFrame:
+    """How far the mean and the tail move as the household annuitises.
+
+    The gap this section reports is a ratio of certainty equivalents, and a
+    certainty equivalent bundles a mean with a tail. Splitting them says
+    which one the annuity is acting on, and comparing the split across
+    pension regimes says whether it is acting through the instrument or
+    through the test.
+
+    Read over the interior only -- up to ``ceiling`` -- because past it the
+    household holds too little portfolio for the comparison to be one
+    between portfolios. A draft of this section asserted a mechanism in
+    prose that this measurement does not support; the numbers are here so
+    the prose has to be read off them.
+    """
+    challenger, incumbent = pair
+    block = swept[(swept["rule"] == rule)
+                  & (swept["treatment"] == treatment)
+                  & (swept["fraction"] <= float(ceiling))]
+    rows: List[Dict[str, Any]] = []
+    for system in list(dict.fromkeys(block["system"])):
+        part = block[block["system"] == system]
+        row: Dict[str, Any] = {"system": str(system)}
+        for column, name in (("mean_consumption", "mean"),
+                             ("p5_consumption", "tail")):
+            wide = part.pivot_table(index="fraction", columns="strategy",
+                                    values=column)
+            if challenger not in wide.columns or incumbent not in wide.columns:
+                continue
+            ratio = (wide[challenger] / wide[incumbent]).sort_index()
+            row[f"{name}_ratio_at_zero"] = float(ratio.iloc[0])
+            row[f"{name}_ratio_lowest"] = float(ratio.min())
+            row[f"{name}_ratio_span"] = float(ratio.max() - ratio.min())
+            row[f"{name}_moves_against_the_challenger"] = bool(
+                ratio.min() < ratio.iloc[0])
+        rows.append(row)
+    return pd.DataFrame.from_records(rows)
+
+
+def channel_verdict(frame: pd.DataFrame, tested: str,
+                    untested: str) -> Dict[str, Any]:
+    """Whether the annuity acts through the instrument or through the test.
+
+    If the annuitised share moved the portfolio comparison by itself, it
+    would move it under an earnings-related pension too. Whether it does is
+    the discriminating measurement, and it is the one the prose is allowed
+    to lean on.
+    """
+    if not len(frame) or "mean_ratio_span" not in frame:
+        return {"measured": False}
+    keyed = frame.set_index("system")
+    if tested not in keyed.index or untested not in keyed.index:
+        return {"measured": False}
+    hit, control = keyed.loc[tested], keyed.loc[untested]
+    span_tested = float(hit["mean_ratio_span"])
+    span_control = float(control["mean_ratio_span"])
+    return {
+        "measured": True,
+        "tested_system": str(tested),
+        "untested_system": str(untested),
+        "mean_span_under_the_test": span_tested,
+        "mean_span_without_it": span_control,
+        "tail_span_under_the_test": float(hit["tail_ratio_span"]),
+        "tail_span_without_it": float(control["tail_ratio_span"]),
+        "ratio_of_spans": (span_tested / span_control
+                           if span_control > 0 else float("inf")),
+        "mean_moves_against_it_under_the_test": bool(
+            hit["mean_moves_against_the_challenger"]),
+        "tail_moves_against_it_under_the_test": bool(
+            hit["tail_moves_against_the_challenger"]),
+        # The discriminating fact: an instrument effect would show up under
+        # both pensions, and an interaction shows up under one.
+        "it_is_the_test_and_not_the_instrument": bool(
+            span_tested > 3.0 * span_control),
+    }

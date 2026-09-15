@@ -785,7 +785,7 @@ def introduction(ctx: Any) -> List[Flowable]:
         f"upside is confiscated and the downside is not."))
     out.append(ctx.h2("#introduction.2 Contribution"))
     out.append(ctx.p(
-        "Three things here are new, and it is worth separating them from "
+        "Four things here are new, and it is worth separating them from "
         "what is replication. That an all-equity portfolio beats a glide "
         "path on an international block bootstrap is Anarkulova, Cederburg "
         "and O'Doherty's result, and Section "
@@ -816,7 +816,14 @@ def introduction(ctx: Any) -> List[Flowable]:
         f"cannot be wrong is not a mechanism. Third, the "
         f"<i>interaction</i>: the "
         f"portfolio and the drawdown rule are one decision when the pension "
-        f"is asset-tested, and we measure how much of one."))
+        f"is asset-tested, and we measure how much of one. Fourth, the "
+        f"<i>instrument</i>: an asset test does not merely leave a "
+        f"household worse placed to hold equity \u2014 it leaves one that "
+        f"buys the missing floor on the market worse placed still. A "
+        f"priced life annuity in the choice set widens the reversal rather "
+        f"than closing it, at every load we quote, while the same purchase "
+        f"under an earnings-related pension moves the comparison by almost "
+        f"nothing."))
     out.append(ctx.h2("#introduction.3 Relation to the literature"))
     out.append(ctx.p(
         "The lifecycle portfolio-choice literature since Cocco, Gomes and "
@@ -2438,18 +2445,7 @@ def _annuity(ctx: Any, f: Any) -> List[Flowable]:
         "band is past nine-tenths converted, where a tenth of the balance "
         "is left to allocate and the comparison has largely stopped being "
         "one between portfolios.")
-    out.append(ctx.p(
-        f"<b>The direction is what the arithmetic of the test predicts, "
-        f"once it is followed through.</b> Sheltering a dollar from an "
-        f"assets test is worth more to the portfolio that holds fewer of "
-        f"them: it sits lower on the taper and recovers more pension per "
-        f"dollar sheltered. The target-date fund arrives with the smaller "
-        f"balance, so the shelter is worth more to it, and a partial "
-        f"purchase widens rather than closes the gap. The same reasoning "
-        f"says the effect should be larger where the annuity is exempt "
-        f"than where it is assessed, and it is: "
-        f"{exempt['deepest_interior_gap_pct']:+.2f}% against "
-        f"{assessed['deepest_interior_gap_pct']:+.2f}%."))
+    out.extend(_annuity_channel(ctx, f, exempt, assessed))
     if loads.get("measured"):
         out.append(ctx.p(
             f"<b>It is not a pricing artefact.</b> An annuity cheap enough "
@@ -2503,6 +2499,65 @@ def _annuity(ctx: Any, f: Any) -> List[Flowable]:
             f"accumulation histories rather than two retirement "
             f"portfolios, and its probability of ruin is one by "
             f"construction while the annuity pays regardless."))
+    return out
+
+
+def _annuity_channel(ctx: Any, f: Any, exempt: Dict[str, Any],
+                     assessed: Dict[str, Any]) -> List[Flowable]:
+    """Which half of the certainty equivalent the annuity acts on.
+
+    A draft of this section explained the widening by asserting that
+    sheltering wealth from an assets test is worth more to the portfolio
+    holding less of it. That is a plausible sentence and the measurement
+    does not support it, so it is replaced by the discriminating fact: the
+    same purchase under a pension with no test moves the comparison by
+    almost nothing.
+    """
+    out: List[Flowable] = []
+    if not _has(f, "annuity_channel"):
+        return out
+    from src import annuity as anu
+
+    split = f.table("annuity_channel")
+    found = anu.channel_verdict(split, str(f.cfg.get("annuity", {}).get(
+        "headline_system", "age_pension_matched")), "us_social_security")
+    if not found.get("measured"):
+        return out
+    out.append(ctx.p(
+        f"<b>And it is the test doing this, not the instrument.</b> A "
+        f"certainty equivalent bundles a mean with a tail, so both are "
+        f"read separately across the first three-quarters of the grid. "
+        f"Under the earnings-related pension the annuitised share barely "
+        f"moves the comparison at all: the all-equity portfolio's mean "
+        f"retirement consumption stays a near-constant multiple of the "
+        f"target-date fund's, a span of "
+        f"{found['mean_span_without_it']:.3f} over the range, and its "
+        f"fifth percentile a span of {found['tail_span_without_it']:.3f}. "
+        f"Under the means test the mean ratio moves "
+        f"{found['mean_span_under_the_test']:.3f} and the tail ratio "
+        f"{found['tail_span_under_the_test']:.3f}, and both move against "
+        f"the all-equity portfolio. The mean channel is "
+        f"{found['ratio_of_spans']:.0f} times larger under the test than "
+        f"without it. Annuitising is therefore not doing something to "
+        f"equity; it is doing something to the interaction between equity "
+        f"and the test, which is this paper's subject arriving on a margin "
+        f"we did not choose."))
+    out.append(ctx.p(
+        f"<b>We stop there rather than decompose it.</b> The natural "
+        f"reading is that the taper insures a portfolio's downside \u2014 "
+        f"Section {SHORT_ORDER.index('model') + 1} says so in its middle "
+        f"line, and a retiree whose portfolio falls is met by a pension "
+        f"that rises \u2014 so moving wealth beyond the test's reach "
+        f"forfeits that insurance, and forfeits most where the downside is "
+        f"deepest. The exempt reading does move the lead further than the "
+        f"assessed one ({exempt['deepest_interior_gap_pct']:+.2f}% against "
+        f"{assessed['deepest_interior_gap_pct']:+.2f}%), which is what "
+        f"that account would predict. But one period of accounting does "
+        f"not deliver it, Section "
+        f"{SHORT_ORDER.index('model') + 1} does not derive it, and a "
+        f"mechanism asserted in prose is what this paper spends its length "
+        f"objecting to. The measurement is the claim; the decomposition is "
+        f"open."))
     return out
 
 
@@ -3189,7 +3244,10 @@ def conclusion(ctx: Any) -> List[Flowable]:
         f"any retiree whose income in the bad states depends on the "
         f"portfolio itself — which includes a saver under an asset test, "
         f"and excludes one drawing on an annuity, a defined-benefit scheme, "
-        f"or a rule that divides by the years remaining."))
+        f"or a rule that divides by the years remaining \u2014 and, as "
+        f"Section {SHORT_ORDER.index('ordering') + 1}.8 finds, not one "
+        f"that buys part of an annuity, which widens the reversal rather "
+        f"than closing it."))
     out.append(ctx.p(
         f"The third finding is the one we did not expect and would now put "
         f"first for a practitioner. Scaling the balance until the assets "
@@ -3223,7 +3281,8 @@ def conclusion(ctx: Any) -> List[Flowable]:
         "is taken back by the test."))
     out.append(ctx.p(
         f"We state these as implications of a calibrated model. It carries "
-        f"no behavioural constraints, prices no annuity, models one "
+        f"no behavioural constraints, prices one annuity and only one, "
+        f"models one "
         f"household rather than a distribution of them, and — as Section "
         f"{SHORT_ORDER.index('limitations') + 1} sets out — rests on a "
         f"sixteen-country panel whose leave-one-out range is wide enough "

@@ -349,3 +349,68 @@ class TestTheShippedRun:
                 continue
             assert np.sign(float(here["gap_pct"].iloc[0])) == \
                 np.sign(float(there["gap_pct"].iloc[0])), system
+
+
+class TestTheMechanismIsMeasuredRatherThanAsserted:
+    """The section's first draft explained the widening by asserting that
+    sheltering wealth from an assets test is worth more to the portfolio
+    holding less of it. It is a plausible sentence, it was not derived from
+    the model, and the split below does not support it -- the mean ratio
+    moves against the all-equity portfolio under the test and barely moves
+    at all without one, which says the annuity acts on the interaction and
+    says nothing about which side of the taper does the work.
+
+    So the discriminating fact gets a guard: an instrument effect would
+    show up under both pensions, an interaction shows up under one.
+    """
+
+    @staticmethod
+    def _frame(tested_span: float, untested_span: float) -> pd.DataFrame:
+        rows = []
+        for system, span in (("age_pension_matched", tested_span),
+                             ("us_social_security", untested_span)):
+            rows.append({
+                "system": system,
+                "mean_ratio_at_zero": 1.2, "mean_ratio_lowest": 1.2 - span,
+                "mean_ratio_span": span,
+                "mean_moves_against_the_challenger": span > 0.0,
+                "tail_ratio_at_zero": 1.0, "tail_ratio_lowest": 1.0 - span,
+                "tail_ratio_span": span,
+                "tail_moves_against_the_challenger": span > 0.0})
+        return pd.DataFrame.from_records(rows)
+
+    def test_an_effect_only_under_the_test_is_called_an_interaction(
+            self) -> None:
+        got = anu.channel_verdict(self._frame(0.10, 0.003),
+                                  "age_pension_matched", "us_social_security")
+        assert got["measured"]
+        assert got["it_is_the_test_and_not_the_instrument"]
+        assert got["ratio_of_spans"] > 30.0
+
+    def test_an_effect_under_both_pensions_is_not(self) -> None:
+        """If annuitising moved the portfolio comparison by itself it would
+        move it under an earnings-related pension too, and then the section
+        would be reporting something about annuities rather than about
+        means tests."""
+        got = anu.channel_verdict(self._frame(0.10, 0.09),
+                                  "age_pension_matched", "us_social_security")
+        assert not got["it_is_the_test_and_not_the_instrument"]
+
+    def test_a_frame_missing_the_control_is_not_measured(self) -> None:
+        frame = self._frame(0.10, 0.003)
+        got = anu.channel_verdict(frame[frame["system"] != "us_social_security"],
+                                  "age_pension_matched", "us_social_security")
+        assert not got.get("measured")
+
+    def test_the_shipped_run_finds_the_interaction(self) -> None:
+        import glob
+
+        hits = glob.glob(str(ROOT / "results" / "**" / "annuity_channel.csv"),
+                         recursive=True)
+        if not hits:
+            pytest.skip("the channel split has not been generated")
+        got = anu.channel_verdict(pd.read_csv(hits[0]),
+                                  "age_pension_matched", "us_social_security")
+        assert got["measured"]
+        assert got["it_is_the_test_and_not_the_instrument"], got
+        assert got["mean_moves_against_it_under_the_test"], got
