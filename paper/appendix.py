@@ -39,7 +39,7 @@ def front(ctx: Any) -> List[Flowable]:
     out: List[Flowable] = [
         Paragraph(TITLE, s["title"]),
         Paragraph(SUBTITLE, s["subtitle"]),
-        Paragraph("This version: 16 September 2026", s["subtitle"]),
+        Paragraph(f"This version: {sh.VERSION_DATE}", s["subtitle"]),
     ]
     out.append(ctx.p(
         "This appendix carries six pieces of apparatus the paper cites and "

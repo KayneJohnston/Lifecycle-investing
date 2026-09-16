@@ -5004,17 +5004,26 @@ def plot_policy(solved: pd.DataFrame, gaps: pd.DataFrame,
             for i, system in enumerate(dict.fromkeys(schedule["system"])):
                 part = schedule[schedule["system"] == system] \
                     .sort_values("retirement_year")
-                left.plot(part["retirement_year"],
-                          100.0 * part["equity"], linewidth=2.0,
+                # The holding, not the share. A share is capped at the
+                # whole portfolio, so two regimes pinned there plot as one
+                # line whatever they wanted; the holding is what the search
+                # was actually free to choose.
+                held = (part["holding"] if "holding" in part
+                        else part["equity"])
+                left.plot(part["retirement_year"], 100.0 * held,
+                          linewidth=2.0,
                           color=PALETTE[i % len(PALETTE)],
                           label=_legend(SYSTEM_LABEL.get(str(system),
                                                          str(system))))
             left.legend(fontsize=6.4, loc="best", framealpha=0.95)
-        left.set_ylim(-4, 104)
-        left.set_title("The solved equity share through retirement",
+        held_max = (100.0 * float(schedule["holding"].max())
+                    if len(schedule) and "holding" in schedule else 100.0)
+        left.axhline(100.0, color="0.55", linewidth=0.8, linestyle=":")
+        left.set_ylim(-4, max(104.0, held_max * 1.08))
+        left.set_title("The solved equity holding through retirement",
                        fontsize=8)
         left.set_xlabel("Year of retirement", fontsize=7)
-        left.set_ylabel("Equity (%)", fontsize=7)
+        left.set_ylabel("Equity held (% of the portfolio)", fontsize=7)
 
         if len(gaps):
             order = gaps.reset_index(drop=True)

@@ -162,12 +162,22 @@ class BatchEvaluator:
         wealth = np.zeros((n_paths, n_k))
         consumption = np.zeros((n_paths, n_k, horizon - consumption_from))
 
+        # Both contribution streams, exactly as `lifecycle.simulate` runs
+        # them. The compulsory one is the second half of the same class of
+        # divergence the means test was: a regime that mandates saving
+        # reaches the pension age with a larger balance, and a fast path
+        # that charged only the voluntary rate would score two different
+        # regimes as one household -- silently, because the answer it
+        # returns is a perfectly good answer to the wrong question.
+        employer_rate = spec.super_net_rate
         for h in range(spec.n_working):
-            contribution = spec.savings_rate * self.income[:, h]
+            voluntary = spec.savings_rate * self.income[:, h]
+            employer = employer_rate * self.income[:, h]
             if h >= consumption_from:
-                consumption[:, :, h - consumption_from] = \
-                    (self.income[:, h] - contribution)[:, None]
-            wealth = (wealth + contribution[:, None]) * (1.0 + rp[h])
+                consumption[:, :, h - consumption_from] = (
+                    self.income[:, h] - voluntary
+                    - spec.super_incidence * employer)[:, None]
+            wealth = (wealth + (voluntary + employer)[:, None]) * (1.0 + rp[h])
 
         # The balance dial, applied at the retirement boundary exactly as
         # `lifecycle.simulate` applies it. Without this the batched path

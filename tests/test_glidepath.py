@@ -352,6 +352,150 @@ class TestTheFastPathCarriesTheMeansTest:
         assert rich_w > poor_w
         assert rich_b < poor_b, paid
 
+    def test_the_compulsory_contribution_is_carried_too(self, setup) -> None:
+        """The other half of the same divergence, and the one that shipped.
+
+        The fast path charged only the voluntary savings rate, so a regime
+        mandating a second contribution stream arrived at the pension age
+        with the wrong balance -- and because the omission was silent, two
+        regimes differing only in that rate scored bit-identically and the
+        duplicate was printed as a finding.
+        """
+        import dataclasses
+
+        cfg, spec, strategies, paths, income = setup
+        mandated = dataclasses.replace(spec, super_guarantee_rate=0.12,
+                                       super_contributions_tax=0.15)
+        key = list(strategies)[0]
+        weights = strategies[key].weights[None]
+        got = gp.BatchEvaluator(paths, mandated, income, cfg).cec(weights,
+                                                                  5.0)[0]
+        outcome = lc.simulate(paths, strategies[key], mandated, income)
+        want = ut.crra_certainty_equivalent(
+            ut.bundle_from_outcome(outcome, cfg, mandated), 5.0,
+            float(cfg["utility"]["discount_factor"]),
+            float(cfg["utility"]["bequest_weight"]),
+            bool(cfg["utility"]["bequest_enabled"]))
+        assert got == pytest.approx(want, rel=1e-10)
+
+    def test_mandating_a_contribution_moves_the_fast_path_at_all(
+            self, setup) -> None:
+        """An agreement test passes trivially if the mandate does nothing."""
+        import dataclasses
+
+        cfg, spec, strategies, paths, income = setup
+        mandated = dataclasses.replace(spec, super_guarantee_rate=0.12,
+                                       super_contributions_tax=0.15)
+        key = list(strategies)[0]
+        weights = strategies[key].weights[None]
+        voluntary = gp.BatchEvaluator(paths, spec, income, cfg).cec(weights,
+                                                                    5.0)[0]
+        both = gp.BatchEvaluator(paths, mandated, income, cfg).cec(weights,
+                                                                   5.0)[0]
+        assert not np.isclose(voluntary, both, rtol=1e-6)
+
+    @staticmethod
+    def _binding(spec):
+        """A spec on which every field below has something to move.
+
+        The means test has to bite (the fixture's household retires far
+        below the free area) and the eligibility gate has to be open a few
+        years (or the pre-eligibility share is a parameter of an empty
+        window), or the "it does something" half of the guard is vacuous.
+        """
+        import dataclasses
+
+        return dataclasses.replace(
+            spec, social_security_formula="means_tested",
+            pension_full_rate=0.293, pension_free_area=3.014,
+            pension_taper=0.078, retirement_balance_scale=8.0,
+            super_guarantee_rate=0.12, super_contributions_tax=0.15,
+            benefit_start_age=spec.age_retire + 4,
+            pre_eligibility_benefit_share=0.6)
+
+    @pytest.mark.parametrize("field,value", [
+        ("savings_rate", 0.15),
+        ("super_guarantee_rate", 0.0),
+        ("super_contributions_tax", 0.30),
+        ("retirement_balance_scale", 4.0),
+        ("pension_full_rate", 0.40),
+        ("pension_free_area", 1.0),
+        ("pension_taper", 0.05),
+        ("benefit_start_age", 0),
+        ("pre_eligibility_benefit_share", 0.0),
+    ])
+    def test_every_spec_field_the_fast_path_reads_is_read_the_same_way(
+            self, setup, field, value) -> None:
+        """Stated over the spec rather than over one attribute of it.
+
+        Both defects found here were the same shape -- a field the reference
+        simulator honours and the batched one silently drops -- and a guard
+        naming one field would not have caught the next. This walks the
+        fields that move a balance or a benefit and holds the two
+        implementations to the same answer on each.
+        """
+        import dataclasses
+
+        cfg, spec, strategies, paths, income = setup
+        base = self._binding(spec)
+        if field == "benefit_start_age":
+            value = int(base.age_retire)
+        moved = dataclasses.replace(base, **{field: value})
+        key = list(strategies)[0]
+        weights = strategies[key].weights[None]
+
+        def both(at):
+            fast = float(gp.BatchEvaluator(paths, at, income,
+                                           cfg).cec(weights, 5.0)[0])
+            outcome = lc.simulate(paths, strategies[key], at, income)
+            slow = float(ut.crra_certainty_equivalent(
+                ut.bundle_from_outcome(outcome, cfg, at), 5.0,
+                float(cfg["utility"]["discount_factor"]),
+                float(cfg["utility"]["bequest_weight"]),
+                bool(cfg["utility"]["bequest_enabled"])))
+            return fast, slow
+
+        fast_base, slow_base = both(base)
+        fast_moved, slow_moved = both(moved)
+        assert fast_base == pytest.approx(slow_base, rel=1e-10), field
+        assert fast_moved == pytest.approx(slow_moved, rel=1e-10), field
+        # And the field has to do something, or the agreement above is empty.
+        assert not np.isclose(slow_base, slow_moved, rtol=1e-6), field
+
+    def test_incidence_moves_neither_implementation(self, setup) -> None:
+        """The paper's identity, held against both simulators at once.
+
+        Charging the compulsory contribution to wages changes what the
+        household gave up and not what it arrives with, so a
+        retirement-window certainty equivalent cannot move. That is asserted
+        in the paper as arithmetic; here it is checked on the fast path as
+        well, because an evaluator that dropped the contribution entirely
+        would also satisfy it -- and did.
+        """
+        import dataclasses
+
+        cfg, spec, strategies, paths, income = setup
+        base = dataclasses.replace(self._binding(spec),
+                                   super_guarantee_rate=0.12,
+                                   super_contributions_tax=0.15)
+        key = list(strategies)[0]
+        weights = strategies[key].weights[None]
+        scores = []
+        for incidence in (0.0, 1.0):
+            at = dataclasses.replace(base, super_incidence=incidence)
+            scores.append(float(gp.BatchEvaluator(paths, at, income,
+                                                  cfg).cec(weights, 5.0)[0]))
+        assert scores[0] == pytest.approx(scores[1], rel=1e-12)
+        # ...and the balance it produces is the one the mandate paid for,
+        # which is what distinguishes the identity from the bug.
+        assert not np.isclose(
+            scores[0],
+            float(gp.BatchEvaluator(paths,
+                                    dataclasses.replace(
+                                        base, super_guarantee_rate=0.0),
+                                    income, cfg).cec(weights, 5.0)[0]),
+            rtol=1e-6)
+
     def test_the_eligibility_gate_is_carried_too(self, setup) -> None:
         """Nothing is paid before the claiming age, and the fast path used
         to pay from the retirement date whatever the spec said."""

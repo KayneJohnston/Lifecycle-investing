@@ -328,12 +328,21 @@ class PlanBench:
     """
 
     def __init__(self, paths: Any, spec: Any, cfg: Mapping[str, Any],
-                 income_seed: int = 12345) -> None:
+                 income_seed: int = 12345, leverage: float = 1.0,
+                 spread: float = 0.0) -> None:
         from . import lifecycle as lc
 
         self.paths = paths
         self.spec = spec
         self.cfg = cfg
+        # Borrowing against the retirement sleeve, off by default. A grid
+        # that stops at the whole portfolio cannot report an optimum above
+        # it, so a search run only on [0, 1] can report "all equity" for a
+        # household that wanted half as much again -- and two such
+        # households look identical however different they are. Lifting the
+        # ceiling is what lets a caller find out which it has.
+        self.leverage = float(leverage)
+        self.spread = float(spread)
         # Drawn once at the longest career on the grid and sliced per age, so
         # a shorter working life is a prefix of a longer one rather than an
         # independent draw. Without that, changing the retirement age would
@@ -352,8 +361,21 @@ class PlanBench:
             income = lc.simulate_income(
                 spec, self.paths.n_paths, shocks=self._shocks,
                 dom_eq=self.paths.dom_eq, intl_eq=self.paths.intl_eq)
-            self._by_age[age] = gp.BatchEvaluator(self.paths, spec, income,
-                                                  self.cfg)
+            if self.leverage == 1.0:
+                self._by_age[age] = gp.BatchEvaluator(self.paths, spec,
+                                                      income, self.cfg)
+            else:
+                from . import leverage as lev
+
+                # Unlevered through the working years, so the balance the
+                # household arrives with is the one its contributions built
+                # and not one borrowing helped build. Borrowing is the
+                # retiree's decision, which is the decision under study.
+                ladder = np.ones(spec.horizon)
+                ladder[spec.n_working:] = self.leverage
+                self._by_age[age] = lev.LeveredEvaluator(
+                    self.paths, spec, income, self.cfg, leverage=ladder,
+                    spread=self.spread)
         return self._by_age[age]
 
     def for_plan(self, plan: Plan) -> Any:

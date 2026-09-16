@@ -167,3 +167,60 @@ def observable_prediction(gapped: pd.DataFrame, system: str,
                          "member age, against target-date glide paths at "
                          "matched ages. Neither is carried here."),
     }
+
+
+def discriminates(gapped: pd.DataFrame, tested: str, untested: str,
+                  legislated: str, assumed: str) -> Dict[str, Any]:
+    """Whether the statute's rule shape is evidence *about the test*.
+
+    The objection this answers is the one that sinks the section if it is
+    left unanswered. A balance-reading rule is better for almost any
+    retiree, so "a country that means-tests legislates one" is only
+    evidence if a country that does *not* means-test would not have. And
+    countries that do not means-test legislate the same shape: the United
+    States mandates required minimum distributions from tax-favoured
+    retirement accounts -- a percentage of the balance, on a divisor that
+    falls with age, so a rate that rises with it -- and pays an
+    earnings-related pension with no assets test at all. The statute's
+    existence therefore discriminates nothing.
+
+    What can discriminate is the size of its effect. The same rule is run
+    under both pensions here, and the claim the mechanism actually makes is
+    a difference in differences: the shift from the literature's rule to the
+    legislature's should be larger under the test than without it, and
+    should change the sign of the portfolio comparison only under the test.
+    Both are reported, and either can come out the wrong way.
+    """
+    def swing(system: str) -> Dict[str, float]:
+        block = gapped[gapped["system"] == system]
+        keyed = block.set_index("rule")["gap_pct"]
+        if legislated not in keyed.index or assumed not in keyed.index:
+            return {}
+        law, lit = float(keyed.loc[legislated]), float(keyed.loc[assumed])
+        return {"law": law, "lit": lit, "swing": law - lit,
+                "sign_turns": bool(lit < 0.0 < law)}
+
+    here, there = swing(tested), swing(untested)
+    if not here or not there:
+        return {"measured": False}
+    return {
+        "measured": True,
+        "tested_system": str(tested),
+        "untested_system": str(untested),
+        "swing_under_the_test_pp": here["swing"],
+        "swing_without_it_pp": there["swing"],
+        "difference_in_differences_pp": here["swing"] - there["swing"],
+        "ratio": (here["swing"] / there["swing"]
+                  if abs(there["swing"]) > 1e-12 else float("inf")),
+        # The rule helps under both pensions -- that much is just a better
+        # rule -- so the discriminating facts are that it helps *more*
+        # under the test and that only there does it change the sign.
+        "the_rule_helps_under_both": bool(here["swing"] > 0.0
+                                          and there["swing"] > 0.0),
+        "it_helps_more_under_the_test": bool(here["swing"]
+                                             > there["swing"]),
+        "the_sign_turns_only_under_the_test": bool(
+            here["sign_turns"] and not there["sign_turns"]),
+        "gap_without_the_test_on_the_assumed_rule_pct": there["lit"],
+        "gap_without_the_test_on_the_legislated_rule_pct": there["law"],
+    }

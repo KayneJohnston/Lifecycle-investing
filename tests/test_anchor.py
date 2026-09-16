@@ -200,3 +200,77 @@ class TestTheShippedRun:
                    & (gaps["rule"] == "fixed_real_rule")]
         assert len(hit) == 1
         assert float(hit["gap_pct"].iloc[0]) < 0.0
+
+
+class TestTheAnchorHasToDiscriminate:
+    """The section's weak reading, and the guard against shipping it.
+
+    "A means-testing country legislates a balance-reading rule" is only
+    evidence if a country without a means test would not have. They do --
+    the United States mandates required minimum distributions on the same
+    shape and tests no assets at all -- so the existence of the statute
+    settles nothing and the claim has to rest on a difference in
+    differences. These drive that classifier both ways.
+    """
+
+    @staticmethod
+    def _grid(law_tested: float, lit_tested: float,
+              law_untested: float, lit_untested: float) -> pd.DataFrame:
+        return pd.DataFrame.from_records([
+            {"system": "tested", "rule": "legislated minimum",
+             "gap_pct": law_tested, "winner": "x"},
+            {"system": "tested", "rule": "fixed_real_rule",
+             "gap_pct": lit_tested, "winner": "y"},
+            {"system": "untested", "rule": "legislated minimum",
+             "gap_pct": law_untested, "winner": "x"},
+            {"system": "untested", "rule": "fixed_real_rule",
+             "gap_pct": lit_untested, "winner": "x"}])
+
+    def test_a_larger_swing_under_the_test_is_reported_as_larger(self) -> None:
+        got = anc.discriminates(self._grid(12.2, -11.4, 17.0, 10.5),
+                                "tested", "untested",
+                                "legislated minimum", "fixed_real_rule")
+        assert got["measured"]
+        assert got["it_helps_more_under_the_test"]
+        assert got["the_rule_helps_under_both"]
+        assert got["the_sign_turns_only_under_the_test"]
+        assert got["swing_under_the_test_pp"] == pytest.approx(23.6)
+        assert got["swing_without_it_pp"] == pytest.approx(6.5)
+        assert got["difference_in_differences_pp"] == pytest.approx(17.1)
+
+    def test_an_equal_swing_is_reported_as_not_discriminating(self) -> None:
+        """The outcome that would sink the section: a rule worth the same
+        under both pensions says nothing about means tests, and the
+        classifier has to be able to say so."""
+        got = anc.discriminates(self._grid(12.2, -11.4, 30.0, 6.4),
+                                "tested", "untested",
+                                "legislated minimum", "fixed_real_rule")
+        assert not got["it_helps_more_under_the_test"]
+
+    def test_a_sign_that_turns_under_both_is_not_the_tests_doing(self
+                                                                 ) -> None:
+        got = anc.discriminates(self._grid(12.2, -11.4, 17.0, -10.5),
+                                "tested", "untested",
+                                "legislated minimum", "fixed_real_rule")
+        assert not got["the_sign_turns_only_under_the_test"]
+
+    def test_a_missing_control_is_not_measured(self) -> None:
+        frame = self._grid(12.2, -11.4, 17.0, 10.5)
+        got = anc.discriminates(frame[frame["system"] != "untested"],
+                                "tested", "untested",
+                                "legislated minimum", "fixed_real_rule")
+        assert not got.get("measured")
+
+    def test_the_shipped_run_discriminates(self) -> None:
+        import glob
+
+        hits = glob.glob(str(ROOT / "results" / "**" / "anchor_gaps.csv"),
+                         recursive=True)
+        if not hits:
+            pytest.skip("the anchor study has not been run")
+        got = anc.discriminates(pd.read_csv(hits[0]), "age_pension_matched",
+                                "us_social_security", "legislated minimum",
+                                "fixed_real_rule")
+        assert got["measured"]
+        assert got["it_helps_more_under_the_test"], got
+        assert got["the_sign_turns_only_under_the_test"], got

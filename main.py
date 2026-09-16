@@ -6250,33 +6250,38 @@ def step42_policy(cfg: Dict[str, Any],
     # solved policies is the pension and not the lifetimes.
     for chunk in bs.from_config(panel, cfg).chunks(n_paths, n_paths):
         search_paths = chunk
-    benches: Dict[str, Any] = {}
+    benches: Dict[Tuple[str, float], Any] = {}
+    leverage_grid = [float(x) for x in block.get("leverage_grid", (1.0,))]
+    spread = float(block.get("borrowing_spread", 0.0))
 
-    def _bench(system: str) -> Any:
-        hit = benches.get(system)
+    def _bench(system: str, leverage: float = 1.0) -> Any:
+        key = (system, float(leverage))
+        hit = benches.get(key)
         if hit is None:
             hit = pl.PlanBench(search_paths, by_key[system], cfg,
-                               income_seed=seed)
-            benches[system] = hit
+                               income_seed=seed, leverage=float(leverage),
+                               spread=spread)
+            benches[key] = hit
         return hit
 
     plans = pl.plan_grid(rules, rate_grid, [spec.age_retire])
-    LOGGER.info("%d plans x the free-form schedule, under %d regimes",
-                len(plans), len(systems))
+    LOGGER.info("%d plans x the free-form schedule x %d borrowing levels, "
+                "under %d regimes", len(plans), len(leverage_grid),
+                len(systems))
     solved = pol.solve_by_system(
         _bench, systems, plans, gamma, equity_grid, domestic_grid,
         1.0, 0.1, bond_share, int(block.get("domestic_band_years", 5)),
         int(block.get("free_form_sweeps", 2)),
-        int(block.get("max_rounds", 4)))
+        int(block.get("max_rounds", 4)), leverage_grid, spread)
 
     # The solved schedules, kept so the allocation half of the answer can be
     # printed rather than summarised.
     schedules: Dict[str, Any] = {}
     for system in systems:
-        bench = _bench(system)
         row = solved[solved["system"] == system]
         if not len(row):
             continue
+        bench = _bench(system, float(row["leverage"].iloc[0]))
         plan = pl.Plan(str(row["rule"].iloc[0]),
                        None if pd.isna(row["rate"].iloc[0])
                        else float(row["rate"].iloc[0]), spec.age_retire)

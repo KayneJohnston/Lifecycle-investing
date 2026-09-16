@@ -109,6 +109,12 @@ RETITLED: Dict[str, str] = {
 LONG_NUMBER_ALL: Dict[str, int] = {
     k: ct.section_number(k) for k in ct.SECTION_ORDER}
 
+#: The version date, printed on the paper and on the Internet Appendix.
+#: One constant rather than two literals, because the two documents are
+#: submitted together and a reader who notices they disagree has found
+#: something about how carefully the package was assembled.
+VERSION_DATE = "16 September 2026"
+
 TITLE = "The Pension and the Drawdown Rule"
 SUBTITLE = ("Why a Means Test Makes the Portfolio and the Withdrawal "
             "Rule One Decision")
@@ -165,6 +171,40 @@ EXTRA_REFERENCES: Tuple[str, ...] = (
     'Yaari, M. E. (1965). "Uncertain Lifetime, Life Insurance, and the '
     'Theory of the Consumer." <i>Review of Economic Studies</i>, 32(2), '
     '137–150.',
+    # The Australian means-test literature this paper sits inside. It is
+    # older and closer than the first draft of this section allowed, and
+    # the contribution had to be narrowed once it was read properly.
+    'Hulley, H., McKibbin, R., Pedersen, A., and Thorp, S. (2013). '
+    '"Means-Tested Public Pensions, Portfolio Choice and Decumulation in '
+    'Retirement." <i>Economic Record</i>, 89(284), 31–51. The closest '
+    'predecessor: the buffer mechanism this paper measures through the '
+    'withdrawal rule is theirs.',
+    'Butt, A., and Deng, Z. (2012). "Investment Strategies in Retirement: '
+    'In the Presence of a Means-Tested Government Pension." <i>Journal of '
+    'Pension Economics and Finance</i>, 11(2), 151–181.',
+    'Butt, A., Khemka, G., and Warren, G. J. (2022). "Heterogeneity in '
+    'Optimal Investment and Drawdown Strategies in Retirement." '
+    '<i>Pacific-Basin Finance Journal</i>, 74, 101798.',
+    'Andréasson, J. G., Shevchenko, P. V., and Novikov, A. (2017). '
+    '"Optimal Consumption, Investment and Housing with Means-Tested Public '
+    'Pension in Retirement." <i>Insurance: Mathematics and Economics</i>, '
+    '75, 32–47.',
+    'Andréasson, J. G., and Shevchenko, P. V. (2024). "Optimal '
+    'Annuitisation, Housing and Reverse Mortgage in Retirement in the '
+    'Presence of a Means-Tested Public Pension." <i>European Actuarial '
+    'Journal</i>, 14(3), 1–31.',
+    'Cobb-Clark, D. A., and Hildebrand, V. A. (2011). "Portfolio Allocation '
+    'in the Face of a Means-Tested Public Pension." <i>Review of Income and '
+    'Wealth</i>, 57(3), 536–560.',
+    'Spicer, A., Stavrunova, O., and Thorp, S. (2016). "How Portfolios '
+    'Evolve after Retirement: Evidence from Australia." <i>Economic '
+    'Record</i>, 92(297), 241–267.',
+    'Asher, A., Meyricke, R., Thorp, S., and Wu, S. (2017). "Age Pensioner '
+    'Decumulation: Responses to Incentives, Uncertainty and Family Need." '
+    '<i>Australian Journal of Management</i>, 42(4), 583–607.',
+    'Ai, O., Butt, A., and Khemka, G. (2024). "Interaction Between Age '
+    'Pension Means Testing and Innovative Income Streams in Australia." '
+    '<i>Economic Record</i>, 100(331), 462–487.',
 )
 
 
@@ -264,7 +304,7 @@ def front(ctx: Any) -> List[Flowable]:
     out: List[Flowable] = [
         Paragraph(TITLE, s["title"]),
         Paragraph(SUBTITLE, s["subtitle"]),
-        Paragraph("This version: 13 September 2026", s["subtitle"]),
+        Paragraph(f"This version: {VERSION_DATE}", s["subtitle"]),
         Paragraph("Abstract", s["h1_plain"]),
     ]
     matched = _matched(f, baseline_rule)
@@ -312,10 +352,7 @@ def front(ctx: Any) -> List[Flowable]:
         f"the floor instead does not: with a real life annuity in the "
         f"choice set a partial purchase widens the reversal rather than "
         f"closing it. Solving the allocation and the drawdown rule "
-        f"together sharpens what the reversal is: the solved portfolio is "
-        f"all equity under both pensions, so what the test moves is the "
-        f"rule, and the same wrong drawdown default costs a means-tested "
-        f"household several times what it costs an earnings-related one. "
+        f"together sharpens what the reversal is: {_abstract_solved_lede(f)} "
         f"Near the "
         f"test, the drawdown default and the portfolio default are one "
         f"decision."
@@ -328,6 +365,8 @@ def front(ctx: Any) -> List[Flowable]:
         f"the target-date fund by {us_base_gap:+.2f}% under an "
         f"earnings-related pension and {mt_base_gap:+.2f}% under a "
         f"means-tested one paid on the same contributions."))
+    solved_claim = _abstract_solved_claim(f)
+    anchor_claim = _abstract_anchor_claim(f)
     out.append(ctx.p(
         f"<b>What the paper shows.</b> (i) Under a means-tested pension "
         f"the portfolio ordering is a property of the withdrawal rule: "
@@ -375,15 +414,8 @@ def front(ctx: Any) -> List[Flowable]:
         f"nine-tenths of the balance converted. The same purchase under an "
         f"earnings-related pension moves the comparison by almost nothing, "
         f"so what the annuity acts on is the interaction with the test "
-        f"rather than the portfolio. (viii) Solved rather than picked off "
-        f"a menu, the optimal allocation is the same under both pensions "
-        f"and the optimal withdrawal rule is not, so the reversal is the "
-        f"price of a drawdown default rather than a claim about what a "
-        f"means-tested retiree should hold. (ix) The country whose means "
-        f"test we calibrate to legislates a minimum drawdown that is a "
-        f"percentage of the balance, rising with age; run at the statutory "
-        f"rates the all-equity portfolio leads by +12.22% where the "
-        f"literature's rule leaves it trailing by 11.38%."))
+        f"rather than the portfolio. (viii) {solved_claim} "
+        f"(ix) {anchor_claim}"))
     out.append(ctx.p(
         "<b>Keywords:</b> lifecycle asset allocation; public pension "
         "design; means testing; target-date funds; certainty-equivalent "
@@ -799,49 +831,71 @@ def introduction(ctx: Any) -> List[Flowable]:
         f"upside is confiscated and the downside is not."))
     out.append(ctx.h2("#introduction.2 Contribution"))
     out.append(ctx.p(
-        "Five things here are new, and it is worth separating them from "
-        "what is replication. That an all-equity portfolio beats a glide "
-        "path on an international block bootstrap is Anarkulova, Cederburg "
-        "and O'Doherty's result, and Section "
+        "Three things here are new, and it is worth separating them both "
+        "from what is replication and from what an existing literature "
+        "already has. That an all-equity portfolio beats a glide path on "
+        "an international block bootstrap is Anarkulova, Cederburg and "
+        "O'Doherty's result, and Section "
         f"{SHORT_ORDER.index('baseline') + 1} reproduces it rather than "
-        f"claiming it."))
+        f"claiming it. That a means-tested pension buffers a retiree "
+        f"against wealth shocks, that it can therefore make equity more "
+        f"rather than less attractive, that all-equity can be the optimum "
+        f"under such a test, and that the allocation and the drawdown "
+        f"decisions should be solved together are all established: "
+        f"Hulley et al. (2013), Andréasson et al. (2017), Butt and Deng "
+        f"(2012) and Butt, Khemka and Warren (2022) respectively. Section "
+        f"{SHORT_ORDER.index('introduction') + 1}.3 sets out what each of "
+        f"them does. What follows is what is left."))
     out.append(ctx.p(
-        "First, the <i>conditionality</i>: the prescription is a property "
-        "of the pension the investor retires onto, and the design says "
-        "which feature of the pension it is. Paying the same flat rate "
-        "to the same household on the same contributions, but "
-        "without testing it, leaves the all-equity portfolio ahead by "
+        "First, the <i>comparison</i>. The work above solves a "
+        "household's problem inside one country's schedule. We hold the "
+        "household, the returns, the simulated lifetimes and the fund "
+        "menu fixed and move the benefit formula, which is what turns a "
+        "solved policy into a statement about pension design rather than "
+        "about a retiree. It also isolates which feature of the pension "
+        "does the work: paying the same flat rate to the same household "
+        "on the same contributions, but without testing it, leaves the "
+        "all-equity portfolio ahead by "
         f"{flat_gap:+.2f}%; applying the test to that identical benefit "
         f"takes it to "
         f"{matched['cells']['means_tested/voluntary']:+.2f}%. Withdrawing "
         f"a pension at the margin and paying a smaller one are different "
-        f"interventions, and only the first reorders portfolios. Second, "
-        f"the <i>mechanism</i>: "
-        f"Section {SHORT_ORDER.index('model') + 1} writes the retiree's "
-        f"budget line as three regimes and shows that inside the taper band "
-        f"a means test is insurance rather than a wealth tax. That "
-        f"prediction is sharp enough to fail, and it does: under a fixed "
-        f"real withdrawal the retiree wants no equity anywhere the test "
-        f"reaches, and under a percentage-of-balance rule \u2014 once the "
-        f"grid is widened far enough to have an opinion \u2014 the "
-        f"maximum sits below the free area rather than inside the band. "
-        f"The taper does insure, and it insures less than the guarantee "
-        f"it withdraws. We report the refutation because a mechanism that "
-        f"cannot be wrong is not a mechanism. Third, the "
-        f"<i>interaction</i>: the "
-        f"portfolio and the drawdown rule are one decision when the pension "
-        f"is asset-tested, and we measure how much of one. Fourth, the "
-        f"<i>instrument</i>: an asset test does not merely leave a "
-        f"household worse placed to hold equity \u2014 it leaves one that "
-        f"buys the missing floor on the market worse placed still. A "
-        f"priced life annuity in the choice set widens the reversal rather "
-        f"than closing it, at every load we quote, while the same purchase "
-        f"under an earnings-related pension moves the comparison by almost "
-        f"nothing. Fifth, the <i>policy</i>: solved jointly rather than "
-        f"picked off a menu, the optimal allocation is invariant to the "
-        f"pension and the optimal drawdown rule is not, which locates the "
-        f"whole of the result in the rule a household is given rather than "
-        f"in the portfolio it is blamed for."))
+        f"interventions, and only the first reorders portfolios."))
+    out.append(ctx.p(
+        "Second, the <i>rule family</i>, which is the contribution we "
+        "would defend hardest. A model that solves consumption cannot see "
+        "this: an optimal consumption path always reads the balance, so "
+        "the household it describes is never the household a fixed real "
+        "withdrawal produces. Section "
+        f"{SHORT_ORDER.index('model') + 1} writes the retiree's budget "
+        f"line and shows the sign of ∂c/∂R is decided by whether "
+        f"the rule's payment reads the balance, with the taper setting "
+        f"only where the threshold sits; Section "
+        f"{SHORT_ORDER.index('ordering') + 1} measures what that costs "
+        f"across eight rules and five pension regimes and finds the "
+        f"portfolio ordering reversing under one of them and no other. "
+        f"The prediction is sharp enough to fail and partly does: the "
+        f"non-monotone shape across the test does not appear, and we "
+        f"report the refutation because a mechanism that cannot be wrong "
+        f"is not a mechanism."))
+    out.append(ctx.p(
+        "Third, the <i>price of the default</i>. Solved jointly rather "
+        "than picked off a menu, the optimum sits where the literature "
+        "above says it sits, and the same wrong drawdown default costs a "
+        "means-tested household several times what it costs an "
+        "earnings-related one. That relocates the whole of the result: it "
+        "is not a claim about what a means-tested retiree should hold, "
+        "which the prior work has already answered, but about what "
+        "happens to one who is handed the rule the literature, the "
+        "calculators and the regulators all assume. Two smaller findings "
+        "sit under the same heading. An asset test does not merely leave "
+        "a household worse placed to hold equity — it leaves one that "
+        "buys the missing floor on the market worse placed still, with a "
+        "priced life annuity in the choice set widening the reversal "
+        "rather than closing it. And who pays for a compulsory "
+        "contribution changes lifetime consumption and the retiree's "
+        "problem not at all, which is an identity rather than an "
+        "estimate."))
     out.append(ctx.h2("#introduction.3 Relation to the literature"))
     out.append(ctx.p(
         "The lifecycle portfolio-choice literature since Cocco, Gomes and "
@@ -857,30 +911,100 @@ def introduction(ctx: Any) -> List[Flowable]:
         "pension system; we vary the system and hold the fund menu fixed, "
         "which isolates the same interaction from the other side."))
     out.append(ctx.p(
-        "The Australian assets test has its own literature, and it reaches "
-        "the pension-as-endowment question from the institutional side. "
-        "Iskhakov, Thorp and Bateman (2015) solve an Australian retiree's "
-        "annuity purchase with the means test in the constraint set, and "
-        "find the test reshaping a decision that is about buying a floor "
-        "\u2014 which is the same margin this paper reaches through the "
-        "withdrawal rule, with the annuity itself left out of the choice "
-        "set. Bateman et al. (2018) document what Australian members "
-        "actually hold. On the "
-        "theory side, Sefton, van de Ven and Weale (2008) and Braun, "
-        "Kopecky and Koreshkova (2017) analyse means-tested transfers as "
-        "insurance rather than as taxes, and Bütler, Peijnenburg and "
-        "Staubli (2017) show a means-tested benefit crowding out voluntary "
-        "annuitisation for exactly the reason the floor matters here. What "
-        "we add to that work is the comparative statement — the same "
-        "household, the same returns, two pension systems — and the "
-        "interaction with the drawdown rule, which we have not found "
-        "measured."))
+        "<b>An Australian literature has been here before us, and it is "
+        "closer than a reader of the paragraph above would guess.</b> "
+        "Hulley, McKibbin, Pedersen and Thorp (2013) is the direct "
+        "predecessor. They solve an Australian retiree's consumption and "
+        "portfolio problem with the Age Pension in the constraint set and "
+        "find what this paper's mechanism section derives: the means test "
+        "buffers the household against wealth shocks, so an asset-tested "
+        "retiree should decumulate faster and hold a riskier portfolio "
+        "than an untested one. Andréasson, Shevchenko and Novikov (2017) "
+        "reach the same buffer from a stochastic-control model with "
+        "housing, and put it more sharply still — as wealth falls the "
+        "optimal risky share can rise, because the pension rises to meet "
+        "it. Butt and Deng (2012) find that all-equity can be optimal for "
+        "an Australian retiree, which is the corner this paper reports, "
+        "and find it for a reason worth marking: it appears when desired "
+        "expenditure is large relative to the balance. Butt, Khemka and "
+        "Warren (2022) solve the investment and drawdown decisions "
+        "jointly, as Section "
+        f"{SHORT_ORDER.index('ordering') + 1} does, and find the Age "
+        "Pension moving the risk-averse retiree's choices and not the "
+        "loss-averse one's — a preference-dependence this paper meets "
+        "again in its own risk-aversion sweep. None of the four is a "
+        "paper we can claim to be prior to. The buffer, the corner, the "
+        "joint decision and the preference-dependence are all in that "
+        "work."))
+    out.append(ctx.p(
+        "What is not in it is the comparison this paper is built on. That "
+        "literature holds the institution fixed at one country's schedule "
+        "and solves the household's problem inside it; what is varied is "
+        "the household, the wealth level or the instrument. We hold the "
+        "household, the returns and the fund menu fixed and vary the "
+        "<i>pension formula</i>, which is what turns a solved policy into "
+        "a statement about pension design. And where that literature "
+        "solves consumption optimally, we impose a withdrawal rule and "
+        "sweep the family it comes from — which sounds like a weaker "
+        "exercise and is the point of the paper: a solved consumption "
+        "path always reads the balance, so a model that solves it cannot "
+        "see what happens to a household given a rule that does not. "
+        "Section "
+        f"{SHORT_ORDER.index('ordering') + 1} solves the policy too, and "
+        "finds the optimum sits where that literature says it does. The "
+        "reversal lives in the gap between the optimum and the default, "
+        "and it is the default that most retirees are actually handed."))
+    out.append(ctx.p(
+        "Two further strands matter for what this paper can and cannot "
+        "claim. On annuities, Bütler, Peijnenburg and Staubli (2017) show "
+        "a means-tested benefit crowding out voluntary annuitisation, and "
+        "Andréasson and Shevchenko (2024) confirm the crowding-out with "
+        "housing and a reverse mortgage in the choice set; Iskhakov, Thorp "
+        "and Bateman (2015) solve the Australian purchase directly. "
+        "Section "
+        f"{SHORT_ORDER.index('ordering') + 1} finds the opposite sign "
+        "\u2014 the means-tested household wants the annuity far more "
+        "than the untested one does \u2014 and the reconciliation is not "
+        "the assets-test exemption, which we checked. Our means-tested "
+        "household wants the instrument on either treatment: the gain is "
+        "large when annuitised wealth is exempt and still large when it "
+        "is assessed at its remaining value, against almost nothing under "
+        "an earnings-related pension. What drives it is that this "
+        "household's position without an annuity is far worse, so a "
+        "purchased floor is worth more to it, and the crowding-out "
+        "channel those papers identify runs through an <i>income</i> test "
+        "on the annuity payment that this model does not carry. Section "
+        f"{SHORT_ORDER.index('limitations') + 1} says so among the "
+        "limitations, and it is the right place to look for why the two "
+        "signs differ. On behaviour, Cobb-Clark and Hildebrand (2011) "
+        "find little evidence that Australian households rearrange "
+        "portfolios in response to the test at all, and Spicer, Stavrunova "
+        "and Thorp (2016) document how retirement portfolios actually "
+        "evolve. Asher, Meyricke, Thorp and Wu (2017) find drawdown rates "
+        "about nine points higher for asset-tested pensioners than for "
+        "full pensioners, which is the one observational fact pointing the "
+        "way this paper's mechanism predicts. Taken together they say that "
+        "the optimal response exists and is largely not taken, which is "
+        "the case for studying defaults rather than optima. Ai, Butt and "
+        "Khemka (2024) make the same move on the product side, finding "
+        "that the test's design dictates how an income stream is drawn "
+        "down. On the theory side, Sefton, van de Ven and Weale (2008) and "
+        "Braun, Kopecky and Koreshkova (2017) analyse means-tested "
+        "transfers as insurance rather than as taxes; Bateman et al. "
+        "(2018) document what Australian members hold."))
     out.append(ctx.p(
         "On the decumulation side the rule that supplies the floor is the "
         "actuarial or amortisation rule of Milevsky and Huang (2011). The "
         "withdrawal-rule literature typically conditions on a fixed income "
-        "floor and the pension literature on a fixed withdrawal rule, which "
-        "is why the interaction between them has room to be new."))
+        "floor, and the pension literature either fixes the withdrawal "
+        "rule or solves consumption outright. What is left unoccupied is "
+        "narrower than the gap the first version of this section claimed: "
+        "not the interaction between the pension and the drawdown "
+        "decision, which Butt, Khemka and Warren (2022) solve jointly, but "
+        "the comparison across <i>rule families</i> — what a household "
+        "given a rule that never reads its balance loses relative to one "
+        "given a rule that does, and whether the pension formula decides "
+        "the sign of that loss."))
     out.append(ctx.p(
         "The means-testing literature itself is largely about saving and "
         "labour supply rather than portfolio choice, and it has long "
@@ -1169,6 +1293,48 @@ def model(ctx: Any) -> List[Flowable]:
         f"both rules across all three regimes and reports what happens to "
         f"each prediction. Neither survives intact, and saying so is the "
         f"point of writing one down."))
+    out.append(ctx.h3("#model.1.2 Why the floor and not the taper"))
+    out.append(ctx.p(
+        "Everything so far is about the taper, and the paper's own answer "
+        "is that the taper is not what does the damage — most of the "
+        "households simulated below are past the cut-off before the test "
+        "is applied. That leaves an obligation: the mechanism the paper "
+        "settles on has to be written down here rather than asserted in "
+        "prose later. It is two lines, and they are standard."))
+    out.append(ctx.p(
+        "Above the cut-off, equation (4) says consumption is the "
+        "withdrawal alone. Write the unconditional pension case beside it: "
+        "<i>c</i> = <i>x</i> + <i>b</i>, with <i>b</i> arriving whatever "
+        "the portfolio does. Under constant relative risk aversion the "
+        "marginal utility of the risky payoff is <i>u'</i>(<i>c</i>) = "
+        "<i>c</i><sup>&minus;<i>&gamma;</i></sup>, so what a bad return "
+        "costs depends on the level it is subtracted from. With the "
+        "pension in hand the worst state is <i>x</i> + <i>b</i>; without "
+        "it the same state is <i>x</i>, and the ratio of marginal "
+        "utilities is (1 + <i>b</i>/<i>x</i>)<sup><i>&gamma;</i></sup>. "
+        "At this calibration's full rate and a withdrawal near the fourth "
+        "percentile of the balance that factor is large, and it rises in "
+        "<i>&gamma;</i>: the same equity tail is priced far more heavily "
+        "by a household standing on its portfolio alone than by one "
+        "standing on a guaranteed floor. Withdrawing <i>b</i> at the "
+        "margin and never paying it are the same thing to a household "
+        "above the cut-off, which is why the comparison the paper leads "
+        "with is between a flat pension paid and the same flat pension "
+        "tested away."))
+    out.append(ctx.p(
+        "Two things follow, and the second is the one the paper turns on. "
+        "The effect is <i>increasing</i> in risk aversion, so a "
+        "sufficiently risk-tolerant household should not show it at all "
+        "— Section #ordering.5 finds the sign turning between "
+        "<i>&gamma;</i> = 2 and <i>&gamma;</i> = 5, which is this line "
+        "arriving in the simulation. And <i>x</i> is set by the "
+        "withdrawal rule, so the rule decides how large the factor is: a "
+        "rule that cannot deplete keeps <i>x</i> strictly positive in "
+        "every state and manufactures the floor the pension no longer "
+        "supplies, while a fixed real rule lets <i>x</i> go to zero on the "
+        "paths where the portfolio runs out. The floor argument and the "
+        "rule argument are therefore the same argument, which is what "
+        "licenses the paper reporting them as one interaction."))
     out.append(ctx.h2("#model.2 What the model does not settle"))
     out.append(ctx.p(
         f"This is one period of accounting, not a solved lifecycle "
@@ -1315,16 +1481,30 @@ def incidence(ctx: Any) -> List[Flowable]:
         "in Section "
         f"{SHORT_ORDER.index('model') + 1} speaks to. Nothing near the "
         f"test is reachable otherwise."))
-    rows = [["Median balance at retirement", "Position",
-             "Wanted equity, fixed real rule",
+    # Fourteen balances collapse to three positions, because within each
+    # position every balance gives the same answer. Printing the constant
+    # fourteen times was a page spent saying one thing, and the range
+    # columns are what a reader would have checked the fourteen rows for.
+    rows = [["Position against the test", "Balances",
+             "Median balance", "Wanted equity, fixed real rule",
              "Wanted equity, share of balance"]]
-    for _, row in base_arm.iterrows():
-        match = rule_arm[rule_arm["scale"] == row["scale"]]
+
+    def _span(frame: Any, column: str = "equity") -> str:
+        lo, hi = float(frame[column].min()), float(frame[column].max())
+        return f"{lo:.0%}" if abs(hi - lo) < 1e-9 else f"{lo:.0%}–{hi:.0%}"
+
+    for name in ("below the free area", "inside the taper band",
+                 "above the cut-off"):
+        part = base_arm[base_arm["position"] == name]
+        if not len(part):
+            continue
+        other = rule_arm[rule_arm["scale"].isin(part["scale"])]
         rows.append([
-            f"{float(row['median_wealth']):.2f}&times;",
-            str(row["position"]),
-            f"{float(row['equity']):.0%}",
-            f"{float(match['equity'].iloc[0]):.0%}" if len(match) else "—"])
+            name,
+            str(len(part)),
+            f"{float(part['median_wealth'].median()):.2f}&times;",
+            _span(part),
+            _span(other) if len(other) else "—"])
     out += ctx.table(
         rows,
         "The equity share a retiree wants, by where the balance leaves "
@@ -1334,9 +1514,12 @@ def incidence(ctx: Any) -> List[Flowable]:
         f"cut-off {cut:.2f}. The pension begins the day work stops in both "
         "columns, so every retirement year is under the test.",
         anchor="band_profile",
-        note="Each row is the best of twenty-one equity shares at that "
-             "balance, scored on certainty-equivalent retirement "
-             "consumption over the same simulated lifetimes.")
+        note=f"{_spelled(len(base_arm))} balances, grouped by where each "
+             f"leaves the household against the test; a range is given "
+             f"wherever the balances inside a group disagree. Each "
+             f"underlying answer is the best of twenty-one equity shares "
+             f"at that balance, scored on certainty-equivalent retirement "
+             f"consumption over the same simulated lifetimes.")
     if len(in_band) and len(above) and len(below):
         out.append(ctx.p(
             f"<b>Under a fixed real withdrawal the prediction fails, and "
@@ -1675,11 +1858,12 @@ def _typology(ctx: Any, f: Any) -> List[Flowable]:
         f"anywhere in it, so no threshold should move the sign. That is "
         f"specific enough to fail."))
     out.extend(ctx.table(
-        [["Household", "Position against its own test",
+        [["Household", "Positions against its own test",
           "Wanted equity, fixed real", "Wanted equity, share of balance"]]
-        + [[str(r["household_label"]), str(r["position"]),
-            f"{float(r[blind]):.0%}", f"{float(r[reading]):.0%}"]
-           for _, r in divide.iterrows()],
+        + [[str(name), str(len(part)),
+            _constant_or_span(part[blind]),
+            _constant_or_span(part[reading])]
+           for name, part in divide.groupby("household_label", sort=False)],
         f"The equity share each kind of retiree wants, under a rule that "
         f"reads the balance and one that does not, at every position "
         f"against that household's own thresholds.",
@@ -1692,8 +1876,12 @@ def _typology(ctx: Any, f: Any) -> List[Flowable]:
              "career, the contributions, the panel and the simulated "
              "lifetimes are identical, so a difference across rows is a "
              "property of the schedule and not of the household's "
-             "history. Each row is the median across the balances that "
-             "leave that household in that position.",
+             "history. Each cell is one answer per position \u2014 below "
+             "the free area, inside the taper band, above the cut-off \u2014 "
+             "collapsed to a range, and every range here is a point: the "
+             "position against the test moves nothing. Behind each "
+             "position is the median across the balances that leave that "
+             "household in it.",
         font_size=7.5))
 
     if found["divide_holds_everywhere"]:
@@ -1745,8 +1933,8 @@ def _typology(ctx: Any, f: Any) -> List[Flowable]:
             f"are statutory; the couple pair is a ratio applied to them "
             f"rather than a separately verified schedule, so it is swept "
             f"rather than trusted \u2014 the treatment Section #leisure "
-            f"of the companion study gives the pre-eligibility payment, "
-            f"for the same reason. Across {_spelled(len(ratios))} ratios, from "
+            f"gives the pre-eligibility payment, for the same reason. "
+            f"Across {_spelled(len(ratios))} ratios, from "
             f"{float(ratios['free_area_ratio'].min()):.2f} to "
             f"{float(ratios['free_area_ratio'].max()):.2f} times the "
             f"single figure \u2014 the first being a couple assessed as "
@@ -1993,6 +2181,7 @@ def ordering(ctx: Any) -> List[Flowable]:
             f"is reported in the companion study; it is a statement about "
             f"the level of consumption under two schedules, and we "
             f"withdraw the portfolio reading of it."))
+    out.extend(_reversal_on_the_best_equity_portfolio(ctx, f))
     out.append(ctx.p(
         f"Either way the rule belongs in the statement of the result. "
         f"Within the means-tested system alone, changing nothing but the "
@@ -2418,25 +2607,59 @@ def _solved(ctx: Any, f: Any) -> List[Flowable]:
         f"withdrawal rule are solved together \u2014 the schedule chosen "
         f"for the rule, the rule re-chosen for the schedule, to a fixed "
         f"point \u2014 once under each pension, on shared lifetimes."))
-    out.extend(_solved_table(ctx, solved))
     out.append(ctx.p(
-        f"<b>Solve it and the portfolio answer stops depending on the "
-        f"pension.</b> The schedule holds "
-        f"{found['equity_under_the_test']:.0%} equity under the means test "
-        f"and {found['equity_without_it']:.0%} without it, in every "
-        f"retirement year of both. What the assets test moves is the "
-        f"withdrawal rule: the household under it wants "
-        f"{rule_label(found['rule_under_the_test'])} where the household "
-        f"under an earnings-related pension wants "
-        f"{rule_label(found['rule_without_it'])}. Both read the balance, "
-        f"which is the division Section "
-        f"{SHORT_ORDER.index('model') + 1} turns on and which the search "
-        f"reaches without being pointed at it."))
+        f"One thing about the allocation grid before the answer, because "
+        f"without it the answer cannot be read. A search over equity "
+        f"shares stops at the whole portfolio, and Section "
+        f"#incidence.5 of the Internet Appendix finds that this "
+        f"household wants more than the whole portfolio wherever the test "
+        f"reaches it. Two regimes pinned against that ceiling score the "
+        f"same allocation whether or not they want the same thing, so a "
+        f"search run only on [0, 1] cannot answer the question this "
+        f"section asks. The ceiling therefore comes off here as it does "
+        f"there: the retiree may borrow against the equity sleeve in "
+        f"retirement, and what is reported below is the <i>holding</i> "
+        f"\u2014 the share of the portfolio in equity times what was "
+        f"borrowed to hold it."))
+    out.extend(_solved_table(ctx, solved))
+    moves = found["holding_moves_with_the_pension"]
+    if not moves:
+        lead = ("<b>Solve it and the portfolio answer stops depending on "
+                "the pension.</b> ")
+    else:
+        lead = ("<b>Solved with room above the whole portfolio, the "
+                "allocation does move with the pension.</b> ")
+    body = (f"The schedule holds "
+            f"{found['holding_under_the_test']:.2f}&times; the portfolio "
+            f"in equity under the means test and "
+            f"{found['holding_without_it']:.2f}&times; without it, in "
+            f"every retirement year of both. ")
+    if found["every_holding_is_censored"]:
+        body += ("Both sit at the top of the borrowing ladder, so those "
+                 "two numbers are the grid's and not the household's, and "
+                 "we do not read an invariance off them. ")
+    elif found["any_holding_is_censored"]:
+        body += ("One of them sits at the top of the borrowing ladder and "
+                 "is a bound rather than an optimum, which is stated in "
+                 "the table and is the weaker of the two answers. ")
+    else:
+        body += ("Neither sits at the edge of the ladder, so both are "
+                 "optima rather than bounds. ")
+    body += (f"What the assets test moves is the withdrawal rule: the "
+             f"household under it wants "
+             f"{rule_label(found['rule_under_the_test'])} where the "
+             f"household under an earnings-related pension wants "
+             f"{rule_label(found['rule_without_it'])}. Both read the "
+             f"balance, which is the division Section "
+             f"{SHORT_ORDER.index('model') + 1} turns on and which the "
+             f"search reaches without being pointed at it.")
+    out.append(ctx.p(lead + body))
     out.append(ctx.p(
         f"<b>That is the sharpest statement of this paper's result, and it "
-        f"is not the one we set out to make.</b> The reversal is not a "
-        f"claim about what a means-tested retiree should hold. Solved, "
-        f"they should hold what everyone else should hold. It is a claim "
+        f"is not the one we set out to make.</b> The reversal is not "
+        f"mainly a claim about what a means-tested retiree should hold: "
+        f"an Australian literature has answered that, and this search "
+        f"lands where it does. It is a claim "
         f"about what happens when the drawdown rule is fixed at the wrong "
         f"one and the portfolio takes the blame \u2014 and the cost of "
         f"that mistake is not the same everywhere. Against the fixed real "
@@ -2467,21 +2690,27 @@ def _solved(ctx: Any, f: Any) -> List[Flowable]:
         f"at least as well: what is reported is a lower bound on the "
         f"optimum and therefore on what the default costs. "
         f"{ct.opens(_spelled(int(found['most_rounds'])))} rounds at most, "
-        f"and every search reached a fixed point."))
+        f"and every search reached a fixed point. The borrowing ladder is "
+        f"priced at a zero spread over the realised bill return, which is "
+        f"the cheapest borrowing there is and therefore the hardest test "
+        f"for an unlevered answer; Section #incidence.5 of the Internet "
+        f"Appendix sweeps the spread and reports where the unlevered "
+        f"corner comes back."))
     return out
 
 
 def _solved_table(ctx: Any, solved: Any) -> List[Flowable]:
     """The solved policy, one row per regime."""
     rows = [["Pension regime", "Solved withdrawal rule", "Equity held",
-             "Certainty equivalent"]]
+             "At the ladder top?", "Certainty equivalent"]]
     for _, row in solved.iterrows():
         rows.append([
             SYSTEM_LABEL.get(str(row["system"]), str(row["system"])),
             rule_label(str(row["rule"]))
             + (f" at {float(row['rate']):.0%}"
                if row["rate"] == row["rate"] else ""),
-            f"{float(row['mean_equity_in_retirement']):.0%}",
+            f"{float(row['mean_holding_in_retirement']):.2f}&times;",
+            "yes" if bool(row.get("holding_is_censored")) else "no",
             f"{float(row['cec']):.4f}"])
     return list(ctx.table(
         rows,
@@ -2489,7 +2718,12 @@ def _solved_table(ctx: Any, solved: Any) -> List[Flowable]:
         "fixed point, under each pension regime.",
         note="The allocation is a free-form schedule over the retirement "
              "years rather than a single share, and it is flat at the "
-             "figure shown in every year of every regime. Certainty "
+             "figure shown in every year of every regime. \u201cEquity "
+             "held\u201d is the share of the portfolio in equity times "
+             "what the retiree borrowed to hold it, so 1.00&times; is an "
+             "unlevered all-equity portfolio; the ladder runs to the "
+             "figure the fourth column reports against, and a row at its "
+             "top is a bound rather than an optimum. Certainty "
              "equivalents are survival-weighted and are not comparable "
              "across regimes, which pay different pensions; what is "
              "comparable is the policy each regime selects."))
@@ -2509,6 +2743,9 @@ def _anchored(ctx: Any, f: Any) -> List[Flowable]:
     found = anc.verdict(gapped, head, "legislated minimum", assumed)
     if not found.get("measured"):
         return out
+    control = str(block.get("control_system", "us_social_security"))
+    apart = anc.discriminates(gapped, head, control, "legislated minimum",
+                              assumed)
 
     out.append(ctx.h2("#ordering.10 A prediction put to a legislature"))
     out.append(ctx.p(
@@ -2522,6 +2759,22 @@ def _anchored(ctx: Any, f: Any) -> List[Flowable]:
         "pay out, each year, at least a statutory percentage of the "
         "account balance, on a rate that rises with age."))
     out.extend(_statute_table(ctx, statute))
+    out.append(ctx.p(
+        "That the statute exists is not by itself evidence, and it is "
+        "worth disposing of the weaker reading before making the stronger "
+        "one. A rule whose payment reads the balance is better for almost "
+        "any retiree, so a means-testing country legislating one would "
+        "only be informative if a country without a means test would not "
+        "have. They do. The United States mandates required minimum "
+        "distributions from tax-favoured retirement accounts \u2014 a "
+        "share of the balance, on a divisor that falls with age and "
+        "therefore a rate that rises with it, reaching double figures in "
+        "the nineties \u2014 and pays an earnings-related pension against "
+        "which no assets are assessed. The rule shape is legislated on "
+        "both sides of the comparison this paper is about, and the "
+        "Australian schedule has a revenue rationale of its own. So the "
+        "existence of the statute discriminates nothing, and the claim has "
+        "to be made on the size of its effect instead."))
     if found["prediction_holds"]:
         out.append(ctx.p(
             f"<b>The prediction holds, and none of it was tuned.</b> Under "
@@ -2534,7 +2787,9 @@ def _anchored(ctx: Any, f: Any) -> List[Flowable]:
             f"legislature wrote and a rule a literature adopted. The rates "
             f"are statute. Nothing in this paper chose them, and they were "
             f"set by people who had not seen this model."))
-    else:
+    if apart.get("measured"):
+        out.extend(_anchor_discriminates(ctx, apart))
+    if not found["prediction_holds"]:
         out.append(ctx.p(
             f"<b>The prediction does not hold.</b> Under the means test "
             f"the all-equity lead is "
@@ -2556,7 +2811,62 @@ def _anchored(ctx: Any, f: Any) -> List[Flowable]:
         "target-date glide path at the same age. Settling that needs "
         "fund-level allocation by member age, which this study does not "
         "carry and could not obtain — the companion study documents "
-        "the egress policy that blocks every bulk statistical source."))
+        "the egress policy that blocks every bulk statistical source. "
+        "The published evidence does not settle it either, and points "
+        "both ways. Asher, Meyricke, Thorp and Wu (2017) find drawdown "
+        "rates around nine points higher for asset-tested pensioners than "
+        "for full pensioners, which is the direction the mechanism "
+        "predicts; Cobb-Clark and Hildebrand (2011) find little sign that "
+        "households rearrange their <i>portfolios</i> in response to the "
+        "test at all, and Hulley et al. (2013) find that the households on "
+        "the steepest part of the taper keep adding to wealth rather than "
+        "decumulating as their own model says they should. A reader "
+        "should take from that what this paper takes: the rule margin "
+        "moves in the world and the portfolio margin largely does not, "
+        "which is an argument for studying what the default does rather "
+        "than what the optimum would."))
+    return out
+
+
+def _anchor_discriminates(ctx: Any, apart: Dict[str, Any]) -> List[Flowable]:
+    """The difference in differences the anchor actually rests on.
+
+    The same statutory rule is run under both pensions, so the comparison
+    is between two swings rather than between a swing and nothing. Written
+    so that either answer is reportable: a rule that helped equally under
+    both would say the statute is evidence about drawdown rules in general
+    and not about means tests, and this paper would have to say so.
+    """
+    out: List[Flowable] = []
+    here = apart["swing_under_the_test_pp"]
+    there = apart["swing_without_it_pp"]
+    if apart["it_helps_more_under_the_test"]:
+        lead = (f"<b>Run under both pensions, the statute's rule is worth "
+                f"{apart['ratio']:.1f} times as much under the test.</b> ")
+    else:
+        lead = ("<b>Run under both pensions, the statute's rule is worth no "
+                "more under the test than without it.</b> ")
+    body = (f"Moving from the rule the literature assumes to the rule the "
+            f"legislature wrote is worth {here:.1f} points of all-equity "
+            f"lead under the means test and {there:.1f} points under the "
+            f"earnings-related pension: a difference in differences of "
+            f"{apart['difference_in_differences_pp']:.1f} points. ")
+    if apart["the_rule_helps_under_both"]:
+        body += ("Both are positive, which is the part that is just a "
+                 "better rule and is not this paper's claim. ")
+    if apart["the_sign_turns_only_under_the_test"]:
+        body += (f"What happens only under the test is the sign: without "
+                 f"it the all-equity portfolio already led on the "
+                 f"literature's rule, by "
+                 f"{apart['gap_without_the_test_on_the_assumed_rule_pct']:+.2f}"
+                 f"%, so there was no ordering for the statute to restore. "
+                 f"Under the test there was. That is the discriminating "
+                 f"fact, and it is the one the mechanism predicts.")
+    else:
+        body += ("The sign does not turn under the test alone, so this "
+                 "comparison does not separate the test from the rule and "
+                 "we do not read it as doing so.")
+    out.append(ctx.p(lead + body))
     return out
 
 
@@ -2632,6 +2942,18 @@ def _annuity(ctx: Any, f: Any) -> List[Flowable]:
         f"worth of {priced:.2f}, and the share of the balance converted "
         f"is swept from nothing to all of it."))
     out.append(ctx.p(
+        f"One number changes between here and the tables above, and it is "
+        f"the objective rather than the cell. An annuity priced on a "
+        f"survival curve and then paid for a fixed horizon with certainty "
+        f"collects the mortality credit twice, so this section and the two "
+        f"after it score every cell over a real lifespan, as Section "
+        f"{SHORT_ORDER.index('longevity') + 1} argues for. The same "
+        f"means-tested, fixed-real cell that reads "
+        f"{_headline_gap(f):+.2f}% over the fixed horizon therefore reads "
+        f"{_survival_gap(f):+.2f}% here. It is one comparison under two "
+        f"aggregations, not two comparisons, and the paragraph after the "
+        f"table prices the difference."))
+    out.append(ctx.p(
         f"<b>The reversal is not an artefact of the missing instrument. "
         f"Buying part of the floor makes it deeper.</b> Under a "
         f"{rule_label(rule)} withdrawal and a means-tested pension at "
@@ -2693,8 +3015,9 @@ def _annuity(ctx: Any, f: Any) -> List[Flowable]:
         f"{exempt['gain_under_means_test_pct']:+.0f}% of "
         f"certainty-equivalent consumption to the means-tested household "
         f"against {exempt['gain_under_earnings_related_pct']:+.0f}% to the "
-        f"earnings-related one, so an assets test that exempts annuitised "
-        f"wealth crowds the instrument <i>in</i> rather than out."))
+        f"earnings-related one, so an assets test crowds the instrument "
+        f"<i>in</i> rather than out."))
+    out.extend(_why_the_annuity_sign_differs(ctx, f))
     if horizon.get("measured"):
         out.append(ctx.note(
             f"Scored on the survival-weighted objective Section "
@@ -4009,6 +4332,270 @@ def _matched(f: Any, rule: str) -> Dict[str, Any]:
     return odr.matched_contrast(f.table("ordering_gaps"), factorial, rule)
 
 
+def _why_the_annuity_sign_differs(ctx: Any, f: Any) -> List[Flowable]:
+    """Our crowding-in against the literature's crowding-out.
+
+    The tempting explanation is the assets-test exemption -- their
+    households lose benefit by annuitising and ours does not. The grid
+    carries both treatments, so the explanation is checkable rather than
+    assertable, and it does not survive: the appetite is large on either
+    treatment. What is written below is what the two columns say.
+    """
+    out: List[Flowable] = []
+    if not _has(f, "annuity_wanted"):
+        return out
+    want = f.table("annuity_wanted")
+    rule = str(f.cfg["lifecycle"]["retirement"]["rule"])
+    block = want[want["rule"] == rule]
+
+    def gain(system: str, assessed: float) -> float:
+        hit = block[(block["system"] == system)
+                    & (block["assessed"] == assessed)]
+        return float(hit["gain_pct"].iloc[0]) if len(hit) else float("nan")
+
+    exempt = gain(HEADLINE_SYSTEM, 0.0)
+    assessed = gain(HEADLINE_SYSTEM, 1.0)
+    control = gain("us_social_security", 0.0)
+    if any(x != x for x in (exempt, assessed, control)):
+        return out
+    survives = assessed > control
+    if survives:
+        verdict = (f"It does not. Assessing the annuity at its remaining "
+                   f"value cuts the appetite from {exempt:+.0f}% to "
+                   f"{assessed:+.0f}%, and {assessed:+.0f}% is still an "
+                   f"order of magnitude more than the {control:+.0f}% the "
+                   f"earnings-related household wants. The exemption adds "
+                   f"to the appetite; it does not create it. What creates "
+                   f"it is where this household stands without an "
+                   f"annuity, which is far worse than the untested "
+                   f"household's, so a purchased floor is worth more to "
+                   f"it whatever the test then does to the purchase.")
+    else:
+        verdict = (f"It does. Assessing the annuity at its remaining value "
+                   f"takes the appetite from {exempt:+.0f}% to "
+                   f"{assessed:+.0f}%, at or below the {control:+.0f}% the "
+                   f"earnings-related household wants, so the crowding-in "
+                   f"reported above is a property of the exemption rather "
+                   f"than of the test.")
+    out.append(ctx.p(
+        f"<b>That is the opposite sign to the literature's, and the "
+        f"obvious explanation is checkable.</b> Bütler, Peijnenburg "
+        f"and Staubli (2017) and Andréasson and Shevchenko (2024) "
+        f"find a means-tested benefit crowding annuitisation <i>out</i>. "
+        f"The tempting reconciliation is the exemption — their "
+        f"household loses benefit by annuitising and ours does not — "
+        f"and the grid runs both treatments, so it can be tested rather "
+        f"than asserted. {verdict} The channel those papers identify runs "
+        f"through an income test on the annuity payment, which Section "
+        f"{SHORT_ORDER.index('limitations') + 1} records that this model "
+        f"does not carry; that, and not the assets-test treatment, is "
+        f"where the two signs part."))
+    return out
+
+
+def _reversal_on_the_best_equity_portfolio(ctx: Any, f: Any
+                                           ) -> List[Flowable]:
+    """Whether the reversal needs the particular all-equity fund we chose.
+
+    "The all-equity portfolio" throughout is the fifty-fifty
+    domestic/international split, which is the replicated study's and not
+    the best equity portfolio on this panel -- Section #baseline's table
+    has all-international ahead of it. A reader is entitled to suspect the
+    reversal of being a fact about the weaker fund, so the same comparison
+    is run against the stronger one. Either answer is printable.
+    """
+    out: List[Flowable] = []
+    if not _has(f, "ordering_sweep"):
+        return out
+    rule = str(f.cfg["lifecycle"]["retirement"]["rule"])
+    wide = f.table("ordering_sweep").pivot_table(
+        index=["system", "rule"], columns="strategy", values="cec")
+    need = ("balanced_all_equity", "international_equity",
+            "target_date_fund")
+    if any(c not in wide.columns for c in need):
+        return out
+
+    def gap(system: str, challenger: str) -> float:
+        try:
+            row = wide.loc[(system, rule)]
+        except KeyError:
+            return float("nan")
+        return 100.0 * (float(row[challenger])
+                        / float(row["target_date_fund"]) - 1.0)
+
+    ours = gap(HEADLINE_SYSTEM, "balanced_all_equity")
+    best = gap(HEADLINE_SYSTEM, "international_equity")
+    ours_us = gap("us_social_security", "balanced_all_equity")
+    best_us = gap("us_social_security", "international_equity")
+    if any(x != x for x in (ours, best, ours_us, best_us)):
+        return out
+    deeper = best < ours
+    survives = best < 0.0 < best_us
+    if survives and deeper:
+        lead = ("<b>And it is not a fact about the weaker of the two "
+                "all-equity funds.</b> ")
+        close = (f"So the reversal is deeper against the better equity "
+                 f"portfolio, not shallower: choosing the fund the "
+                 f"replicated study compares is the conservative choice "
+                 f"here, and reporting the other one would have made this "
+                 f"paper's headline larger.")
+    elif survives:
+        lead = ("<b>The reversal does not depend on which all-equity fund "
+                "is compared.</b> ")
+        close = ("It is smaller against the better equity portfolio and "
+                 "still a reversal, which is the direction a reader "
+                 "should be told about.")
+    else:
+        lead = ("<b>The reversal depends on which all-equity fund is "
+                "compared.</b> ")
+        close = ("Against the better equity portfolio it does not appear, "
+                 "so the finding is about the fifty-fifty split rather "
+                 "than about all-equity portfolios as a class, and we say "
+                 "so rather than lead with the fund that produces it.")
+    out.append(ctx.p(
+        f"{lead}“The all-equity portfolio” here is the "
+        f"fifty-fifty domestic/international split, which is the "
+        f"replicated study's fund and not the best equity portfolio on "
+        f"this panel — Section "
+        f"{SHORT_ORDER.index('baseline') + 1} has all-international ahead "
+        f"of it. Run the same cell against all-international instead and "
+        f"the lead is {best:+.2f}% under the means test against "
+        f"{ours:+.2f}% for the fifty-fifty, with the earnings-related "
+        f"comparison at {best_us:+.2f}% and {ours_us:+.2f}%. {close}"))
+    return out
+
+
+def _abstract_solved_lede(f: Any) -> str:
+    """The one clause the abstract's opening spends on the solved policy."""
+    if not (_has(f, "policy_solved") and _has(f, "policy_menu_gap")):
+        return ""
+    from src import policy as pcy
+
+    head = str(f.cfg.get("policy", {}).get("headline_system",
+                                           "age_pension_matched"))
+    got = pcy.verdict(f.table("policy_solved"), f.table("policy_menu_gap"),
+                      head)
+    if not got.get("measured"):
+        return ""
+    moved = ("the solved portfolio moves with the pension too"
+             if got["holding_moves_with_the_pension"]
+             else "the solved portfolio is the same under both pensions")
+    return (f"{moved}, the solved rule differs between them, and the same "
+            f"wrong drawdown default costs a means-tested household "
+            f"{got['default_gap_ratio']:.1f} times what it costs an "
+            f"earnings-related one.")
+
+
+def _abstract_solved_claim(f: Any) -> str:
+    """Abstract item (viii), classified from the solved policy.
+
+    The claim the first draft made -- that the optimal allocation is
+    invariant to the pension -- was read off a grid capped at the whole
+    portfolio, which cannot distinguish invariance from a shared ceiling.
+    The search now runs past the cap, so the sentence has to follow the
+    answer rather than the other way round.
+    """
+    if not (_has(f, "policy_solved") and _has(f, "policy_menu_gap")):
+        return ""
+    from src import policy as pcy
+
+    head = str(f.cfg.get("policy", {}).get("headline_system",
+                                           "age_pension_matched"))
+    got = pcy.verdict(f.table("policy_solved"), f.table("policy_menu_gap"),
+                      head)
+    if not got.get("measured"):
+        return ""
+    if got["every_holding_is_censored"]:
+        allocation = ("the solved allocation is at the top of the "
+                      "borrowing ladder under both pensions and so is a "
+                      "bound rather than an optimum")
+    elif got["holding_moves_with_the_pension"]:
+        allocation = (f"the solved allocation moves with the pension "
+                      f"\u2014 {got['holding_under_the_test']:.2f}"
+                      f"&times; the portfolio in equity under the test "
+                      f"against {got['holding_without_it']:.2f}&times; "
+                      f"without it, once the search is allowed past the "
+                      f"whole of it")
+    else:
+        allocation = (f"the solved allocation is the same under both "
+                      f"pensions at {got['holding_under_the_test']:.2f}"
+                      f"&times; the portfolio in equity, with the search "
+                      f"allowed past the whole of it and settling inside "
+                      f"the range")
+    return (f"Solved rather than picked off a menu, {allocation}, and the "
+            f"optimal withdrawal rule differs between them; the same "
+            f"wrong drawdown default costs a means-tested household "
+            f"{got['default_gap_ratio']:.1f} times what it costs an "
+            f"earnings-related one, so the reversal is the price of a "
+            f"default rather than a claim about what a means-tested "
+            f"retiree should hold.")
+
+
+def _abstract_anchor_claim(f: Any) -> str:
+    """Abstract item (ix), as the difference in differences it rests on."""
+    if not _has(f, "anchor_gaps"):
+        return ""
+    from src import anchor as anc
+
+    block = f.cfg.get("anchor", {})
+    got = anc.discriminates(
+        f.table("anchor_gaps"),
+        str(block.get("headline_system", "age_pension_matched")),
+        str(block.get("control_system", "us_social_security")),
+        "legislated minimum",
+        str(block.get("assumed_rule", "fixed_real_rule")))
+    if not got.get("measured"):
+        return ""
+    return (f"The country whose means test we calibrate to legislates a "
+            f"minimum drawdown that is a percentage of the balance rising "
+            f"with age, and so do countries without an assets test, so "
+            f"the statute is read as a difference in differences rather "
+            f"than as a confirmation: run at the statutory rates it is "
+            f"worth {got['swing_under_the_test_pp']:.1f} points of "
+            f"all-equity lead under the means test against "
+            f"{got['swing_without_it_pp']:.1f} without it, and only under "
+            f"the test does it change the sign.")
+
+
+def _constant_or_span(values: Any) -> str:
+    """A share, or the range of shares, as a table cell.
+
+    Twelve rows printing the same two numbers is a page saying one thing.
+    Collapsing them is only honest if a cell that is *not* constant says
+    so, which is what the range is for.
+    """
+    lo, hi = float(values.min()), float(values.max())
+    return f"{lo:.0%}" if abs(hi - lo) < 1e-9 else f"{lo:.0%}\u2013{hi:.0%}"
+
+
+def _headline_gap(f: Any) -> float:
+    """The reversal cell as the ordering table reports it (fixed horizon)."""
+    if not _has(f, "ordering_gaps"):
+        return float("nan")
+    rule = str(f.cfg["lifecycle"]["retirement"]["rule"])
+    table = f.table("ordering_gaps")
+    hit = table[(table["system"] == HEADLINE_SYSTEM)
+                & (table["rule"] == rule)]
+    return float(hit["gap_pct"].iloc[0]) if len(hit) else float("nan")
+
+
+def _survival_gap(f: Any) -> float:
+    """The same cell scored over a real lifespan, from the annuity grid.
+
+    Read off the nothing-annuitised column rather than restated, so the two
+    numbers the paper prints for one cell cannot drift apart in a rerun and
+    a reader can check that they are the same comparison.
+    """
+    if not _has(f, "annuity_gaps"):
+        return float("nan")
+    rule = str(f.cfg["lifecycle"]["retirement"]["rule"])
+    table = f.table("annuity_gaps")
+    hit = table[(table["system"] == HEADLINE_SYSTEM)
+                & (table["rule"] == rule)
+                & (table["fraction"] == 0.0)]
+    return float(hit["gap_pct"].iloc[0]) if len(hit) else float("nan")
+
+
 def _interval_for(f: Any, system: str, rule: str) -> Dict[str, Any]:
     """One cell's delete-one interval, or nothing measured."""
     if not _has(f, "ordering_intervals"):
@@ -4202,8 +4789,11 @@ def _matched_factorial(ctx: Any, f: Any, rule: str) -> List[Flowable]:
         f"row crossing an earnings-related pension at one contribution "
         f"rate with a means-tested one at another reports is the "
         f"residual: "
-        f"{found['confounded']:+.2f} points, which is smaller than either "
-        f"piece it is made of. The interaction is "
+        f"{found['confounded']:+.2f} points \u2014 smaller than the "
+        f"pension effect it is netted against, and larger than the "
+        f"contribution effect doing the netting, which is what a residual "
+        f"of two quantities pulling opposite ways looks like. The "
+        f"interaction is "
         f"{found['interaction']:+.2f} points, and it has the sign the "
         f"paper's mechanism predicts — compulsory saving is worth more "
         f"under a means test than under an unconditional pension, because "

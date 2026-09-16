@@ -25,13 +25,18 @@ from src import plan as pl  # noqa: E402
 from src import policy as pol  # noqa: E402
 
 
-def _solved(rows) -> pd.DataFrame:
+def _solved(rows, leverage: float = 1.0, censored: bool = False
+            ) -> pd.DataFrame:
     return pd.DataFrame.from_records([
         {"system": s, "rule": r, "rate": rate, "label": f"{r}",
          "cec": cec, "rounds": 2, "converged": True,
+         "leverage": leverage,
          "mean_equity": eq, "equity_at_retirement": eq,
          "mean_equity_in_retirement": eq,
+         "mean_holding_in_retirement": eq * leverage,
+         "holding_at_retirement": eq * leverage,
          "equity_falls_through_retirement": False,
+         "holding_is_censored": censored,
          "rule_reads_the_balance": pol._reads_balance(r)}
         for s, r, rate, cec, eq in rows])
 
@@ -111,7 +116,7 @@ class TestTheVerdictReportsEitherAnswer:
              "best_menu_rule": "x"}
             for s in ("us_social_security", "age_pension_matched")])
         got = pol.verdict(solved, gaps, "age_pension_matched")
-        assert not got["equity_moves_with_the_pension"]
+        assert not got["holding_moves_with_the_pension"]
 
     def test_a_missing_control_is_not_measured(self) -> None:
         solved = _solved([("age_pension_matched", "constant_percent", 0.10,
@@ -206,3 +211,94 @@ class TestTheShippedRun:
         schedule = self._table("policy_schedule")
         for system, part in schedule.groupby("system"):
             assert part["equity"].nunique() == 1, system
+
+
+class TestTheCeilingComesOff:
+    """The claim this section makes is that the allocation does not move
+    with the pension. A grid stopping at the whole portfolio cannot support
+    that claim in either direction -- two regimes pinned at the cap are
+    indistinguishable however different they are -- and the Internet
+    Appendix already establishes that the cap binds for this household. So
+    the search runs past it, and the flag that says whether it is still
+    pinned has to work."""
+
+    def test_an_answer_on_the_edge_of_the_ladder_is_called_censored(self
+                                                                    ) -> None:
+        got = pol.verdict(
+            _solved([("a", "gompertz", np.nan, 1.0, 1.0),
+                     ("b", "gompertz", np.nan, 1.0, 1.0)],
+                    leverage=2.0, censored=True),
+            pd.DataFrame.from_records([
+                {"system": s, "menu_gap_pct": 1.0, "default_gap_pct": 2.0,
+                 "best_menu_rule": "x"} for s in ("a", "b")]),
+            "a", control="b")
+        assert got["every_holding_is_censored"]
+
+    def test_an_interior_answer_is_not(self) -> None:
+        got = pol.verdict(
+            _solved([("a", "gompertz", np.nan, 1.0, 1.0),
+                     ("b", "gompertz", np.nan, 1.0, 1.0)],
+                    leverage=1.5, censored=False),
+            pd.DataFrame.from_records([
+                {"system": s, "menu_gap_pct": 1.0, "default_gap_pct": 2.0,
+                 "best_menu_rule": "x"} for s in ("a", "b")]),
+            "a", control="b")
+        assert not got["any_holding_is_censored"]
+
+    def test_the_holding_is_the_share_times_what_was_borrowed(self) -> None:
+        """A share of 1.0 at 1.75x is a holding of 1.75, and it is the
+        holding the paper compares across regimes. Reading the share
+        instead would report two different households as the same one."""
+        frame = _solved([("a", "gompertz", np.nan, 1.0, 1.0)], leverage=1.75)
+        assert frame["mean_holding_in_retirement"].iloc[0] == pytest.approx(
+            1.75)
+
+    def test_two_regimes_at_different_holdings_are_reported_as_differing(
+            self) -> None:
+        """The failure mode the ladder exists to rule out: at a shared
+        ceiling this comparison came out equal by construction."""
+        solved = pd.concat([
+            _solved([("tested", "constant_percent", 0.1, 1.0, 1.0)],
+                    leverage=1.5),
+            _solved([("untested", "gompertz", np.nan, 1.3, 1.0)],
+                    leverage=2.0)], ignore_index=True)
+        gaps = pd.DataFrame.from_records([
+            {"system": s, "menu_gap_pct": 1.0, "default_gap_pct": 2.0,
+             "best_menu_rule": "x"} for s in ("tested", "untested")])
+        got = pol.verdict(solved, gaps, "tested", control="untested")
+        assert got["holding_moves_with_the_pension"]
+        # ...where the share alone would have said the opposite.
+        assert not got["equity_moves_with_the_pension"]
+
+
+class TestTheShippedLadder:
+    """What the run in the repository found once the ceiling came off."""
+
+    @staticmethod
+    def _table(name: str) -> pd.DataFrame:
+        import glob
+
+        hits = glob.glob(str(ROOT / "results" / "**" / f"{name}.csv"),
+                         recursive=True)
+        if not hits:
+            pytest.skip(f"{name} has not been generated")
+        return pd.read_csv(hits[0])
+
+    def test_the_search_was_given_room_above_the_whole_portfolio(self
+                                                                 ) -> None:
+        """If every solved row sits at leverage one the ladder was never
+        exercised, and the censoring objection stands unanswered."""
+        solved = self._table("policy_solved")
+        assert "leverage" in solved.columns
+        assert float(solved["leverage"].max()) > 1.0
+
+    def test_the_two_means_tested_regimes_are_not_the_same_run(self) -> None:
+        """They differ in the contribution rate, so a certainty equivalent
+        identical to the last digit is a dropped contribution rather than a
+        finding. It was, once."""
+        solved = self._table("policy_solved").set_index("system")
+        pair = ("age_pension_matched", "australia_as_legislated")
+        if not all(k in solved.index for k in pair):
+            pytest.skip("the legislated regime is not in the solved set")
+        a, b = (float(solved.loc[k, "cec"]) for k in pair)
+        assert not np.isclose(a, b, rtol=1e-9), (a, b)

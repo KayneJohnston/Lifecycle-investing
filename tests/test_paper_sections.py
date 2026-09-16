@@ -919,6 +919,43 @@ class TestShortPaper:
                      "Dahlquist", "Hubbard", "Milevsky", "Dimson", "Yaari"):
             assert name in joined, name
 
+    def test_every_name_the_prose_cites_is_in_a_reference_list(self) -> None:
+        """A citation with no entry is a claim a reader cannot check.
+
+        The literature section was rewritten after a search found the
+        Australian means-test work much closer to this paper than the
+        first draft allowed, and nine references arrived with it. This is
+        the guard that the prose and the list moved together.
+        """
+        import re
+
+        from paper import short as sh
+        from paper import content
+
+        listed = " ".join(sh.EXTRA_REFERENCES) + " " + " ".join(
+            getattr(content, "REFERENCES", ()) or ())
+        source = Path(sh.__file__).read_text()
+        # "Surname (2013)" and "Surname et al. (2013)" as the prose writes
+        # them, skipping the reference list itself.
+        cited = set(re.findall(
+            r"([A-Z][A-Za-z\u00c0-\u017f-]{3,})(?:\s+et al\.)?\s+\(\d{4}\)",
+            source))
+        skip = {"Section", "Table", "Figure", "Regulations", "Schedule",
+                "This", "The", "Both", "Under", "Their", "Australian"}
+        missing = sorted(n for n in cited - skip if n not in listed)
+        assert not missing, missing
+
+    def test_the_australian_literature_is_cited(self) -> None:
+        """The contribution claim was narrowed because of this work. If the
+        references went missing the narrowed claim would read as modesty
+        rather than as a citation."""
+        from paper import short as sh
+
+        joined = " ".join(sh.EXTRA_REFERENCES)
+        for name in ("Hulley", "Butt", "Khemka", "Andr", "Cobb-Clark",
+                     "Spicer", "Asher", "Ai,"):
+            assert name in joined, name
+
     def test_the_calibration_source_is_now_cited(self) -> None:
         """The long paper names Cocco-Gomes-Maenhout as the source of its
         income profile and does not list it."""

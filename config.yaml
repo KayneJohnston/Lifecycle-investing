@@ -1478,7 +1478,11 @@ policy:
   # fixed point -- but run once per regime, which is what makes the
   # comparison a statement about the institution.
   n_paths: 20000
-  systems: [us_social_security, age_pension_matched,
+  # Four regimes, not three. The untested flat rate is the control that
+  # separates the floor from the taper everywhere else in this paper, and a
+  # solved policy that omitted it could not say whether the rule moves with
+  # the *test* or merely with the level of the cheque.
+  systems: [us_social_security, age_pension_untested, age_pension_matched,
             australia_as_legislated]
   headline_system: age_pension_matched
   # The rule families, spanning fully insulated from the balance to fully
@@ -1488,6 +1492,16 @@ policy:
   rate_grid: [0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.10, 0.12]
   # The free-form schedule is solved over these, as in `plan`.
   equity_grid: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+  # ...and then past the whole of it. A grid stopping at 1.0 cannot report
+  # an optimum above it, so two regimes both pinned there score identically
+  # whether or not they want the same thing -- which is precisely the
+  # comparison this study is for. `ceiling` establishes that the cap does
+  # bind for this household; the same ladder is used here so the two
+  # sections can be read against each other. Zero spread is the cheapest
+  # borrowing there is and therefore the hardest test for an unlevered
+  # corner.
+  leverage_grid: [1.00, 1.25, 1.50, 1.75, 2.00]
+  borrowing_spread: 0.0
   domestic_grid: [0.0, 0.1, 0.2, 0.3, 0.5]
   fixed_income_bond_share: 0.7
   domestic_band_years: 5
@@ -1516,6 +1530,12 @@ anchor:
   systems: [us_social_security, age_pension_matched,
             australia_as_legislated]
   headline_system: age_pension_matched
+  # The pension the same statutory rule is run against, so the anchor is a
+  # difference in differences rather than a single swing. A balance-reading
+  # rule helps almost any retiree, and countries without an assets test
+  # legislate the shape too (US required minimum distributions), so the
+  # claim has to be about how much more it is worth under the test.
+  control_system: us_social_security
   strategies: [balanced_all_equity, target_date_fund]
   # The statutory schedule: age at the start of the year, minimum share of
   # the account balance. Held here as well as in `src.spending` so a reader

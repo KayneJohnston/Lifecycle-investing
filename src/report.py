@@ -13589,10 +13589,12 @@ def write_doc_42(
         solved_tbl = md_table(solved.rename(columns={
             "system": "Pension regime", "label": "Solved plan",
             "cec": "CEC", "mean_equity": "Mean equity",
-            "mean_equity_in_retirement": "Equity in retirement",
+            "mean_holding_in_retirement": "Holding in retirement",
+            "leverage": "Borrowed", "holding_is_censored": "At the ladder top",
             "rounds": "Rounds", "converged": "Converged"})[
                 ["Pension regime", "Solved plan", "CEC", "Mean equity",
-                 "Equity in retirement", "Rounds", "Converged"]],
+                 "Holding in retirement", "Borrowed", "At the ladder top",
+                 "Rounds", "Converged"]],
             floatfmt="{:.4f}")
 
     gaps = frames.get("gaps")
@@ -13638,17 +13640,32 @@ def write_doc_42(
             f"{'; every regime solves to a balance-reading rule' if found['every_solved_rule_reads_the_balance'] else ''}.")
         parts.append(
             f"**The allocation "
-            f"{'moves with the pension too' if found['equity_moves_with_the_pension'] else 'does not move with the pension at all'}.** "
+            f"{'moves with the pension too' if found['holding_moves_with_the_pension'] else 'does not move with the pension at all'}.** "
             f"The solved schedule holds "
-            f"{found['equity_under_the_test']:.0%} equity under the means "
-            f"test and {found['equity_without_it']:.0%} without it"
-            f"{', in every retirement year of both' if not found['equity_moves_with_the_pension'] else ''}. "
-            f"That is worth stating as a result rather than as an aside: "
-            f"solve the problem and the *portfolio* answer is invariant to "
-            f"the pension. What the assets test moves is the drawdown rule, "
-            f"and the reversal the paper reports is what happens when the "
-            f"rule is fixed at the wrong one while the portfolio takes the "
-            f"blame.")
+            f"{found['holding_under_the_test']:.2f}x the portfolio in "
+            f"equity under the means test and "
+            f"{found['holding_without_it']:.2f}x without it"
+            f"{', in every retirement year of both' if not found['holding_moves_with_the_pension'] else ''}. "
+            + ("Both answers sit at the top of the borrowing ladder, so "
+               "they are bounds rather than optima and no invariance can "
+               "be read off them -- the ladder needs extending before this "
+               "row means anything. "
+               if found["every_holding_is_censored"] else
+               "One of them sits at the top of the borrowing ladder and is "
+               "a bound rather than an optimum. "
+               if found["any_holding_is_censored"] else
+               "Neither sits at the edge of the ladder, so both are "
+               "optima. ")
+            + ("What the assets test moves is the drawdown rule, and the "
+               "reversal the paper reports is what happens when the rule "
+               "is fixed at the wrong one while the portfolio takes the "
+               "blame."
+               if not found["holding_moves_with_the_pension"] else
+               "So the portfolio answer is not invariant to the pension "
+               "once the search has room above the whole portfolio, and "
+               "the paper cannot say that it is. An equity-share grid "
+               "capped at 1.0 reported invariance here because both "
+               "regimes were pinned against the cap."))
         parts.append(
             f"**It is the default that is expensive, not the menu.** "
             f"Against the best cell of the paper's own eight-rule grid the "

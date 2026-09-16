@@ -414,3 +414,46 @@ class TestTheMechanismIsMeasuredRatherThanAsserted:
         assert got["measured"]
         assert got["it_is_the_test_and_not_the_instrument"], got
         assert got["mean_moves_against_it_under_the_test"], got
+
+
+class TestTheCrowdingInIsNotTheExemption:
+    """Our sign is the opposite of the annuitisation literature's, and the
+    first explanation to reach for -- that annuitised wealth is exempt from
+    the assets test here and assessed in their settings -- is wrong. The
+    grid carries both treatments, so it is checkable, and the paper's prose
+    is generated from the check rather than from the guess."""
+
+    @staticmethod
+    def _wanted() -> pd.DataFrame:
+        import glob
+
+        hits = glob.glob(str(ROOT / "results" / "**" / "annuity_wanted.csv"),
+                         recursive=True)
+        if not hits:
+            pytest.skip("the annuity study has not been run")
+        return pd.read_csv(hits[0])
+
+    def test_the_appetite_survives_the_annuity_being_assessed(self) -> None:
+        want = self._wanted()
+        block = want[want["rule"] == "fixed_real_rule"]
+        tested = block[block["system"] == "age_pension_matched"]
+        control = block[(block["system"] == "us_social_security")
+                        & (block["assessed"] == 0.0)]
+        if not len(tested) or not len(control):
+            pytest.skip("the treatments are not both in the shipped run")
+        assessed = float(
+            tested[tested["assessed"] == 1.0]["gain_pct"].iloc[0])
+        untested = float(control["gain_pct"].iloc[0])
+        assert assessed > untested, (assessed, untested)
+
+    def test_the_exemption_still_adds_to_it(self) -> None:
+        """If exempting made no difference at all the paper would be
+        claiming a distinction the data does not draw."""
+        want = self._wanted()
+        block = want[(want["rule"] == "fixed_real_rule")
+                     & (want["system"] == "age_pension_matched")]
+        if len(block) < 2:
+            pytest.skip("the treatments are not both in the shipped run")
+        exempt = float(block[block["assessed"] == 0.0]["gain_pct"].iloc[0])
+        assessed = float(block[block["assessed"] == 1.0]["gain_pct"].iloc[0])
+        assert exempt > assessed

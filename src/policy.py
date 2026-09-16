@@ -44,55 +44,100 @@ import pandas as pd
 LOGGER = logging.getLogger(__name__)
 
 
-def solve_by_system(bench_for: Callable[[str], Any],
+def solve_by_system(bench_for: Callable[..., Any],
                     systems: Sequence[str], plans: Sequence[Any],
                     gamma: float, equity_grid: Sequence[float],
                     domestic_grid: Sequence[float],
                     start_equity: float = 1.0, start_domestic: float = 0.1,
                     bond_share: float = 0.7, domestic_band_years: int = 5,
-                    n_sweeps: int = 2, max_rounds: int = 4) -> pd.DataFrame:
+                    n_sweeps: int = 2, max_rounds: int = 4,
+                    leverage_grid: Sequence[float] = (1.0,),
+                    spread: float = 0.0) -> pd.DataFrame:
     """The joint optimum under each pension regime, one row apiece.
 
-    ``bench_for(system)`` returns a :class:`src.plan.PlanBench` built on that
-    regime's spec. The search itself is :func:`src.plan.alternate`; what is
-    new here is running it per regime and keeping the solved schedule so a
-    caller can ask whether the optimal *allocation* moves as well as the
-    optimal rule.
+    ``bench_for(system, leverage)`` returns a :class:`src.plan.PlanBench`
+    built on that regime's spec at that borrowing level. The search itself is
+    :func:`src.plan.alternate`; what is new here is running it per regime and
+    keeping the solved schedule so a caller can ask whether the optimal
+    *allocation* moves as well as the optimal rule.
+
+    **Why the leverage grid is not optional decoration.** The question this
+    module exists to answer is whether the assets test moves the allocation
+    or only the rule, and an allocation grid that stops at the whole
+    portfolio cannot answer it: two regimes that both want everything they
+    are allowed score identically whether they want the same thing or not.
+    So the ceiling comes off, exactly as :mod:`src.ceiling` lifts it for the
+    balance sweep, and the reported holding is the one the household chose
+    rather than the largest one on offer. A holding that lands strictly
+    inside the grid is an answer; one that lands on its edge is reported as
+    censored rather than as an optimum.
     """
     from . import plan as pl
 
+    ladder = [float(x) for x in leverage_grid] or [1.0]
     rows: List[Dict[str, Any]] = []
     for system in systems:
-        bench = bench_for(str(system))
-        joint = pl.alternate(bench, plans, gamma, equity_grid, domestic_grid,
-                             start_equity, start_domestic, bond_share,
-                             domestic_band_years, n_sweeps, max_rounds)
-        plan = joint.get("plan")
-        if plan is None:
+        best: Dict[str, Any] | None = None
+        for leverage in ladder:
+            bench = bench_for(str(system), leverage)
+            joint = pl.alternate(bench, plans, gamma, equity_grid,
+                                 domestic_grid, start_equity, start_domestic,
+                                 bond_share, domestic_band_years, n_sweeps,
+                                 max_rounds)
+            if joint.get("plan") is None:
+                continue
+            LOGGER.info("  %s at %.2fx: %s, CEC %.6f", system, leverage,
+                        joint["plan"].label(), float(joint["cec"]))
+            if best is None or float(joint["cec"]) > float(best["cec"]):
+                best = dict(joint, leverage=leverage,
+                            n_working=bench.spec.n_working)
+        if best is None:
             continue
-        equity = np.asarray(joint["equity"], dtype=float)
-        retired = equity[bench.spec.n_working:]
+        plan = best["plan"]
+        leverage = float(best["leverage"])
+        equity = np.asarray(best["equity"], dtype=float)
+        n_working = int(best["n_working"])
+        # What the household actually holds: the share of the portfolio in
+        # equity, times what it borrowed to hold it. At leverage one these
+        # are the same number, which is why the earlier grid could not tell
+        # a corner from a ceiling.
+        holding = equity.copy()
+        holding[n_working:] = holding[n_working:] * leverage
+        retired = holding[n_working:]
         rows.append({
             "system": str(system),
             "rule": plan.rule,
             "rate": np.nan if plan.rate is None else float(plan.rate),
             "label": plan.label(),
-            "cec": float(joint["cec"]),
-            "rounds": int(len(joint.get("rounds", []))),
-            "converged": bool(joint.get("converged", False)),
+            "cec": float(best["cec"]),
+            "rounds": int(len(best.get("rounds", []))),
+            "converged": bool(best.get("converged", False)),
+            "leverage": leverage,
             "mean_equity": float(equity.mean()),
-            "equity_at_retirement": float(retired[0]) if len(retired) else
+            "mean_holding_in_retirement": float(retired.mean())
+            if len(retired) else float("nan"),
+            "holding_at_retirement": float(retired[0]) if len(retired) else
             float("nan"),
-            "mean_equity_in_retirement": float(retired.mean())
+            "equity_at_retirement": float(equity[n_working:][0])
+            if len(retired) else float("nan"),
+            "mean_equity_in_retirement": float(equity[n_working:].mean())
             if len(retired) else float("nan"),
             "equity_falls_through_retirement": bool(
                 len(retired) > 1 and retired[-1] < retired[0] - 1e-9),
+            # An optimum on the edge of the grid is not an optimum, and the
+            # paper has to say which it has rather than print the number
+            # either way.
+            "holding_is_censored": bool(
+                len(retired) and abs(float(retired.max())
+                                     - max(ladder) * max(equity_grid))
+                < 1e-9),
             "rule_reads_the_balance": _reads_balance(plan.rule),
         })
-        LOGGER.info("  %s: %s, CEC %.6f, mean equity %.0f%% (%d rounds%s)",
-                    system, plan.label(), float(joint["cec"]),
-                    100.0 * equity.mean(), len(joint.get("rounds", [])),
-                    "" if joint.get("converged") else ", not converged")
+        LOGGER.info("  %s: %s, CEC %.6f, holding %.2fx (%d rounds%s)",
+                    system, plan.label(), float(best["cec"]),
+                    float(retired.mean()) if len(retired) else float("nan"),
+                    len(best.get("rounds", [])),
+                    "" if best.get("converged") else ", not converged")
     return pd.DataFrame.from_records(rows)
 
 
@@ -202,6 +247,21 @@ def verdict(solved: pd.DataFrame, gaps: pd.DataFrame, headline: str,
         "solved_rule_reads_the_balance": bool(hit["rule_reads_the_balance"]),
         "every_solved_rule_reads_the_balance": bool(
             solved["rule_reads_the_balance"].all()),
+        # The *holding* rather than the share, because the share is capped
+        # at the whole portfolio and two households pinned against that cap
+        # are indistinguishable. Section A.3's finding is exactly that the
+        # cap binds here, so a comparison made on the share would be
+        # answering the grid's question rather than the paper's.
+        "holding_under_the_test": float(hit["mean_holding_in_retirement"]),
+        "holding_without_it": float(base["mean_holding_in_retirement"]),
+        "holding_moves_with_the_pension": bool(
+            abs(float(hit["mean_holding_in_retirement"])
+                - float(base["mean_holding_in_retirement"])) > 0.05),
+        # And whether either answer is a number or an edge. A censored
+        # optimum cannot support a claim about invariance in either
+        # direction, and the prose has to say so rather than print it.
+        "any_holding_is_censored": bool(solved["holding_is_censored"].any()),
+        "every_holding_is_censored": bool(solved["holding_is_censored"].all()),
         "equity_under_the_test": float(hit["mean_equity"]),
         "equity_without_it": float(base["mean_equity"]),
         "equity_moves_with_the_pension": bool(
@@ -251,9 +311,12 @@ def schedule_frame(solved: pd.DataFrame,
             continue
         equity, domestic = schedules[system]
         equity = np.asarray(equity, dtype=float)
+        leverage = float(row.get("leverage", 1.0) or 1.0)
         for offset, share in enumerate(equity[int(n_working):]):
             rows.append({"system": system, "retirement_year": offset,
                          "equity": float(share),
+                         "leverage": leverage,
+                         "holding": float(share) * leverage,
                          "domestic": float(np.asarray(domestic)[
                              int(n_working) + offset])})
     return pd.DataFrame.from_records(rows)
