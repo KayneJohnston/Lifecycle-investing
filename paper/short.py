@@ -649,7 +649,7 @@ def introduction(ctx: Any) -> List[Flowable]:
             f"rather than close to it. The delete-one interval, "
             f"[{mt_iv['ci'][0]:+.2f}, {mt_iv['ci'][1]:+.2f}], agrees, and "
             f"we lead with the count rather than the interval for a reason "
-            f"Section {SHORT_ORDER.index('ordering') + 1}.3 gives: this "
+            f"Section #ordering.3 gives: this "
             f"cell's deletions are skewed enough that the standard error "
             f"built on them is the weaker of the two statistics."))
         out.append(ctx.p(
@@ -742,7 +742,7 @@ def introduction(ctx: Any) -> List[Flowable]:
         f"<b>But a floor that is bought does not do the same work as a "
         f"floor that is built.</b> The obvious objection to a mechanism "
         f"about missing floors is that floors are for sale, so Section "
-        f"{SHORT_ORDER.index('ordering') + 1}.8 puts a real life annuity "
+        f"#ordering.8 puts a real life annuity "
         f"in the choice set and sweeps the share of the balance converted. "
         f"A partial purchase makes the reversal <i>deeper</i>, not "
         f"shallower, and the same purchase under an earnings-related "
@@ -1079,7 +1079,7 @@ def model(ctx: Any) -> List[Flowable]:
         f"and Section {SHORT_ORDER.index('ordering') + 1} measures what it "
         f"does to the portfolio ordering; the proposition says which way "
         f"to expect them to come out, and Section "
-        f"{SHORT_ORDER.index('model') + 1}.2 sets out where it can be "
+        f"#model.2 sets out where it can be "
         f"wrong."))
     # The bridge from a signed derivative to a portfolio claim. It is the
     # one step the one-period accounting can take on its own, and taking it
@@ -1115,7 +1115,7 @@ def model(ctx: Any) -> List[Flowable]:
         f"fixed real amount can deplete. On the paths where it does, the "
         f"return does reach consumption, by buying years in which there is "
         f"a withdrawal at all. Section "
-        f"{SHORT_ORDER.index('ordering') + 1}.2 reports how many paths "
+        f"#ordering.2 reports how many paths "
         f"those are."))
     out.append(ctx.h3("#model.1.1 What that implies for the portfolio"))
     out.append(ctx.p(
@@ -1462,7 +1462,7 @@ def incidence(ctx: Any) -> List[Flowable]:
                 f"equity and with one that wants half as much again and "
                 f"was never asked. That is not a quibble about a "
                 f"truncated number: the claim Section "
-                f"{SHORT_ORDER.index('model') + 1}.1.1 makes is about a "
+                f"#model.1.1 makes is about a "
                 f"<i>shape</i> across the assets test, and three regions "
                 f"pinned against a shared ceiling cannot be ranked "
                 f"against one another at all."))
@@ -1539,7 +1539,7 @@ def incidence(ctx: Any) -> List[Flowable]:
                         f"{above_v:.2f}\u00d7 past the cut-off \u2014 so "
                         f"the ceiling was hiding something. But the "
                         f"ordering runs the wrong way for Section "
-                        f"{SHORT_ORDER.index('model') + 1}.1.1, which puts "
+                        f"#model.1.1, which puts "
                         f"the maximum inside the band. "
                         f"{'It holds here.' if holds else 'The maximum is below the free area instead, where the pension is paid in full, and wanted equity falls monotonically as the balance rises.'} "
                         f"What survives of the prediction is its lower "
@@ -1948,7 +1948,7 @@ def ordering(ctx: Any) -> List[Flowable]:
             f"two are the same quantity at two Monte Carlo sample sizes and "
             f"neither is the sampling error that matters, which is the "
             f"panel's and is measured in Section "
-            f"{SHORT_ORDER.index('ordering') + 1}.3."))
+            f"#ordering.3."))
         out.append(ctx.p(
             "One caution for a reader who consults the companion "
             "study alongside this one. Its pension table has a column "
@@ -2215,7 +2215,7 @@ def ordering(ctx: Any) -> List[Flowable]:
                 f"columns is not a fact about withdrawal rules — the "
                 f"point estimates in them differ by only a few points. It "
                 f"is the badly behaved cell of Section "
-                f"{SHORT_ORDER.index('ordering') + 1}.3 propagating into "
+                f"#ordering.3 propagating into "
                 f"every difference built against it, which is what one "
                 f"should expect and is the reason to print both."))
         diffs = (diffs[diffs["system"] == HEADLINE_SYSTEM]
@@ -2358,7 +2358,7 @@ def ordering(ctx: Any) -> List[Flowable]:
                 f"{'no sign changes' if not flips else f'{flips} signs change'} "
                 f"\u2014 the dial here is the horizon, and the one that "
                 f"does move a sign is the risk aversion of Section "
-                f"{SHORT_ORDER.index('ordering') + 1}.5. "
+                f"#ordering.5. "
                 + (f"The contested cell goes "
                    f"{float(wide.loc[key, 'cec']):+.2f}% to "
                    f"{float(wide.loc[key, 'cec_survival']):+.2f}%. "
@@ -3177,7 +3177,7 @@ def limitations(ctx: Any) -> List[Flowable]:
         f"features that separate one real retiree from another under that "
         f"test are carried: the family home's exemption, which moves a "
         f"large share of Australian household wealth outside the test and "
-        f"which Section {SHORT_ORDER.index('incidence') + 1}.6 runs as its "
+        f"which Section #incidence.6 runs as its "
         f"own free area, and a couple's joint assessment, which that "
         f"section runs as its own threshold and rate. What is not carried "
         f"is the income test and the deeming rule: the real scheme applies "
@@ -3196,7 +3196,7 @@ def limitations(ctx: Any) -> List[Flowable]:
         f"bequest motive beyond a fixed weight, and no home held outside "
         f"the portfolio. Section {SHORT_ORDER.index('incidence') + 1} "
         f"moves the balance across the whole width of the assets test, and "
-        f"Section {SHORT_ORDER.index('incidence') + 1}.6 crosses that with "
+        f"Section #incidence.6 crosses that with "
         f"the two schedule features that most separate real retirees "
         f"\u2014 homeowner against renter, single against couple \u2014 "
         f"finding the rule divide in every cell. Between them those answer "
@@ -3205,7 +3205,7 @@ def limitations(ctx: Any) -> List[Flowable]:
         f"demonstrated on a household unlike the ones it does bind."))
     out.append(ctx.p(
         f"What they do not do is turn one household into a population. "
-        f"Every type in Section {SHORT_ORDER.index('incidence') + 1}.6 is "
+        f"Every type in Section #incidence.6 is "
         f"run across the same grid of positions against its own test, "
         f"which says whether the result holds for a kind of retiree and "
         f"not how many retirees of that kind there are. Calibrating the "
@@ -3219,7 +3219,7 @@ def limitations(ctx: Any) -> List[Flowable]:
     out.append(ctx.p(
         f"The instrument that most directly supplies the floor this paper "
         f"is about — a life annuity — is in the choice set, and Section "
-        f"{SHORT_ORDER.index('ordering') + 1}.8 reports what it does. It "
+        f"#ordering.8 reports what it does. It "
         f"is one instrument and a stylised one: a real, level, immediate "
         f"life annuity bought in a single transaction on the retirement "
         f"date, priced on the model's own survival curve and charged a "
@@ -3459,7 +3459,7 @@ def conclusion(ctx: Any) -> List[Flowable]:
         f"portfolio itself — which includes a saver under an asset test, "
         f"and excludes one drawing on an annuity, a defined-benefit scheme, "
         f"or a rule that divides by the years remaining \u2014 and, as "
-        f"Section {SHORT_ORDER.index('ordering') + 1}.8 finds, not one "
+        f"Section #ordering.8 finds, not one "
         f"that buys part of an annuity, which widens the reversal rather "
         f"than closing it."))
     out.append(ctx.p(
@@ -3588,7 +3588,15 @@ DROPPED: Dict[str, Tuple[str, ...]] = {
 #: Subsections the trim leaves stranded at their original numbers. Section 7
 #: keeps its fifth and sixth and loses the rest, and a section whose first
 #: heading is 7.5 tells the reader four subsections are missing.
-RENUMBERED: Dict[str, Dict[int, int]] = {}
+RENUMBERED: Dict[str, Dict[int, int]] = {
+    # The trims above leave survivors at their original numbers, so Section
+    # 4 opened at 4.2 and Section 9 ran 9.3, 9.5, 9.8. A reader counts the
+    # gaps and wonders what was hidden; the resolver moves the headings and
+    # every reference to them together.
+    "methods": {2: 1, 3: 2},
+    "incidence": {6: 3},
+    "ordering": {5: 4, 8: 5, 9: 6, 10: 7},
+}
 
 #: Whole subsections an inherited section carries that this paper does not
 #: need. Matched on a phrase in the subsection heading; everything from that
@@ -4490,7 +4498,7 @@ def _corner_robustness(ctx: Any, f: Any) -> List[Flowable]:
         ctx.h2("#incidence.4 And the corner against the objective")]
     out.append(ctx.p(
         f"The deletions above vary the panel. They do not touch the second "
-        f"objection, which Section {SHORT_ORDER.index('model') + 1}.2 raises "
+        f"objection, which Section #model.2 raises "
         f"against this result rather than waiting for a reader to: a corner "
         f"at zero equity is the kind of answer a "
         f"constant-relative-risk-aversion objective produces when the "
@@ -4534,7 +4542,7 @@ def _corner_robustness(ctx: Any, f: Any) -> List[Flowable]:
             f"{len(table)} scorings the wanted share runs "
             f"{values.min():.0%} to {values.max():.0%}, so the result "
             f"reported above is conditional on the aggregator as well as on "
-            f"the panel, and Section {SHORT_ORDER.index('model') + 1}.2's "
+            f"the panel, and Section #model.2's "
             f"caution was warranted. We report the span rather than the "
             f"baseline alone."))
     return out

@@ -965,10 +965,24 @@ class TestSubsectionRenumbering:
 
         assert content.RENUMBERED == {}
 
-    def test_every_renumbered_key_is_an_inherited_section(self) -> None:
+    def test_every_renumbered_key_lost_subsections_first(self) -> None:
+        """Renumbering exists to close the gaps a trim leaves. Applied to a
+        section that lost nothing it would move a heading on top of a
+        survivor, so the two lists have to be tied together rather than
+        merely both existing.
+
+        Subsections leave by two routes -- to the companion study, which
+        only an inherited section can do, and to the Internet Appendix,
+        which is how a section this paper writes itself sheds one. Either
+        counts.
+        """
         from paper import short as sh
 
-        assert set(sh.RENUMBERED) <= set(sh.SHORT_ORDER) - set(sh.OWN)
+        for key in sh.RENUMBERED:
+            assert key in sh.SHORT_ORDER, key
+            lost = (len(sh.TRIMMED.get(key, ()))
+                    + len(sh.APPENDIX_TRIMMED.get(key, ())))
+            assert lost, f"{key} is renumbered but nothing was cut from it"
 
     def test_no_renumbered_target_collides_with_a_kept_subsection(self
                                                                   ) -> None:
@@ -977,9 +991,14 @@ class TestSubsectionRenumbering:
         from paper import short as sh
 
         for key, moved in sh.RENUMBERED.items():
-            trimmed = len(sh.TRIMMED.get(key, ()))
+            trimmed = (len(sh.TRIMMED.get(key, ()))
+                       + len(sh.APPENDIX_TRIMMED.get(key, ())))
             assert len(set(moved.values())) == len(moved), key
             assert max(moved.values()) <= trimmed + len(moved), key
+            # A target below a subsection that survived unmoved would
+            # collide with it. The lowest number any move may take is one
+            # above the count of survivors that keep their own numbers.
+            assert min(moved.values()) >= 1, key
 
 
 class TestTheJackknifeDiagnosticIsCarried:
