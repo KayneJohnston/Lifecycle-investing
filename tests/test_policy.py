@@ -204,13 +204,29 @@ class TestTheShippedRun:
         gaps = self._table("policy_menu_gap")
         assert (gaps["menu_gap_pct"] < gaps["default_gap_pct"]).all()
 
-    def test_the_solved_allocation_is_flat_within_each_regime(self) -> None:
-        """The paper prints one equity figure per regime and says it holds
-        in every retirement year. If the schedule sloped, that sentence
-        would be describing an average as a constant."""
+    def test_the_paper_does_not_call_a_sloping_schedule_a_constant(self
+                                                                    ) -> None:
+        """The printed figure is one number per regime, and the schedule
+        behind it stopped being flat when the allocation grid was allowed
+        past the whole portfolio. So either the schedule is flat, or the
+        table says the number is a mean -- what must not happen is the
+        earlier sentence, which described an average as a constant.
+        """
+        import inspect
+
+        from paper import short as sh
+
         schedule = self._table("policy_schedule")
-        for system, part in schedule.groupby("system"):
-            assert part["equity"].nunique() == 1, system
+        flat = all(part["equity"].nunique() == 1
+                   for _, part in schedule.groupby("system"))
+        note = inspect.getsource(sh._solved_table)
+        if flat:
+            return
+        assert "mean over them" in note, (
+            "the solved schedule varies across retirement years and the "
+            "table note still describes the printed figure as holding in "
+            "every one of them")
+        assert "every year of every regime" not in note
 
 
 class TestTheCeilingComesOff:
@@ -259,16 +275,83 @@ class TestTheCeilingComesOff:
         ceiling this comparison came out equal by construction."""
         solved = pd.concat([
             _solved([("tested", "constant_percent", 0.1, 1.0, 1.0)],
-                    leverage=1.5),
+                    leverage=1.0),
             _solved([("untested", "gompertz", np.nan, 1.3, 1.0)],
                     leverage=2.0)], ignore_index=True)
+        ladder = pd.DataFrame.from_records(
+            [{"system": s, "leverage": r, "cec": 1.0}
+             for s in ("tested", "untested")
+             for r in (1.0, 1.25, 1.5, 1.75, 2.0)])
         gaps = pd.DataFrame.from_records([
             {"system": s, "menu_gap_pct": 1.0, "default_gap_pct": 2.0,
              "best_menu_rule": "x"} for s in ("tested", "untested")])
-        got = pol.verdict(solved, gaps, "tested", control="untested")
+        got = pol.verdict(solved, gaps, "tested", control="untested",
+                          ladder=ladder)
         assert got["holding_moves_with_the_pension"]
         # ...where the share alone would have said the opposite.
         assert not got["equity_moves_with_the_pension"]
+
+
+class TestTheMenuIsPricedAgainstSomethingItCouldHaveChosen:
+    """A solved policy allowed to borrow, beaten against a menu of two
+    unlevered funds, prices the drawdown default at the default plus the
+    leverage. That is what the first levered run of this section did, and
+    the number it produced was the one the paper would have quoted."""
+
+    @staticmethod
+    def _score_factory(values):
+        def score(system, strategy, plan, equity, domestic):
+            return values[(system, strategy, plan)]
+        return score
+
+    def _frame(self, column):
+        solved = _solved([("s", "constant_percent", 0.1, 1.40, 1.0)])
+        solved["unlevered_cec"] = 1.10
+        schedules = {"a": (np.ones(3), np.zeros(3))}
+        rules = [("default", "planD"), ("amortisation at 6%", "planA")]
+        values = {("s", "a", "planD"): 0.50, ("s", "a", "planA"): 1.00}
+        return pol.menu_gap(self._score_factory(values), solved, ["a"],
+                            schedules, rules, headline_rule="default",
+                            column=column).iloc[0]
+
+    def test_it_uses_the_unlevered_solved_policy_by_default(self) -> None:
+        row = self._frame("unlevered_cec")
+        assert row["menu_gap_pct"] == pytest.approx(10.0)
+        assert row["default_gap_pct"] == pytest.approx(120.0)
+
+    def test_the_levered_answer_gives_a_bigger_and_wrong_gap(self) -> None:
+        """Kept as the contrast, so the default above is not an arbitrary
+        choice of column but the one that answers the question asked."""
+        row = self._frame("cec")
+        assert row["menu_gap_pct"] == pytest.approx(40.0)
+        assert row["menu_gap_pct"] > self._frame("unlevered_cec")["menu_gap_pct"]
+
+    def test_a_missing_unlevered_column_falls_back_rather_than_crashing(
+            self) -> None:
+        solved = _solved([("s", "constant_percent", 0.1, 1.40, 1.0)])
+        got = pol.menu_gap(
+            self._score_factory({("s", "a", "planA"): 1.00}), solved, ["a"],
+            {"a": (np.ones(3), np.zeros(3))}, [("amortisation at 6%", "planA")],
+            column="unlevered_cec")
+        assert got["solved_cec"].iloc[0] == pytest.approx(1.40)
+
+    def test_the_verdict_reports_the_borrowing_on_its_own(self) -> None:
+        solved = pd.concat([
+            _solved([("tested", "constant_percent", 0.1, 1.10, 1.0)],
+                    leverage=2.0),
+            _solved([("untested", "gompertz", np.nan, 1.30, 1.0)],
+                    leverage=1.5)], ignore_index=True)
+        solved["unlevered_cec"] = [1.00, 1.20]
+        solved["unlevered_rule"] = ["constant_percent", "gompertz"]
+        solved["leverage_premium_pct"] = [10.0, 8.3]
+        gaps = pd.DataFrame.from_records([
+            {"system": s, "menu_gap_pct": 3.0, "default_gap_pct": 100.0,
+             "best_menu_rule": "x"} for s in ("tested", "untested")])
+        got = pol.verdict(solved, gaps, "tested", control="untested")
+        assert got["leverage_premium_under_the_test_pct"] == pytest.approx(
+            10.0)
+        assert got["leverage_premium_without_it_pct"] == pytest.approx(8.3)
+        assert got["solved_rule_survives_switching_borrowing_off"]
 
 
 class TestTheShippedLadder:
@@ -302,3 +385,77 @@ class TestTheShippedLadder:
             pytest.skip("the legislated regime is not in the solved set")
         a, b = (float(solved.loc[k, "cec"]) for k in pair)
         assert not np.isclose(a, b, rtol=1e-9), (a, b)
+
+    def test_the_ladder_was_actually_swept(self) -> None:
+        """One row per (regime, borrowing level). Without it the paper
+        cannot say the solved answer sits inside the range rather than at
+        its edge, and cannot separate the rule from the borrowing."""
+        ladder = self._table("policy_ladder")
+        assert {"system", "leverage", "cec"} <= set(ladder.columns)
+        for system, part in ladder.groupby("system"):
+            assert len(part) >= 2, system
+            assert float(part["leverage"].min()) == pytest.approx(1.0), system
+
+    def test_the_menu_gap_is_taken_against_the_unlevered_answer(self) -> None:
+        """The menu cannot borrow, so the thing it is beaten against must
+        not have been allowed to either."""
+        solved = self._table("policy_solved").set_index("system")
+        gaps = self._table("policy_menu_gap").set_index("system")
+        assert "unlevered_cec" in solved.columns
+        for system in gaps.index:
+            assert float(gaps.loc[system, "solved_cec"]) == pytest.approx(
+                float(solved.loc[system, "unlevered_cec"]), rel=1e-9), system
+
+
+class TestTheLadderSetsTheResolution:
+    """Whether two regimes' allocations differ is judged against what the
+    borrowing search can resolve, not against a tolerance picked here. The
+    first levered run put the two holdings 0.06 apart on a ladder whose
+    rungs are 0.25 wide, which is not a difference this search found."""
+
+    @staticmethod
+    def _pair(a: float, b: float, rungs) -> tuple:
+        solved = pd.concat([
+            _solved([("tested", "constant_percent", 0.1, 1.0, 1.0)],
+                    leverage=a),
+            _solved([("untested", "gompertz", np.nan, 1.0, 1.0)],
+                    leverage=b)], ignore_index=True)
+        ladder = pd.DataFrame.from_records(
+            [{"system": s, "leverage": r, "cec": 1.0}
+             for s in ("tested", "untested") for r in rungs])
+        gaps = pd.DataFrame.from_records([
+            {"system": s, "menu_gap_pct": 1.0, "default_gap_pct": 2.0,
+             "best_menu_rule": "x"} for s in ("tested", "untested")])
+        return solved, ladder, gaps
+
+    def test_a_gap_inside_one_rung_is_not_a_difference(self) -> None:
+        solved, ladder, gaps = self._pair(
+            1.40, 1.33, [1.0, 1.25, 1.5, 1.75, 2.0])
+        got = pol.verdict(solved, gaps, "tested", "untested", ladder)
+        assert got["ladder_step"] == pytest.approx(0.25)
+        assert not got["holding_moves_with_the_pension"]
+
+    def test_a_gap_wider_than_a_rung_is(self) -> None:
+        solved, ladder, gaps = self._pair(
+            2.00, 1.25, [1.0, 1.25, 1.5, 1.75, 2.0])
+        got = pol.verdict(solved, gaps, "tested", "untested", ladder)
+        assert got["holding_moves_with_the_pension"]
+
+    def test_a_finer_ladder_can_resolve_what_a_coarse_one_cannot(self
+                                                                 ) -> None:
+        """The same two holdings, judged against two searches. This is the
+        property that makes the threshold a statement about the search
+        rather than about the answer."""
+        solved, ladder, gaps = self._pair(1.40, 1.33, [1.0, 1.5, 2.0])
+        coarse = pol.verdict(solved, gaps, "tested", "untested", ladder)
+        solved, fine, gaps = self._pair(
+            1.40, 1.33, [1.0, 1.02, 1.04, 1.06, 1.08])
+        got = pol.verdict(solved, gaps, "tested", "untested", fine)
+        assert not coarse["holding_moves_with_the_pension"]
+        assert got["holding_moves_with_the_pension"]
+
+    def test_a_single_rung_search_resolves_nothing(self) -> None:
+        solved, ladder, gaps = self._pair(1.0, 2.0, [1.0])
+        got = pol.verdict(solved, gaps, "tested", "untested", ladder)
+        assert got["ladder_step"] == float("inf")
+        assert not got["holding_moves_with_the_pension"]

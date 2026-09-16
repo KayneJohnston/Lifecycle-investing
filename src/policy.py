@@ -76,8 +76,10 @@ def solve_by_system(bench_for: Callable[..., Any],
 
     ladder = [float(x) for x in leverage_grid] or [1.0]
     rows: List[Dict[str, Any]] = []
+    rungs: List[Dict[str, Any]] = []
     for system in systems:
         best: Dict[str, Any] | None = None
+        flat: Dict[str, Any] | None = None
         for leverage in ladder:
             bench = bench_for(str(system), leverage)
             joint = pl.alternate(bench, plans, gamma, equity_grid,
@@ -88,6 +90,13 @@ def solve_by_system(bench_for: Callable[..., Any],
                 continue
             LOGGER.info("  %s at %.2fx: %s, CEC %.6f", system, leverage,
                         joint["plan"].label(), float(joint["cec"]))
+            rungs.append({"system": str(system), "leverage": leverage,
+                          "rule": joint["plan"].rule,
+                          "label": joint["plan"].label(),
+                          "cec": float(joint["cec"]),
+                          "converged": bool(joint.get("converged", False))})
+            if leverage == 1.0:
+                flat = dict(joint, n_working=bench.spec.n_working)
             if best is None or float(joint["cec"]) > float(best["cec"]):
                 best = dict(joint, leverage=leverage,
                             n_working=bench.spec.n_working)
@@ -110,6 +119,18 @@ def solve_by_system(bench_for: Callable[..., Any],
             "rate": np.nan if plan.rate is None else float(plan.rate),
             "label": plan.label(),
             "cec": float(best["cec"]),
+            # The same search with borrowing switched off. The paper's menu
+            # is two unlevered funds, so a menu gap taken against the
+            # levered answer would be pricing the rule and the borrowing
+            # together and calling the sum the cost of a drawdown default.
+            "unlevered_cec": (float(flat["cec"]) if flat is not None
+                              else float("nan")),
+            "unlevered_rule": (str(flat["plan"].rule) if flat is not None
+                               else ""),
+            "leverage_premium_pct": (
+                100.0 * (float(best["cec"]) / float(flat["cec"]) - 1.0)
+                if flat is not None and float(flat["cec"]) > 0
+                else float("nan")),
             "rounds": int(len(best.get("rounds", []))),
             "converged": bool(best.get("converged", False)),
             "leverage": leverage,
@@ -138,7 +159,7 @@ def solve_by_system(bench_for: Callable[..., Any],
                     float(retired.mean()) if len(retired) else float("nan"),
                     len(best.get("rounds", [])),
                     "" if best.get("converged") else ", not converged")
-    return pd.DataFrame.from_records(rows)
+    return pd.DataFrame.from_records(rows), pd.DataFrame.from_records(rungs)
 
 
 def _reads_balance(rule: str) -> bool:
@@ -165,7 +186,8 @@ def menu_gap(score: Callable[[str, str, Any, np.ndarray, np.ndarray], float],
              solved: pd.DataFrame, strategies: Sequence[str],
              schedules: Mapping[str, Tuple[np.ndarray, np.ndarray]],
              rules: Sequence[Tuple[str, Any]],
-             headline_rule: str | None = None) -> pd.DataFrame:
+             headline_rule: str | None = None,
+             column: str = "unlevered_cec") -> pd.DataFrame:
     """What the paper's own menu costs, regime by regime.
 
     ``score(system, strategy, plan, equity, domestic)`` returns the
@@ -197,7 +219,12 @@ def menu_gap(score: Callable[[str, str, Any, np.ndarray, np.ndarray], float],
                         and value > (headline_cec if headline_cec ==
                                      headline_cec else float("-inf")):
                     headline_cec = value
-        solved_cec = float(row["cec"])
+        # Scored against the solved policy with borrowing switched off,
+        # because the menu it is beaten against cannot borrow either. The
+        # levered answer is reported beside it as its own quantity rather
+        # than folded into the cost of a default.
+        solved_cec = float(row[column] if column in row
+                           and row[column] == row[column] else row["cec"])
         rows.append({
             "system": system,
             "solved_rule": str(row["rule"]),
@@ -216,7 +243,8 @@ def menu_gap(score: Callable[[str, str, Any, np.ndarray, np.ndarray], float],
 
 
 def verdict(solved: pd.DataFrame, gaps: pd.DataFrame, headline: str,
-            control: str = "us_social_security") -> Dict[str, Any]:
+            control: str = "us_social_security",
+            ladder: pd.DataFrame | None = None) -> Dict[str, Any]:
     """What the solved policy says, classified from the search.
 
     Three questions the prose has to answer whichever way they come out.
@@ -254,9 +282,16 @@ def verdict(solved: pd.DataFrame, gaps: pd.DataFrame, headline: str,
         # answering the grid's question rather than the paper's.
         "holding_under_the_test": float(hit["mean_holding_in_retirement"]),
         "holding_without_it": float(base["mean_holding_in_retirement"]),
+        "holding_gap": abs(float(hit["mean_holding_in_retirement"])
+                           - float(base["mean_holding_in_retirement"])),
+        # Against the ladder's own step rather than a number chosen here.
+        # A gap the search could not have resolved is not a difference the
+        # paper may report, and the step is what the search can resolve.
+        "ladder_step": _ladder_step(solved, ladder),
         "holding_moves_with_the_pension": bool(
             abs(float(hit["mean_holding_in_retirement"])
-                - float(base["mean_holding_in_retirement"])) > 0.05),
+                - float(base["mean_holding_in_retirement"]))
+            > _ladder_step(solved, ladder)),
         # And whether either answer is a number or an edge. A censored
         # optimum cannot support a claim about invariance in either
         # direction, and the prose has to say so rather than print it.
@@ -279,6 +314,16 @@ def verdict(solved: pd.DataFrame, gaps: pd.DataFrame, headline: str,
         "best_menu_rule_without_it": str(gap.loc[control, "best_menu_rule"]),
         "every_search_converged": bool(solved["converged"].all()),
         "most_rounds": int(solved["rounds"].max()),
+        # What borrowing is worth on its own, kept apart from what solving
+        # the rule is worth. The two were briefly reported as one number
+        # here, which priced a drawdown default at the sum of the default
+        # and the leverage the menu was never offered.
+        "leverage_premium_under_the_test_pct": float(
+            hit.get("leverage_premium_pct", float("nan"))),
+        "leverage_premium_without_it_pct": float(
+            base.get("leverage_premium_pct", float("nan"))),
+        "solved_rule_survives_switching_borrowing_off": bool(
+            str(hit.get("unlevered_rule", "")) == str(hit["rule"])),
     }
     out["menu_costs_more_under_the_test"] = bool(
         out["menu_gap_under_the_test_pct"] > out["menu_gap_without_it_pct"])
@@ -293,6 +338,26 @@ def verdict(solved: pd.DataFrame, gaps: pd.DataFrame, headline: str,
         / out["default_gap_without_it_pct"]
         if out["default_gap_without_it_pct"] > 0 else float("inf"))
     return out
+
+
+def _ladder_step(solved: pd.DataFrame,
+                 ladder: pd.DataFrame | None) -> float:
+    """The finest difference in holding the borrowing search can resolve.
+
+    Two regimes whose solved holdings differ by less than one rung are two
+    regimes this search cannot tell apart, and reporting the difference as
+    a finding would be reading precision off a grid that does not have it.
+    Taken from the swept ladder when one is available and from the solved
+    rows otherwise; a single-rung search resolves nothing, so the step is
+    infinite and no difference is reportable.
+    """
+    source = ladder if ladder is not None and len(ladder) else solved
+    if "leverage" not in getattr(source, "columns", ()):
+        return float("inf")
+    rungs = sorted({float(x) for x in source["leverage"]})
+    if len(rungs) < 2:
+        return float("inf")
+    return float(min(b - a for a, b in zip(rungs, rungs[1:])))
 
 
 def schedule_frame(solved: pd.DataFrame,

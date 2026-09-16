@@ -6268,7 +6268,7 @@ def step42_policy(cfg: Dict[str, Any],
     LOGGER.info("%d plans x the free-form schedule x %d borrowing levels, "
                 "under %d regimes", len(plans), len(leverage_grid),
                 len(systems))
-    solved = pol.solve_by_system(
+    solved, ladder = pol.solve_by_system(
         _bench, systems, plans, gamma, equity_grid, domestic_grid,
         1.0, 0.1, bond_share, int(block.get("domestic_band_years", 5)),
         int(block.get("free_form_sweeps", 2)),
@@ -6330,7 +6330,8 @@ def step42_policy(cfg: Dict[str, Any],
                         headline_rule=default_label)
     found = pol.verdict(gaps=gaps, solved=solved,
                         headline=str(block.get("headline_system",
-                                               "age_pension_matched")))
+                                               "age_pension_matched")),
+                        ladder=ladder)
     paths_frame = pol.schedule_frame(solved, schedules, spec.n_working)
 
     if found.get("measured"):
@@ -6353,6 +6354,7 @@ def step42_policy(cfg: Dict[str, Any],
 
     tables = cfg["run"]["table_dir"]
     _save_table(solved, tables, "policy_solved")
+    _save_table(ladder, tables, "policy_ladder")
     _save_table(gaps, tables, "policy_menu_gap")
     if len(paths_frame):
         _save_table(paths_frame, tables, "policy_schedule")

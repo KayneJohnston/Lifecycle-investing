@@ -2590,9 +2590,10 @@ def _solved(ctx: Any, f: Any) -> List[Flowable]:
     from src import policy as pcy
 
     solved, gaps = f.table("policy_solved"), f.table("policy_menu_gap")
+    ladder = f.table("policy_ladder") if _has(f, "policy_ladder") else None
     head = str(f.cfg.get("policy", {}).get("headline_system",
                                            "age_pension_matched"))
-    found = pcy.verdict(solved, gaps, head)
+    found = pcy.verdict(solved, gaps, head, ladder=ladder)
     if not found.get("measured"):
         return out
 
@@ -2624,16 +2625,16 @@ def _solved(ctx: Any, f: Any) -> List[Flowable]:
     out.extend(_solved_table(ctx, solved))
     moves = found["holding_moves_with_the_pension"]
     if not moves:
-        lead = ("<b>Solve it and the portfolio answer stops depending on "
-                "the pension.</b> ")
+        lead = ("<b>Solve it, with room to hold more than the whole "
+                "portfolio, and the allocation barely depends on the "
+                "pension.</b> ")
     else:
         lead = ("<b>Solved with room above the whole portfolio, the "
                 "allocation does move with the pension.</b> ")
-    body = (f"The schedule holds "
+    body = (f"Averaged over the retirement years the schedule holds "
             f"{found['holding_under_the_test']:.2f}&times; the portfolio "
             f"in equity under the means test and "
-            f"{found['holding_without_it']:.2f}&times; without it, in "
-            f"every retirement year of both. ")
+            f"{found['holding_without_it']:.2f}&times; without it. ")
     if found["every_holding_is_censored"]:
         body += ("Both sit at the top of the borrowing ladder, so those "
                  "two numbers are the grid's and not the household's, and "
@@ -2643,8 +2644,13 @@ def _solved(ctx: Any, f: Any) -> List[Flowable]:
                  "is a bound rather than an optimum, which is stated in "
                  "the table and is the weaker of the two answers. ")
     else:
-        body += ("Neither sits at the edge of the ladder, so both are "
-                 "optima rather than bounds. ")
+        body += (f"Neither sits at the edge of the ladder, so both are "
+                 f"optima rather than bounds, and the "
+                 f"{found['holding_gap']:.2f} between them is "
+                 f"{'wider' if moves else 'narrower'} than the "
+                 f"{found['ladder_step']:.2f} step the borrowing search "
+                 f"can resolve"
+                 f"{', so the two are different answers. ' if moves else ', so this search cannot tell the two apart and we do not report a difference. '}")
     body += (f"What the assets test moves is the withdrawal rule: the "
              f"household under it wants "
              f"{rule_label(found['rule_under_the_test'])} where the "
@@ -2668,6 +2674,17 @@ def _solved(ctx: Any, f: Any) -> List[Flowable]:
         f"certainty-equivalent consumption under the means test against "
         f"{found['default_gap_without_it_pct']:+.0f}% without it, a factor "
         f"of {found['default_gap_ratio']:.1f}."))
+    out.append(ctx.p(
+        f"<b>Every gap below is taken with borrowing switched off on both "
+        f"sides.</b> The menu is two unlevered funds, so a solved policy "
+        f"allowed to borrow and beaten against one that cannot would "
+        f"price the drawdown default at the sum of the default and the "
+        f"leverage. The comparison is therefore against the same search "
+        f"run at no borrowing, and what the borrowing is worth is "
+        f"reported on its own: "
+        f"{found['leverage_premium_under_the_test_pct']:+.2f}% under the "
+        f"means test and "
+        f"{found['leverage_premium_without_it_pct']:+.2f}% without it."))
     out.append(ctx.p(
         f"<b>The menu itself is not the problem, and it is worth saying so "
         f"against our own case.</b> Scored against the best cell of this "
@@ -2717,8 +2734,8 @@ def _solved_table(ctx: Any, solved: Any) -> List[Flowable]:
         "The allocation and the withdrawal rule solved together, to a "
         "fixed point, under each pension regime.",
         note="The allocation is a free-form schedule over the retirement "
-             "years rather than a single share, and it is flat at the "
-             "figure shown in every year of every regime. \u201cEquity "
+             "years rather than a single share, and the figure shown is "
+             "its mean over them. \u201cEquity "
              "held\u201d is the share of the portfolio in equity times "
              "what the retiree borrowed to hold it, so 1.00&times; is an "
              "unlevered all-equity portfolio; the ladder runs to the "
@@ -4473,13 +4490,16 @@ def _abstract_solved_lede(f: Any) -> str:
 
     head = str(f.cfg.get("policy", {}).get("headline_system",
                                            "age_pension_matched"))
-    got = pcy.verdict(f.table("policy_solved"), f.table("policy_menu_gap"),
-                      head)
+    got = pcy.verdict(
+        f.table("policy_solved"), f.table("policy_menu_gap"), head,
+        ladder=f.table("policy_ladder") if _has(f, "policy_ladder") else None)
     if not got.get("measured"):
         return ""
     moved = ("the solved portfolio moves with the pension too"
              if got["holding_moves_with_the_pension"]
-             else "the solved portfolio is the same under both pensions")
+             else "the solved portfolio is much the same under both "
+                  "pensions even once the household may hold more than "
+                  "the whole of it")
     return (f"{moved}, the solved rule differs between them, and the same "
             f"wrong drawdown default costs a means-tested household "
             f"{got['default_gap_ratio']:.1f} times what it costs an "
@@ -4501,8 +4521,9 @@ def _abstract_solved_claim(f: Any) -> str:
 
     head = str(f.cfg.get("policy", {}).get("headline_system",
                                            "age_pension_matched"))
-    got = pcy.verdict(f.table("policy_solved"), f.table("policy_menu_gap"),
-                      head)
+    got = pcy.verdict(
+        f.table("policy_solved"), f.table("policy_menu_gap"), head,
+        ladder=f.table("policy_ladder") if _has(f, "policy_ladder") else None)
     if not got.get("measured"):
         return ""
     if got["every_holding_is_censored"]:
