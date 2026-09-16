@@ -95,7 +95,10 @@ the paper cannot drift away from the pipeline that produced it. See
 [`paper/README.md`](paper/README.md).
 
 A second, shorter paper carries one thesis out of the same sections and is
-the one written for a journal:
+the one written for a journal, with an Internet Appendix holding the six
+subsections it cites and does not print
+([`paper/internet_appendix.pdf`](paper/internet_appendix.pdf), built by
+`python -m paper.appendix`):
 [`paper/floor_beneath_the_portfolio.pdf`](paper/floor_beneath_the_portfolio.pdf).
 It reuses the long paper's section writers rather than forking the prose, so
 the two can never disagree about a number, and it selects, retitles and
@@ -156,13 +159,15 @@ is the read-through; the table below is the build.
 | [`docs/39_typology.md`](docs/39_typology.md) | The rule divide crossed with the household the assets test sees — homeowner against renter, single against couple — which is a test of Corollary 1's claim that no threshold should move the sign |
 | [`docs/40_resample.md`](docs/40_resample.md) | The panel resampled with replacement rather than deleted from, which is the interval `docs/36` says it owes a reader once it has conceded that its deletions are neither independent of one another nor independent in construction |
 | [`docs/41_annuity.md`](docs/41_annuity.md) | A real life annuity in the retiree's choice set -- the floor a market sells, against the floor a means test withdraws -- priced on the mortality section's own survival curve and swept across the share of the balance converted, the load charged, and how much of it the assets test counts |
+| [`docs/42_policy.md`](docs/42_policy.md) | The allocation and the withdrawal rule solved *together*, to a fixed point, under each pension regime -- so the paper's interaction can be checked against an optimum rather than against a menu -- and what the default the literature assumes forgoes against the answer |
+| [`docs/43_anchor.md`](docs/43_anchor.md) | The mechanism's prediction put to a legislature that never saw it: the statutory minimum drawdown from an Australian account-based pension is a percentage of the balance rising with age, which is the rule shape the model says an asset-tested system needs |
 | [`docs/35_incidence.md`](docs/35_incidence.md) | Two assumptions the earlier sections make for free, removed: who actually pays for the Superannuation Guarantee, and what the retiree wants once the balance is scaled until the assets test genuinely binds -- where the answer stops being a fact about the pension and becomes one about the withdrawal rule |
 | [`docs/36_ordering.md`](docs/36_ordering.md) | The portfolio comparison crossed with the pension system and the withdrawal rule, because the project's headline (two portfolios) and its second finding (two countries) had been glossed as the same quantity -- with delete-one-country intervals on every cell, on the differences between them, and the same grid re-scored at three risk aversions |
 | [`docs/37_ceiling.md`](docs/37_ceiling.md) | Whether the retiree's corner is the household's or the grid's: the balance sweep re-run with room above the whole portfolio, which finds the 100% censored by the ceiling it was chosen from, the predicted shape across the assets test refuted in the part that distinguishes it, and the price borrowing would have to reach before the unlevered corner comes back |
 
 | [`docs/38_gate.md`](docs/38_gate.md) | Whether the pension's start date was ever given a chance to matter: the feature 2x2 of `docs/32` re-read at every retirement date rather than at each arm's own optimum -- two of which land on the eligibility age, where the gate is slack and the arms are the same simulation -- plus a sweep of the partial benefit paid before that age, an undisclosed consumption floor the timing arm turns out to be largely made of |
 
-All forty-one are **generated** by `main.py` from live pipeline objects --
+All forty-three are **generated** by `main.py` from live pipeline objects --
 edit `src/report.py`, not the Markdown.
 
 ## How much of this data is real
@@ -675,7 +680,7 @@ pip install numpy pandas scipy matplotlib pyyaml openpyxl pytest
 
 python main.py --quick      # ~1 min smoke run at reduced N
 python main.py              # ~1 h full run: N = 100,000 plus sweeps and searches
-python -m pytest tests/ -q  # 1855 tests
+python -m pytest tests/ -q  # 1909 tests
 ```
 
 Selected steps and alternative configurations:
@@ -718,13 +723,15 @@ python main.py --steps 38           # was the pension gate ever given a chance?
 python main.py --steps 39           # which households the interaction reaches
 python main.py --steps 40           # the interval the jackknife understates
 python main.py --steps 41           # an annuity in the choice set, and what it does to the reversal
+python main.py --steps 42           # the allocation and the drawdown rule solved together
+python main.py --steps 43           # the prediction, put to a legislature
 python main.py --config other.yaml  # a different parameterisation
 ```
 
 ## Layout
 
 ```
-├── docs/                 # generated analysis documents (41 files)
+├── docs/                 # generated analysis documents (43 files)
 ├── data/
 │   ├── raw/              # primary source files, unmodified
 │   ├── processed/        # standardised real return panels (.csv and .npz)
@@ -753,7 +760,7 @@ python main.py --config other.yaml  # a different parameterisation
 │   ├── fees.py           # expense ratios, and the break-even differential
 │   ├── plots.py          # publication-quality figures
 │   └── report.py         # Markdown report generation
-├── tests/                # 1,855 unit + integration tests
+├── tests/                # 1,909 unit + integration tests
 ├── results/
 │   ├── figures/          # 69 PNGs
 │   └── tables/           # 279 CSVs

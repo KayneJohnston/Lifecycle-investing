@@ -276,3 +276,97 @@ class TestReporting:
         assert frame["cec"].is_monotonic_decreasing
         assert frame["gap_to_best_pct"].iloc[0] == pytest.approx(0.0)
         assert (frame["gap_to_best_pct"] <= 1e-12).all()
+
+
+class TestTheFastPathCarriesTheMeansTest:
+    """The batched evaluator is what the joint search of `src.plan` calls
+    tens of thousands of times, and it settled the pension once at
+    retirement. For an earnings-related schedule that is right. For a means
+    test it is not: the benefit reads the balance every year, and paying
+    the full rate unconditionally is the *untested* control rather than the
+    treatment -- so a joint search run under a means-tested spec would have
+    been solving the wrong problem and reporting the answer as the right
+    one.
+
+    These are the guards that stop the two implementations diverging on the
+    one spec the paper's argument lives in.
+    """
+
+    @staticmethod
+    def _tested(spec):
+        import dataclasses
+
+        return dataclasses.replace(
+            spec, social_security_formula="means_tested",
+            pension_full_rate=0.293, pension_free_area=3.014,
+            pension_taper=0.078)
+
+    def test_it_agrees_with_the_reference_under_a_means_test(self,
+                                                             setup) -> None:
+        cfg, spec, strategies, paths, income = setup
+        tested = self._tested(spec)
+        keys = list(strategies)
+        weights = np.stack([strategies[k].weights for k in keys])
+        got = gp.BatchEvaluator(paths, tested, income, cfg).cec(weights, 5.0)
+        for i, key in enumerate(keys):
+            outcome = lc.simulate(paths, strategies[key], tested, income)
+            want = ut.crra_certainty_equivalent(
+                ut.bundle_from_outcome(outcome, cfg, tested), 5.0,
+                float(cfg["utility"]["discount_factor"]),
+                float(cfg["utility"]["bequest_weight"]),
+                bool(cfg["utility"]["bequest_enabled"]))
+            assert got[i] == pytest.approx(want, rel=1e-10), key
+
+    def test_the_test_actually_bites_in_the_fast_path(self, setup) -> None:
+        """An agreement test passes trivially if the means test never
+        changes anything, so this checks the two specs give different
+        answers before the agreement above is worth having."""
+        cfg, spec, strategies, paths, income = setup
+        key = list(strategies)[0]
+        weights = strategies[key].weights[None]
+        untested = gp.BatchEvaluator(paths, spec, income, cfg).cec(weights, 5.0)
+        tested = gp.BatchEvaluator(paths, self._tested(spec), income,
+                                   cfg).cec(weights, 5.0)
+        assert not np.isclose(untested[0], tested[0], rtol=1e-6)
+
+    def test_a_higher_balance_is_paid_a_smaller_pension(self, setup) -> None:
+        """The taper, seen through the evaluator rather than asserted of it.
+
+        The fixture's household retires on well under the free area, where
+        every schedule collects the full rate and the test is asleep, so the
+        balance is scaled until it straddles the threshold. A comparison run
+        below the free area would pass whatever the code did.
+        """
+        import dataclasses
+
+        cfg, spec, strategies, paths, income = setup
+        tested = self._tested(spec)
+        key = list(strategies)[0]
+        paid = []
+        for scale in (1.0, 8.0):
+            at = dataclasses.replace(tested, retirement_balance_scale=scale)
+            outcome = lc.simulate(paths, strategies[key], at, income)
+            paid.append((float(np.mean(outcome.wealth_at_retirement)),
+                         float(np.mean(outcome.social_security))))
+        (poor_w, poor_b), (rich_w, rich_b) = paid
+        assert rich_w > poor_w
+        assert rich_b < poor_b, paid
+
+    def test_the_eligibility_gate_is_carried_too(self, setup) -> None:
+        """Nothing is paid before the claiming age, and the fast path used
+        to pay from the retirement date whatever the spec said."""
+        import dataclasses
+
+        cfg, spec, strategies, paths, income = setup
+        gated = dataclasses.replace(spec, benefit_start_age=spec.age_retire + 4,
+                                    pre_eligibility_benefit_share=0.0)
+        key = list(strategies)[0]
+        weights = strategies[key].weights[None]
+        got = gp.BatchEvaluator(paths, gated, income, cfg).cec(weights, 5.0)[0]
+        outcome = lc.simulate(paths, strategies[key], gated, income)
+        want = ut.crra_certainty_equivalent(
+            ut.bundle_from_outcome(outcome, cfg, gated), 5.0,
+            float(cfg["utility"]["discount_factor"]),
+            float(cfg["utility"]["bequest_weight"]),
+            bool(cfg["utility"]["bequest_enabled"]))
+        assert got == pytest.approx(want, rel=1e-10)

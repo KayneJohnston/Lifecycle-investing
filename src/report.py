@@ -13554,3 +13554,282 @@ def write_doc_41(
         load_tbl,
         method,
     ])
+
+
+def write_doc_42(
+    path: str | Path,
+    cfg: Mapping[str, Any],
+    frames: Mapping[str, pd.DataFrame],
+    figures: Sequence[str],
+    notes: Mapping[str, Any],
+) -> Path:
+    """The policy a retiree should hold, solved rather than picked.
+
+    Every result before this one compares off a menu. `docs/36` crosses five
+    pension regimes with eight named rules and two named funds, which
+    answers "which of these" and not "what should a household do". The
+    alternating search of `src.plan` is run here once per regime, so the
+    answer is a statement about the institution.
+    """
+    found = notes["verdict"]
+    gamma = float(notes["gamma"])
+    n_paths = int(notes["n_paths"])
+    n_plans = int(notes.get("plans", 0))
+
+    intro = _header(
+        "42 - The Policy, Solved Rather Than Picked",
+        "The allocation schedule and the withdrawal rule chosen together, "
+        "to a fixed point, under each public pension in turn -- and the "
+        "certainty equivalent the paper's own two-fund menu forgoes against "
+        "the answer.")
+
+    solved = frames.get("solved")
+    solved_tbl = ""
+    if solved is not None and len(solved):
+        solved_tbl = md_table(solved.rename(columns={
+            "system": "Pension regime", "label": "Solved plan",
+            "cec": "CEC", "mean_equity": "Mean equity",
+            "mean_equity_in_retirement": "Equity in retirement",
+            "rounds": "Rounds", "converged": "Converged"})[
+                ["Pension regime", "Solved plan", "CEC", "Mean equity",
+                 "Equity in retirement", "Rounds", "Converged"]],
+            floatfmt="{:.4f}")
+
+    gaps = frames.get("gaps")
+    gap_tbl = ""
+    if gaps is not None and len(gaps):
+        gap_tbl = md_table(gaps.rename(columns={
+            "system": "Pension regime", "solved_rule": "Solved rule",
+            "solved_cec": "Solved CEC", "best_menu_item": "Best menu item",
+            "best_menu_cec": "Menu CEC",
+            "menu_gap_pct": "What the menu forgoes (%)"})[
+                ["Pension regime", "Solved rule", "Solved CEC",
+                 "Best menu item", "Menu CEC",
+                 "What the menu forgoes (%)"]], floatfmt="{:.4f}")
+
+    if not found.get("measured"):
+        verdict_line = "The joint search produced no comparable rows."
+    else:
+        parts = []
+        if found["rule_changes_with_the_pension"]:
+            parts.append(
+                f"**The optimal withdrawal rule changes with the pension.** "
+                f"Solved jointly with the allocation, the household under a "
+                f"means test wants {found['rule_under_the_test']} where the "
+                f"one under an earnings-related pension wants "
+                f"{found['rule_without_it']}. That is the paper's "
+                f"interaction arriving from an optimisation rather than "
+                f"from a menu: nothing in the search was told which rules "
+                f"the argument cares about.")
+        else:
+            parts.append(
+                f"**The optimal withdrawal rule does not change with the "
+                f"pension.** Both regimes solve to "
+                f"{found['rule_under_the_test']}. The paper's interaction "
+                f"is therefore about which rule a household is *given* "
+                f"rather than which one it would choose, and the sections "
+                f"above have to be read that way: they price a default, not "
+                f"an optimum.")
+        parts.append(
+            f"**The solved rule "
+            f"{'reads the balance' if found['solved_rule_reads_the_balance'] else 'does not read the balance'}.** "
+            f"That is the division Section 2 of the paper turns on, and the "
+            f"search reaches it without being pointed at it"
+            f"{'; every regime solves to a balance-reading rule' if found['every_solved_rule_reads_the_balance'] else ''}.")
+        parts.append(
+            f"**The allocation "
+            f"{'moves with the pension too' if found['equity_moves_with_the_pension'] else 'does not move with the pension at all'}.** "
+            f"The solved schedule holds "
+            f"{found['equity_under_the_test']:.0%} equity under the means "
+            f"test and {found['equity_without_it']:.0%} without it"
+            f"{', in every retirement year of both' if not found['equity_moves_with_the_pension'] else ''}. "
+            f"That is worth stating as a result rather than as an aside: "
+            f"solve the problem and the *portfolio* answer is invariant to "
+            f"the pension. What the assets test moves is the drawdown rule, "
+            f"and the reversal the paper reports is what happens when the "
+            f"rule is fixed at the wrong one while the portfolio takes the "
+            f"blame.")
+        parts.append(
+            f"**It is the default that is expensive, not the menu.** "
+            f"Against the best cell of the paper's own eight-rule grid the "
+            f"solved policy is worth only "
+            f"{found['menu_gap_under_the_test_pct']:+.2f}% under the means "
+            f"test -- the grid already contains "
+            f"{found['best_menu_rule_under_the_test']}, which is within "
+            f"that of the solution -- against "
+            f"{found['menu_gap_without_it_pct']:+.2f}% without the test, "
+            f"where the best it holds is "
+            f"{found['best_menu_rule_without_it']}. So the reversal this "
+            f"paper documents is not the cost of a thin menu, and the "
+            f"sections above are not beating a straw man.")
+        parts.append(
+            f"**What it is the cost of is the default.** Against the fixed "
+            f"real four per cent the literature assumes, solving is worth "
+            f"{found['default_gap_under_the_test_pct']:+.2f}% of "
+            f"certainty-equivalent consumption under the means test and "
+            f"{found['default_gap_without_it_pct']:+.2f}% without it"
+            + (f", a factor of {found['default_gap_ratio']:.1f}"
+               if found["default_costs_more_under_the_test"] else "")
+            + (f". That ratio is the paper's thesis priced: the same wrong "
+            f"drawdown default costs several times as much to a household "
+            f"under an assets test as to one under an earnings-related "
+            f"pension, and it is the household under the test that is "
+            f"least likely to have chosen it."))
+        verdict_line = "\n\n".join(parts)
+
+    method = textwrap.dedent(f"""
+        ## How it is solved
+
+        The search alternates. Given an allocation schedule it picks the
+        best plan from {n_plans:,} -- a rule family crossed with a
+        withdrawal rate -- and given that plan it re-solves the free-form
+        equity and domestic schedules by coordinate descent. It stops when a
+        round returns the plan it began with, which is the fixed point:
+        neither decision would change given the other. The number of rounds
+        is reported because a search that converges in one has found that
+        the two decisions do not interact.
+
+        One draw of {n_paths:,} lifetimes is shared across the regimes, so a
+        difference between two solved policies is the pension and not the
+        sample. gamma = {gamma:g}.
+
+        **What this is not.** It is a solved policy over a rule family and a
+        deterministic allocation path, not a dynamic program over the assets
+        test. The household commits at retirement and does not re-optimise
+        as its balance crosses the taper; a state-contingent policy that
+        conditioned the withdrawal on where the balance sits against the
+        threshold would do at least as well. So the policy here is a lower
+        bound on the optimum, and the menu gap is a lower bound on what the
+        menu costs.
+    """)
+
+    return _write(path, [
+        intro,
+        "## What the search finds",
+        verdict_line,
+        "### The solved policy, regime by regime",
+        solved_tbl,
+        "### What the menu forgoes",
+        gap_tbl,
+        method,
+    ])
+
+
+def write_doc_43(
+    path: str | Path,
+    cfg: Mapping[str, Any],
+    frames: Mapping[str, pd.DataFrame],
+    figures: Sequence[str],
+    notes: Mapping[str, Any],
+) -> Path:
+    """The mechanism's prediction, put to an institution that chose first."""
+    from src import anchor as anc
+
+    found = notes["verdict"]
+    claim = notes.get("claim", {})
+    gamma = float(notes["gamma"])
+    n_paths = int(notes["n_paths"])
+    assumed = str(notes.get("assumed_rule", "fixed_real_rule"))
+
+    intro = _header(
+        "43 - A Prediction Put to a Legislature",
+        "The mechanism says an asset-tested system needs a withdrawal rule "
+        "whose payment reads the balance. The country whose means test this "
+        "study calibrates to legislates one -- a minimum annual payment set "
+        "as a percentage of the account balance, rising with age. The rates "
+        "are statute. Running them is the closest thing to an out-of-sample "
+        "test this project can perform.")
+
+    statute = frames.get("statute")
+    statute_tbl = ""
+    if statute is not None and len(statute):
+        statute_tbl = md_table(statute.rename(columns={
+            "age_band": "Age at the start of the year",
+            "minimum_share": "Minimum share of the balance"})[
+                ["Age at the start of the year",
+                 "Minimum share of the balance"]], floatfmt="{:.2f}")
+
+    gapped = frames.get("gaps")
+    gap_tbl = ""
+    if gapped is not None and len(gapped):
+        gap_tbl = md_table(gapped.rename(columns={
+            "system": "Pension regime", "rule": "Withdrawal rule",
+            "gap_pct": "All-equity lead (%)",
+            "winner": "Best portfolio"})[
+                ["Pension regime", "Withdrawal rule", "All-equity lead (%)",
+                 "Best portfolio"]], floatfmt="{:.2f}")
+
+    if not found.get("measured"):
+        verdict_line = "The anchor produced no comparable cells."
+    elif found["prediction_holds"]:
+        verdict_line = (
+            f"**The prediction holds, and nothing in it was tuned.** Under "
+            f"the means test the all-equity portfolio leads by "
+            f"{found['gap_under_the_legislated_rule_pct']:+.2f}% when the "
+            f"retiree draws the legislated minimum, and trails by "
+            f"{abs(found['gap_under_the_assumed_rule_pct']):.2f}% when it "
+            f"draws the fixed real amount the literature assumes -- a swing "
+            f"of {found['swing_pp']:.1f} points between a rule a "
+            f"legislature wrote and a rule a literature adopted. The "
+            f"mechanism said an asset-tested system needs the first shape. "
+            f"It has one.")
+    else:
+        verdict_line = (
+            f"**The prediction does not hold.** Under the means test the "
+            f"all-equity lead is "
+            f"{found['gap_under_the_legislated_rule_pct']:+.2f}% on the "
+            f"legislated rule against "
+            f"{found['gap_under_the_assumed_rule_pct']:+.2f}% on the rule "
+            f"the literature assumes. The mechanism predicted the first "
+            f"would be positive and the second negative; it is not, and the "
+            f"paper reports that rather than the prediction.")
+
+    if claim.get("measured"):
+        claim_line = (
+            f"**What this is not.** It is an institutional anchor, not a "
+            f"behavioural one. A design fact is not a holdings fact: this "
+            f"says the rule shape a means-testing country legislates is the "
+            f"shape the model says such a country needs, and says nothing "
+            f"about how its retirees invest. The behavioural implication is "
+            f"stated here in falsifiable form rather than left implied. "
+            f"{claim['claim']} It would be settled by {claim['falsified_by']} "
+            f"-- and could not be settled here, because the egress policy "
+            f"this project runs under denies every bulk statistical host, "
+            f"which `docs/14` and `src.observed` document at length. A "
+            f"reader with that data can refute this paper cheaply, which is "
+            f"the point of writing the claim down.")
+    else:
+        claim_line = ""
+
+    method = textwrap.dedent(f"""
+        ## How it is run
+
+        The legislated schedule is implemented as a spending rule in
+        `src.spending` -- a percentage of the balance whose rate is read off
+        the member's age -- and run through the same simulator, on the same
+        panel, against the same two portfolios as every other rule in this
+        project. Nothing about the household, the returns or the pension
+        changes between the rows: only which rule the retiree spends by.
+
+        The source is {anc.STATUTE}. The rates are quoted in the table above
+        so a reader can check the simulation against the law rather than
+        against this document.
+
+        Multiples of the minimum are run as well, because the statute sets a
+        floor rather than a rate and a retiree may draw more than it
+        requires. {n_paths:,} lifetimes per cell, gamma = {gamma:g},
+        survival-weighted, with the fixed real rule ({assumed}) as the
+        comparator the prediction says should fail.
+    """)
+
+    return _write(path, [
+        intro,
+        "## What the test finds",
+        verdict_line,
+        claim_line,
+        "### The statute",
+        statute_tbl,
+        "### The all-equity lead, rule by rule",
+        gap_tbl,
+        method,
+    ])

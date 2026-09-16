@@ -399,6 +399,14 @@ def _slots(parts: Iterable[Flowable]) -> Iterator[Tuple[List[Any], int]]:
             yield from _slots(inner)
 
 
+#: ``name -> "Table 8 of the paper"`` for floats a document cites but does
+#: not print because another document does. Set by the Internet Appendix,
+#: which carries subsections whose prose refers to tables that stayed in the
+#: body; without it the build refuses to ship, correctly, because every
+#: other document in this project that cites a float prints it.
+ELSEWHERE: Dict[str, str] = {}
+
+
 def renumber_floats(story: List[Flowable],
                     anchors: Dict[str, Tuple[str, int]] | None = None,
                     ) -> Dict[str, Dict[int, int]]:
@@ -451,10 +459,12 @@ def renumber_floats(story: List[Flowable],
 
     def rewrite_anchor(match: "re.Match[str]") -> str:
         name = match.group(2)
-        if name not in resolved:
-            dangling.append(name)
-            return match.group(0)
-        return resolved[name]
+        if name in resolved:
+            return resolved[name]
+        if name in ELSEWHERE:
+            return ELSEWHERE[name]
+        dangling.append(name)
+        return match.group(0)
 
     for items, i in _slots(story):
         flowable = items[i]

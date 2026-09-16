@@ -890,6 +890,14 @@ def section_number(key: str) -> int:
 #: number that is not in the document they are holding.
 COMPANION: Dict[str, Any] = {}
 
+#: Subsections moved to an internet appendix, as ``{"name": ..., "numbers":
+#: {"ordering.4": "A.4", ...}}``. Set by a document that renders some of its
+#: own subsections elsewhere. Distinct from :data:`COMPANION` because the
+#: companion study does not contain them -- they were written for the short
+#: paper, and a reference into one is dangling unless it is pointed at the
+#: appendix that does carry it.
+APPENDIX: Dict[str, Any] = {}
+
 
 #: Subsection anchors the current document does not contain, even though it
 #: carries the section they belong to. A shorter cut of a paper drops whole
@@ -969,6 +977,10 @@ def resolve_sections(text: str) -> str:
     """
     def swap(match: "re.Match[str]") -> str:
         key, tail = match.group(1), match.group(2)
+        if APPENDIX:
+            moved = APPENDIX.get("numbers", {}).get(f"{key}{tail}")
+            if moved:
+                return f"{moved} of {APPENDIX['name']}"
         if COMPANION and key in COMPANION.get("numbers", {}):
             elsewhere = any(
                 tail == absent[len(key):]

@@ -1,0 +1,13 @@
+system,rule,balanced_all_equity,target_date_fund,gap_pct,winner
+age_pension_matched,fixed_real_rule,0.4453337149970984,0.5025286799240993,-11.38143298321591,target_date_fund
+age_pension_matched,legislated minimum,0.7937899480055237,0.7073353515696911,12.222575365981058,balanced_all_equity
+age_pension_matched,legislated minimum x1.5,1.002335941339883,0.8602235602027284,16.520400941316105,balanced_all_equity
+age_pension_matched,legislated minimum x2,1.0651196654681803,0.8912392970097123,19.5099530554669,balanced_all_equity
+australia_as_legislated,fixed_real_rule,0.669557912827888,0.6733438413656428,-0.5622578399286149,target_date_fund
+australia_as_legislated,legislated minimum,1.0347678695740112,0.890904403618616,16.148025014924183,balanced_all_equity
+australia_as_legislated,legislated minimum x1.5,1.3209214894590005,1.083589138427167,21.902429861591454,balanced_all_equity
+australia_as_legislated,legislated minimum x2,1.3917294615759708,1.106712132888676,25.753519837481043,balanced_all_equity
+us_social_security,fixed_real_rule,1.0785104726241281,0.9761877399379453,10.481870289898065,balanced_all_equity
+us_social_security,legislated minimum,1.2094864635299298,1.0341337889403213,16.956478597347903,balanced_all_equity
+us_social_security,legislated minimum x1.5,1.2813884182099966,1.0745419686497568,19.24973203421343,balanced_all_equity
+us_social_security,legislated minimum x2,1.2600902159527076,1.0549012812706866,19.45100819622285,balanced_all_equity

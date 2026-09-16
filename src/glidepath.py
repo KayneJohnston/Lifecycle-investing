@@ -101,7 +101,17 @@ class BatchEvaluator:
             np.stack(columns, axis=-1).transpose(1, 0, 2))
         self._inflation = np.ascontiguousarray(
             paths.inflation[:, :horizon].T)                     # (H, N)
+        # A means test cannot be settled once at retirement the way an
+        # earnings-related benefit can: it reads the balance every year, so
+        # the benefit is a path through the recursion rather than a
+        # constant. Until this was carried, the fast evaluator paid the
+        # full rate unconditionally to a means-tested household -- which is
+        # the untested control, not the treatment, and would have had the
+        # joint search of `src.plan` solving the wrong problem.
+        self._means_tested = spec.social_security_formula == "means_tested"
         self._benefit = spec.social_security_benefit(income.mean(axis=1))
+        self._benefit_from = spec.benefit_start_index
+        self._pre_share = float(spec.pre_eligibility_benefit_share)
         util = cfg["utility"]
         self._window = str(util.get("consumption_window", "retirement"))
         self._floor = float(util.get("consumption_floor", ut.DEFAULT_FLOOR))
@@ -167,7 +177,7 @@ class BatchEvaluator:
         if spec.retirement_balance_scale != 1.0:
             wealth = wealth * float(spec.retirement_balance_scale)
         wealth_at_retirement = wealth.copy()
-        benefit = self._benefit[:, None]
+        entitlement = self._benefit[:, None]
         initial = self.rule.initial_withdrawal(wealth_at_retirement,
                                                spec.n_retired, spec.age_retire)
         prev = initial
@@ -188,6 +198,18 @@ class BatchEvaluator:
                 last_return=last_return,
                 last_inflation=last_inflation,
             )
+            # Settled before the withdrawal and against the wealth
+            # entering the year, exactly as `lifecycle.simulate` settles it,
+            # so a rule that nets the benefit off sees the same number in
+            # both implementations.
+            share = 1.0 if h >= self._benefit_from else self._pre_share
+            if self._means_tested:
+                benefit = (share * self.spec.means_tested_benefit(wealth)
+                           if share else np.zeros_like(wealth))
+            else:
+                benefit = (share * entitlement if share
+                           else np.zeros_like(wealth))
+            state = dataclasses.replace(state, benefit=benefit)
             desired = np.maximum(self.rule.desired(state), 0.0)
             withdrawal = np.minimum(desired, np.maximum(wealth, 0.0))
             consumption[:, :, h - consumption_from] = benefit + withdrawal

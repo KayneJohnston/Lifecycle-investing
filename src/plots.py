@@ -4983,3 +4983,112 @@ def plot_annuity(gapped: pd.DataFrame, wanted: pd.DataFrame,
                      "all-equity lead under a fixed real withdrawal",
                      fontsize=9.5, y=0.99)
         return _save(fig, directory, name)
+
+
+def plot_policy(solved: pd.DataFrame, gaps: pd.DataFrame,
+                schedule: pd.DataFrame, directory: str | Path,
+                name: str = "fig71_policy") -> Path:
+    """The solved policy under each pension, and what the menu costs.
+
+    Left, the equity share the joint search settles on through retirement,
+    one line per regime: the allocation half of the answer, which a table of
+    winning rules would have left to a sentence. Right, the certainty
+    equivalent the menu forgoes under each regime -- the price of choosing
+    from a list rather than solving.
+    """
+    with plt.rc_context(STYLE):
+        fig, axes = _grid(2, 3.2, max_cols=2, wspace=0.3)
+        left, right = axes[0], axes[1]
+
+        if len(schedule):
+            for i, system in enumerate(dict.fromkeys(schedule["system"])):
+                part = schedule[schedule["system"] == system] \
+                    .sort_values("retirement_year")
+                left.plot(part["retirement_year"],
+                          100.0 * part["equity"], linewidth=2.0,
+                          color=PALETTE[i % len(PALETTE)],
+                          label=_legend(SYSTEM_LABEL.get(str(system),
+                                                         str(system))))
+            left.legend(fontsize=6.4, loc="best", framealpha=0.95)
+        left.set_ylim(-4, 104)
+        left.set_title("The solved equity share through retirement",
+                       fontsize=8)
+        left.set_xlabel("Year of retirement", fontsize=7)
+        left.set_ylabel("Equity (%)", fontsize=7)
+
+        if len(gaps):
+            order = gaps.reset_index(drop=True)
+            y = np.arange(len(order))
+            right.barh(y, order["menu_gap_pct"].to_numpy(dtype=float),
+                       color=[PALETTE[i % len(PALETTE)] for i in y],
+                       height=0.6)
+            right.set_yticks(y)
+            right.set_yticklabels(
+                [_flat(SYSTEM_LABEL.get(str(r["system"]), str(r["system"])),
+                       24)
+                 for _, r in order.iterrows()], fontsize=6.4)
+            right.invert_yaxis()
+            right.axvline(0.0, color="black", linewidth=1.0)
+        right.set_title("What the menu forgoes against the solved policy",
+                        fontsize=8)
+        right.set_xlabel("Certainty-equivalent gain from solving (%)",
+                         fontsize=7)
+
+        fig.suptitle("The policy a retiree should hold, solved rather than "
+                     "picked", fontsize=9.5, y=0.99)
+        return _save(fig, directory, name)
+
+
+def plot_anchor(gapped: pd.DataFrame, statute: pd.DataFrame,
+                directory: str | Path,
+                name: str = "fig72_anchor") -> Path:
+    """The rule a means-testing country legislates, against the one assumed.
+
+    Left, the statutory minimum drawdown as a share of the balance by age --
+    a percentage-of-balance rule, in law, on a rate nobody in this project
+    chose. Right, the all-equity lead under that rule and under the fixed
+    real withdrawal the literature assumes, by pension regime: the
+    prediction is that the first stays positive under an assets test and
+    the second does not.
+    """
+    with plt.rc_context(STYLE):
+        fig, axes = _grid(2, 3.2, max_cols=2, wspace=0.3)
+        left, right = axes[0], axes[1]
+
+        if len(statute):
+            y = np.arange(len(statute))
+            left.barh(y, 100.0 * statute["minimum_share"].to_numpy(float),
+                      color=PALETTE[0], height=0.62)
+            left.set_yticks(y)
+            left.set_yticklabels([str(b) for b in statute["age_band"]],
+                                 fontsize=6.4)
+            left.invert_yaxis()
+        left.set_title("The statutory minimum drawdown", fontsize=8)
+        left.set_xlabel("Minimum share of the balance each year (%)",
+                        fontsize=7)
+
+        if len(gapped):
+            rules = [r for r in dict.fromkeys(gapped["rule"])]
+            systems = [s for s in dict.fromkeys(gapped["system"])]
+            width = 0.8 / max(len(rules), 1)
+            base = np.arange(len(systems))
+            for i, rule in enumerate(rules):
+                part = gapped[gapped["rule"] == rule].set_index("system")
+                values = [float(part.loc[s, "gap_pct"])
+                          if s in part.index else np.nan for s in systems]
+                right.bar(base + i * width - 0.4 + width / 2, values,
+                          width=width * 0.92,
+                          color=PALETTE[i % len(PALETTE)],
+                          label=_legend(str(rule)))
+            right.axhline(0.0, color="black", linewidth=1.0)
+            right.set_xticks(base)
+            right.set_xticklabels(
+                [_flat(SYSTEM_LABEL.get(str(s), str(s)), 18)
+                 for s in systems], fontsize=6.0)
+            right.legend(fontsize=6.0, loc="best", framealpha=0.95)
+        right.set_title("The all-equity lead under each rule", fontsize=8)
+        right.set_ylabel("All-equity lead (%)", fontsize=7)
+
+        fig.suptitle("A prediction put to a legislature that never saw it",
+                     fontsize=9.5, y=0.99)
+        return _save(fig, directory, name)

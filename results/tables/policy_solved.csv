@@ -1,0 +1,4 @@
+system,rule,rate,label,cec,rounds,converged,mean_equity,equity_at_retirement,mean_equity_in_retirement,equity_falls_through_retirement,rule_reads_the_balance
+us_social_security,gompertz,,"gompertz, retire at 63",1.364064504190162,2,True,1.0,1.0,1.0,False,True
+age_pension_matched,constant_percent,0.1,"constant_percent at 10.0%, retire at 63",1.0546546549007791,2,True,1.0,1.0,1.0,False,True
+australia_as_legislated,constant_percent,0.1,"constant_percent at 10.0%, retire at 63",1.0546546549007791,2,True,1.0,1.0,1.0,False,True

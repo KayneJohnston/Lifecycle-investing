@@ -1464,3 +1464,73 @@ annuity:
   # insurer and the household are reading one table.
   modal_age: 88.0
   dispersion: 10.0
+
+policy:
+  enabled: true
+  # The joint allocation-and-drawdown policy, solved under each pension
+  # regime rather than picked from a menu. Everything the paper reports up
+  # to here compares two named funds and eight named rules; this asks what
+  # a household under an assets test should actually do, and then says
+  # where the menu items sit against it.
+  #
+  # The same alternating search `plan` runs -- choose the plan for the
+  # current schedule, re-solve the schedule for that plan, stop at the
+  # fixed point -- but run once per regime, which is what makes the
+  # comparison a statement about the institution.
+  n_paths: 20000
+  systems: [us_social_security, age_pension_matched,
+            australia_as_legislated]
+  headline_system: age_pension_matched
+  # The rule families, spanning fully insulated from the balance to fully
+  # pass-through, plus the amortisation family that supplies its own floor.
+  rules: [constant_real, vanguard_dynamic, guyton_klinger, endowment,
+          constant_percent, life_expectancy, amortisation, gompertz]
+  rate_grid: [0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.10, 0.12]
+  # The free-form schedule is solved over these, as in `plan`.
+  equity_grid: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+  domestic_grid: [0.0, 0.1, 0.2, 0.3, 0.5]
+  fixed_income_bond_share: 0.7
+  domestic_band_years: 5
+  free_form_sweeps: 2
+  max_rounds: 4
+  # What the paper has been comparing: the two menu items, under the rule
+  # the literature assumes. The solved policy is scored against these so a
+  # reader can see what the menu costs.
+  menu_strategies: [balanced_all_equity, target_date_fund]
+  menu_rule: constant_real
+  menu_rate: 0.04
+
+anchor:
+  enabled: true
+  # A prediction put to an institution that chose independently of it.
+  #
+  # The mechanism says an asset-tested system needs a withdrawal rule whose
+  # payment reads the balance. Australia means-tests its public pension and
+  # separately compels every account-based private pension to pay out a
+  # legislated percentage of the balance each year, rising with age --
+  # Superannuation Industry (Supervision) Regulations 1994, Schedule 7. The
+  # rates below are that statute, not a calibration, and running the rule
+  # they define is the closest thing to an out-of-sample test this study
+  # can perform without microdata it cannot reach.
+  n_paths: 25000
+  systems: [us_social_security, age_pension_matched,
+            australia_as_legislated]
+  headline_system: age_pension_matched
+  strategies: [balanced_all_equity, target_date_fund]
+  # The statutory schedule: age at the start of the year, minimum share of
+  # the account balance. Held here as well as in `src.spending` so a reader
+  # checking the paper against the law has one place to look.
+  minimum_schedule:
+    - [0, 0.04]
+    - [65, 0.05]
+    - [75, 0.06]
+    - [80, 0.07]
+    - [85, 0.09]
+    - [90, 0.11]
+    - [95, 0.14]
+  # Multiples of the statutory minimum, because the law sets a floor rather
+  # than a rate and a retiree may draw more.
+  multiples: [1.0, 1.5, 2.0]
+  # The comparator is the rule the literature assumes, which is the one the
+  # prediction says should fail.
+  assumed_rule: fixed_real_rule

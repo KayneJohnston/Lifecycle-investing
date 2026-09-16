@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import abc
 import dataclasses
-from typing import Any, Callable, Dict, Mapping, Sequence
+from typing import Any, Callable, Dict, Mapping, Sequence, Tuple
 
 import numpy as np
 
@@ -142,6 +142,68 @@ class ConstantPercentRule(SpendingRule):
 
     def desired(self, state: SpendingState) -> np.ndarray:
         return self.rate * state.wealth
+
+
+
+#: The statutory minimum annual payment for an Australian account-based
+#: pension, as a share of the account balance at the start of the year, by
+#: the member's age at that date. Schedule 7 of the Superannuation Industry
+#: (Supervision) Regulations 1994.
+#:
+#: It is in this module because of what its *shape* is, not because of whose
+#: statute it is. A country that means-tests its public pension against
+#: assets also compels the retiree drawing a private pension to pay out a
+#: percentage of the balance every year, on a rate that rises with age --
+#: which is the balance-reading family, legislated. The paper's mechanism
+#: says that is the family a means-tested system needs, and nothing in the
+#: paper put that prediction to an institution that chose independently.
+LEGISLATED_MINIMUM: Tuple[Tuple[int, float], ...] = (
+    (0, 0.04), (65, 0.05), (75, 0.06), (80, 0.07),
+    (85, 0.09), (90, 0.11), (95, 0.14),
+)
+
+
+def legislated_minimum_rate(age: Any,
+                            schedule: Sequence[Tuple[int, float]] | None = None
+                            ) -> np.ndarray:
+    """The statutory minimum share for each age, as a step function."""
+    steps = tuple(schedule or LEGISLATED_MINIMUM)
+    ages = np.asarray(age, dtype=float)
+    out = np.full(ages.shape, float(steps[0][1]))
+    for threshold, rate in steps:
+        out = np.where(ages >= float(threshold), float(rate), out)
+    return out
+
+
+@dataclasses.dataclass(frozen=True)
+class LegislatedMinimumRule(SpendingRule):
+    """Pay at least the statutory minimum share of the balance each year.
+
+    A percentage-of-balance rule whose rate is set by law and rises with
+    age. Like :class:`ConstantPercentRule` it cannot deplete the portfolio,
+    and like it the risk arrives as consumption volatility rather than as
+    ruin -- but the rising schedule front-loads less early and more late,
+    which is the shape an actuarial rule has and a flat percentage does not.
+
+    ``multiple`` draws a fixed multiple of the minimum, for a retiree who
+    takes more than the floor the law sets. One is the floor itself, which
+    is what the compliance data says most account-based pensions pay.
+    """
+
+    multiple: float = 1.0
+    key: str = dataclasses.field(default="legislated_minimum", init=False)
+    label: str = dataclasses.field(
+        default="Legislated minimum drawdown", init=False)
+
+    def _rate(self, age: Any) -> np.ndarray:
+        return float(self.multiple) * legislated_minimum_rate(age)
+
+    def initial_withdrawal(self, wealth_at_retirement: np.ndarray,
+                           years_remaining: int, age: int) -> np.ndarray:
+        return self._rate(age) * wealth_at_retirement
+
+    def desired(self, state: SpendingState) -> np.ndarray:
+        return self._rate(state.age) * state.wealth
 
 
 # ---------------------------------------------------------------------------
@@ -463,6 +525,7 @@ REGISTRY: Mapping[str, Callable[..., SpendingRule]] = {
     "gompertz": GompertzRule,
     "amortisation": AmortisationRule,
     "income_replacement": IncomeReplacementRule,
+    "legislated_minimum": LegislatedMinimumRule,
 }
 
 #: Rules whose spending level is set by a `rate` parameter.  The remainder

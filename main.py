@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 from src import accumulation as acc
+from src import anchor as anc
 from src import annuity as anu
 from src import allocation as al
 from src import bootstrap as bs
@@ -49,6 +50,7 @@ from src import ordering as odr
 from src import oos
 from src import pension as pn
 from src import plan as pl
+from src import policy as pol
 from src import panel_robustness as pr
 from src import plots
 from src import provenance as pvn
@@ -6177,6 +6179,310 @@ def step41_annuity(cfg: Dict[str, Any],
     return state
 
 
+def _amortisation_at(retire_age: int, assumed_return: float) -> Any:
+    """An amortisation plan at one assumed return.
+
+    `plan.Plan` parameterises a rule by its withdrawal *rate*; the
+    amortisation family takes an assumed return instead, so it gets a small
+    subclass rather than a second meaning for the same field.
+    """
+    import dataclasses as _dc
+
+    @_dc.dataclass(frozen=True)
+    class _Amortisation(pl.Plan):
+        assumed_return: float = 0.06
+
+        def build(self) -> Any:
+            return spg.build("amortisation",
+                             assumed_return=float(self.assumed_return))
+
+        def label(self) -> str:
+            return (f"amortisation at {self.assumed_return:.0%}, "
+                    f"retire at {self.retire_age}")
+
+    return _Amortisation(rule="amortisation", rate=None,
+                         retire_age=int(retire_age),
+                         assumed_return=float(assumed_return))
+
+
+def step42_policy(cfg: Dict[str, Any],
+                  state: Dict[str, Any]) -> Dict[str, Any]:
+    """Solve the joint allocation-and-drawdown policy, regime by regime.
+
+    Everything above compares off a menu: two funds, eight rules, five
+    regimes. That answers which of these is best and leaves standing what
+    the optimal policy under an assets test actually is, and what the menu
+    costs the household that picks from one. The alternating search of
+    `src.plan` is run once per pension regime, which is what makes the
+    answer a statement about the institution rather than about the list.
+    """
+    block = cfg.get("policy", {})
+    if not block.get("enabled", False):
+        LOGGER.info("policy study disabled; skipping step 42")
+        return state
+    LOGGER.info("=== STEP 42: the policy, solved under each pension ===")
+    started = time.perf_counter()
+
+    panel = state.get("panel") or dl.build_panel(cfg)
+    spec = state.get("spec") or lc.spec_from_config(cfg)
+    gamma = float(cfg["utility"]["baseline_risk_aversion"])
+    n_paths = int(block.get("n_paths", 20000))
+    seed = int(cfg["run"]["seed"])
+    bond_share = float(block.get("fixed_income_bond_share", 0.7))
+    equity_grid = [float(x) for x in block["equity_grid"]]
+    domestic_grid = [float(x) for x in block["domestic_grid"]]
+    rate_grid = [float(x) for x in block["rate_grid"]]
+    rules = [str(r) for r in block["rules"]]
+
+    designed = pn.default_systems(
+        spec.savings_rate, pn.from_config(cfg),
+        float(cfg.get("pension", {}).get("sg_rate", pn.SG_RATE)),
+        float(cfg.get("pension", {}).get("sg_contributions_tax",
+                                         pn.SG_CONTRIBUTIONS_TAX)))
+    by_key = pn.specs(spec, designed)
+    systems = [str(x) for x in block.get("systems", tuple(by_key))]
+    unknown = [x for x in systems if x not in by_key]
+    if unknown:
+        raise ValueError(f"unknown pension regime {unknown!r}; the design "
+                         f"carries {sorted(by_key)}")
+
+    # One draw of paths, shared across regimes, so a difference between two
+    # solved policies is the pension and not the lifetimes.
+    for chunk in bs.from_config(panel, cfg).chunks(n_paths, n_paths):
+        search_paths = chunk
+    benches: Dict[str, Any] = {}
+
+    def _bench(system: str) -> Any:
+        hit = benches.get(system)
+        if hit is None:
+            hit = pl.PlanBench(search_paths, by_key[system], cfg,
+                               income_seed=seed)
+            benches[system] = hit
+        return hit
+
+    plans = pl.plan_grid(rules, rate_grid, [spec.age_retire])
+    LOGGER.info("%d plans x the free-form schedule, under %d regimes",
+                len(plans), len(systems))
+    solved = pol.solve_by_system(
+        _bench, systems, plans, gamma, equity_grid, domestic_grid,
+        1.0, 0.1, bond_share, int(block.get("domestic_band_years", 5)),
+        int(block.get("free_form_sweeps", 2)),
+        int(block.get("max_rounds", 4)))
+
+    # The solved schedules, kept so the allocation half of the answer can be
+    # printed rather than summarised.
+    schedules: Dict[str, Any] = {}
+    for system in systems:
+        bench = _bench(system)
+        row = solved[solved["system"] == system]
+        if not len(row):
+            continue
+        plan = pl.Plan(str(row["rule"].iloc[0]),
+                       None if pd.isna(row["rate"].iloc[0])
+                       else float(row["rate"].iloc[0]), spec.age_retire)
+        eq, dom, _ = pl.solve_allocation(
+            bench, plan, gamma, equity_grid, domestic_grid, 1.0, 0.1,
+            bond_share, int(block.get("domestic_band_years", 5)),
+            int(block.get("free_form_sweeps", 2)))
+        schedules[system] = (eq, dom)
+
+    # -- what the paper's own menu costs ----------------------------------
+    # Two menus, because they answer different objections. The default is
+    # what target-date funds and the four-per-cent convention actually
+    # offer. The paper's own eight-rule grid is the fair comparison: a
+    # reader who suspects the menu was picked to lose should see the solved
+    # policy beaten against the best thing the paper itself reports.
+    default_label = f"{block.get('menu_rule', 'constant_real')} at " \
+                    f"{float(block.get('menu_rate', 0.04)):.0%}"
+    menu_rules: List[Tuple[str, Any]] = [
+        (default_label, pl.Plan(str(block.get("menu_rule", "constant_real")),
+                                float(block.get("menu_rate", 0.04)),
+                                spec.age_retire))]
+    percent = float(cfg.get("ordering", {}).get("percent_rate", 0.04))
+    menu_rules.append((f"constant_percent at {percent:.0%}",
+                       pl.Plan("constant_percent", percent, spec.age_retire)))
+    for value in [float(x) for x in
+                  cfg.get("ordering", {}).get("assumed_return_grid", ())]:
+        menu_rules.append((f"amortisation at {value:.0%}",
+                           pl.Plan("amortisation", None, spec.age_retire)))
+        menu_rules[-1] = (menu_rules[-1][0],
+                          _amortisation_at(spec.age_retire, value))
+    fixed = lc.build_strategies(cfg, spec)
+    menu = [str(x) for x in block.get("menu_strategies", ())]
+    menu_schedules = {}
+    for key in menu:
+        weights = fixed[key].weights
+        eq = weights[:, :2].sum(axis=1)
+        menu_schedules[key] = (eq, np.divide(weights[:, 0],
+                                             np.maximum(eq, 1e-12)))
+
+    def _score(system: str, strategy: str, plan: Any, equity: Any,
+               domestic: Any) -> float:
+        return _bench(system).score(plan, equity, domestic, gamma,
+                                    bond_share)
+
+    gaps = pol.menu_gap(_score, solved, menu, menu_schedules, menu_rules,
+                        headline_rule=default_label)
+    found = pol.verdict(gaps=gaps, solved=solved,
+                        headline=str(block.get("headline_system",
+                                               "age_pension_matched")))
+    paths_frame = pol.schedule_frame(solved, schedules, spec.n_working)
+
+    if found.get("measured"):
+        LOGGER.info("solved rule: %s under the test, %s without it; it "
+                    "changes with the pension: %s",
+                    found["rule_under_the_test"], found["rule_without_it"],
+                    found["rule_changes_with_the_pension"])
+        LOGGER.info("solved equity: %.0f%% under the test against %.0f%% "
+                    "without it", 100.0 * found["equity_under_the_test"],
+                    100.0 * found["equity_without_it"])
+        LOGGER.info("against the paper's own best menu cell the solved "
+                    "policy gains %+.2f%% under the test and %+.2f%% "
+                    "without it (ratio %.1f); against the default rule "
+                    "%+.2f%% and %+.2f%%",
+                    found["menu_gap_under_the_test_pct"],
+                    found["menu_gap_without_it_pct"],
+                    found["menu_gap_ratio"],
+                    found["default_gap_under_the_test_pct"],
+                    found["default_gap_without_it_pct"])
+
+    tables = cfg["run"]["table_dir"]
+    _save_table(solved, tables, "policy_solved")
+    _save_table(gaps, tables, "policy_menu_gap")
+    if len(paths_frame):
+        _save_table(paths_frame, tables, "policy_schedule")
+
+    plots.plot_policy(solved, gaps, paths_frame, cfg["run"]["figure_dir"])
+
+    elapsed = time.perf_counter() - started
+    rp.write_doc_42(
+        Path("docs") / "42_policy.md", cfg,
+        {"solved": solved, "gaps": gaps, "schedule": paths_frame}, [],
+        {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
+         "verdict": found, "plans": len(plans)})
+    LOGGER.info("docs/42 written (%.0fs)", elapsed)
+    state["policy"] = {"solved": solved, "gaps": gaps, "found": found,
+                       "schedule": paths_frame}
+    return state
+
+
+def step43_anchor(cfg: Dict[str, Any],
+                  state: Dict[str, Any]) -> Dict[str, Any]:
+    """Put the mechanism's prediction to a legislature that never saw it.
+
+    Everything in this project is the output of a calibrated simulation, and
+    nothing in it has yet been given a chance to disagree with something
+    outside itself. One confrontation is available without microdata: the
+    mechanism says an asset-tested system needs a balance-reading drawdown
+    rule, and the country whose means test this study calibrates to
+    legislates exactly that -- a minimum annual payment set as a percentage
+    of the account balance, rising with age. The rates are statute, not
+    ours. Running them is an out-of-sample test of the rule's *shape*.
+    """
+    block = cfg.get("anchor", {})
+    if not block.get("enabled", False):
+        LOGGER.info("anchor study disabled; skipping step 43")
+        return state
+    LOGGER.info("=== STEP 43: the rule a means-testing country mandates ===")
+    started = time.perf_counter()
+
+    panel = state.get("panel") or dl.build_panel(cfg)
+    spec = state.get("spec") or lc.spec_from_config(cfg)
+    gamma = float(cfg["utility"]["baseline_risk_aversion"])
+    beta = float(cfg["utility"]["discount_factor"])
+    util = cfg["utility"]
+    n_paths = int(block.get("n_paths", 25000))
+    chunk_size = int(cfg["bootstrap"]["chunk_size"])
+    seed = int(cfg["run"]["seed"])
+
+    designed = pn.default_systems(
+        spec.savings_rate, pn.from_config(cfg),
+        float(cfg.get("pension", {}).get("sg_rate", pn.SG_RATE)),
+        float(cfg.get("pension", {}).get("sg_contributions_tax",
+                                         pn.SG_CONTRIBUTIONS_TAX)))
+    by_key = pn.specs(spec, designed)
+    systems = [str(x) for x in block.get("systems", tuple(by_key))]
+    strategies = [str(x) for x in block.get("strategies", odr.HEADLINE)]
+
+    assumed = str(block.get("assumed_rule", "fixed_real_rule"))
+    rules: List[Tuple[str, Any]] = [
+        (assumed, spg.from_spec(assumed, spec.rule_rate))]
+    for multiple in [float(x) for x in block.get("multiples", (1.0,))]:
+        label = ("legislated minimum" if multiple == 1.0
+                 else f"legislated minimum x{multiple:g}")
+        rules.append((label, spg.build("legislated_minimum",
+                                       multiple=multiple)))
+
+    survive = mrt.survival(spec, 88.0, 10.0)
+    cache: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+    def _outcomes(system: str, rule_key: str, rule: Any) -> Dict[str, Any]:
+        hit = cache.get((system, rule_key))
+        if hit is None:
+            aged = by_key[system]
+            hit = lc.run_chunked(
+                bs.from_config(panel, cfg), lc.build_strategies(cfg, aged),
+                aged, n_paths, chunk_size, income_seed=seed, spending=rule)
+            cache.clear()
+            cache[(system, rule_key)] = hit
+        return hit
+
+    _rule_key = {id(rule): key for key, rule in rules}
+
+    def _simulate(system: str, rule: Any, strategy: str) -> Any:
+        return _outcomes(system, _rule_key[id(rule)], rule)[strategy]
+
+    def _score(outcome: Any) -> Dict[str, Any]:
+        bundle = ut.bundle_from_outcome(outcome, cfg, spec)
+        window = outcome.consumption[:, spec.n_working:]
+        return {
+            "cec": float(ut.crra_certainty_equivalent(
+                bundle, gamma, beta, float(util["bequest_weight"]),
+                bool(util["bequest_enabled"]))),
+            "cec_survival": float(mrt.certainty_equivalent(
+                outcome, spec, cfg, gamma, survive)),
+            "prob_ruin": float(np.mean(outcome.ruin)),
+            "mean_consumption": float(window.mean()),
+            "p5_consumption": float(np.percentile(window, 5)),
+        }
+
+    LOGGER.info("%d regimes x %d rules x %d portfolios", len(systems),
+                len(rules), len(strategies))
+    swept = anc.compare(_simulate, systems, rules, strategies, _score)
+    gapped = anc.gaps(swept, odr.HEADLINE)
+    head = str(block.get("headline_system", "age_pension_matched"))
+    found = anc.verdict(gapped, head, "legislated minimum", assumed)
+    claim = anc.observable_prediction(gapped, head, "legislated minimum")
+    statute = anc.schedule_frame(
+        [(int(a), float(r)) for a, r in block["minimum_schedule"]])
+
+    if found.get("measured"):
+        LOGGER.info("under the means test the all-equity lead is %+.2f%% "
+                    "on the legislated rule against %+.2f%% on the rule the "
+                    "literature assumes; the prediction holds: %s",
+                    found["gap_under_the_legislated_rule_pct"],
+                    found["gap_under_the_assumed_rule_pct"],
+                    found["prediction_holds"])
+
+    tables = cfg["run"]["table_dir"]
+    _save_table(swept, tables, "anchor_sweep")
+    _save_table(gapped, tables, "anchor_gaps")
+    _save_table(statute, tables, "anchor_statute")
+
+    plots.plot_anchor(gapped, statute, cfg["run"]["figure_dir"])
+
+    elapsed = time.perf_counter() - started
+    rp.write_doc_43(
+        Path("docs") / "43_anchor.md", cfg,
+        {"sweep": swept, "gaps": gapped, "statute": statute}, [],
+        {"elapsed_seconds": elapsed, "gamma": gamma, "n_paths": n_paths,
+         "verdict": found, "claim": claim, "assumed_rule": assumed})
+    LOGGER.info("docs/43 written (%.0fs)", elapsed)
+    state["anchor"] = {"sweep": swept, "gaps": gapped, "found": found,
+                       "claim": claim}
+    return state
+
+
 STEPS = {1: step1_dataset, 2: step2_bootstrap, 3: step3_lifecycle,
          4: step4_report, 5: step5_sensitivity, 6: step6_spending,
          7: step7_glide_path, 8: step8_hedging, 9: step9_retirement_timing,
@@ -6196,11 +6502,12 @@ STEPS = {1: step1_dataset, 2: step2_bootstrap, 3: step3_lifecycle,
          35: step35_incidence,
          36: step36_ordering, 37: step37_ceiling,
          38: step38_gate, 39: step39_typology,
-         40: step40_resample, 41: step41_annuity}
+         40: step40_resample, 41: step41_annuity,
+         42: step42_policy, 43: step43_anchor}
 
 
 def run(config_path: str = "config.yaml",
-        steps: Sequence[int] = tuple(range(1, 42)),
+        steps: Sequence[int] = tuple(range(1, 44)),
         quick: bool = False) -> Dict[str, Any]:
     """Execute the pipeline and return the accumulated state."""
     cfg = dl.load_config(config_path)
@@ -6230,8 +6537,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--steps", nargs="+", type=int,
-                        default=list(range(1, 42)),
-                        choices=list(range(1, 42)))
+                        default=list(range(1, 44)),
+                        choices=list(range(1, 44)))
     parser.add_argument("--quick", action="store_true",
                         help="small N for smoke tests")
     parser.add_argument("--verbose", action="store_true")

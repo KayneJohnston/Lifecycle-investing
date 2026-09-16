@@ -2073,7 +2073,8 @@ class TestTheReadmeIndexesEveryDocument:
                  33: "thirty-three", 34: "thirty-four", 35: "thirty-five",
                  36: "thirty-six", 37: "thirty-seven", 38: "thirty-eight",
                  39: "thirty-nine", 40: "forty", 41: "forty-one",
-                 42: "forty-two", 43: "forty-three"}
+                 42: "forty-two", 43: "forty-three",
+                 44: "forty-four", 45: "forty-five"}
         n = len(self._documents())
         claimed = re.search(r"All ([a-z-]+) are \*\*generated\*\*",
                             self._readme())

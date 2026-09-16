@@ -311,7 +311,12 @@ def front(ctx: Any) -> List[Flowable]:
         f"{abs(widest_pp):.0f} points \u2014 offsets most of it. Buying "
         f"the floor instead does not: with a real life annuity in the "
         f"choice set a partial purchase widens the reversal rather than "
-        f"closing it. Near the "
+        f"closing it. Solving the allocation and the drawdown rule "
+        f"together sharpens what the reversal is: the solved portfolio is "
+        f"all equity under both pensions, so what the test moves is the "
+        f"rule, and the same wrong drawdown default costs a means-tested "
+        f"household several times what it costs an earnings-related one. "
+        f"Near the "
         f"test, the drawdown default and the portfolio default are one "
         f"decision."
         if matched.get("measured") and matched_rules.get("measured") else
@@ -365,11 +370,20 @@ def front(ctx: Any) -> List[Flowable]:
         f"positions against each household's own thresholds. (vii) The "
         f"floor can be bought, and buying it does not undo the reversal: "
         f"put a real life annuity in the choice set and a partial purchase "
-        f"makes the ordering <i>wider</i>, because sheltering wealth from "
-        f"an assets test is worth more to the portfolio holding less of "
-        f"it. The sign turns only past nine-tenths of the balance "
-        f"converted, at every price from a heavy load to actuarial "
-        f"fairness."))
+        f"makes the ordering <i>wider</i>, at every price from a heavy "
+        f"load to actuarial fairness, with the sign turning only past "
+        f"nine-tenths of the balance converted. The same purchase under an "
+        f"earnings-related pension moves the comparison by almost nothing, "
+        f"so what the annuity acts on is the interaction with the test "
+        f"rather than the portfolio. (viii) Solved rather than picked off "
+        f"a menu, the optimal allocation is the same under both pensions "
+        f"and the optimal withdrawal rule is not, so the reversal is the "
+        f"price of a drawdown default rather than a claim about what a "
+        f"means-tested retiree should hold. (ix) The country whose means "
+        f"test we calibrate to legislates a minimum drawdown that is a "
+        f"percentage of the balance, rising with age; run at the statutory "
+        f"rates the all-equity portfolio leads by +12.22% where the "
+        f"literature's rule leaves it trailing by 11.38%."))
     out.append(ctx.p(
         "<b>Keywords:</b> lifecycle asset allocation; public pension "
         "design; means testing; target-date funds; certainty-equivalent "
@@ -731,10 +745,10 @@ def introduction(ctx: Any) -> List[Flowable]:
         f"{SHORT_ORDER.index('ordering') + 1}.8 puts a real life annuity "
         f"in the choice set and sweeps the share of the balance converted. "
         f"A partial purchase makes the reversal <i>deeper</i>, not "
-        f"shallower, and the reason is the test rather than the "
-        f"instrument: sheltering a dollar from an assets test is worth "
-        f"more to the portfolio that holds fewer of them, so the "
-        f"target-date fund gains the more from annuitising. The ordering "
+        f"shallower, and the same purchase under an earnings-related "
+        f"pension moves the comparison by almost nothing \u2014 so what "
+        f"the annuity acts on is the interaction with the test rather "
+        f"than the portfolio. The ordering "
         f"turns only past nine-tenths of the balance converted \u2014 "
         f"where a tenth is left to allocate and the question has largely "
         f"stopped being a portfolio question \u2014 and it does so at "
@@ -785,7 +799,7 @@ def introduction(ctx: Any) -> List[Flowable]:
         f"upside is confiscated and the downside is not."))
     out.append(ctx.h2("#introduction.2 Contribution"))
     out.append(ctx.p(
-        "Four things here are new, and it is worth separating them from "
+        "Five things here are new, and it is worth separating them from "
         "what is replication. That an all-equity portfolio beats a glide "
         "path on an international block bootstrap is Anarkulova, Cederburg "
         "and O'Doherty's result, and Section "
@@ -823,7 +837,11 @@ def introduction(ctx: Any) -> List[Flowable]:
         f"priced life annuity in the choice set widens the reversal rather "
         f"than closing it, at every load we quote, while the same purchase "
         f"under an earnings-related pension moves the comparison by almost "
-        f"nothing."))
+        f"nothing. Fifth, the <i>policy</i>: solved jointly rather than "
+        f"picked off a menu, the optimal allocation is invariant to the "
+        f"pension and the optimal drawdown rule is not, which locates the "
+        f"whole of the result in the rule a household is given rather than "
+        f"in the portfolio it is blamed for."))
     out.append(ctx.h2("#introduction.3 Relation to the literature"))
     out.append(ctx.p(
         "The lifecycle portfolio-choice literature since Cocco, Gomes and "
@@ -1089,7 +1107,7 @@ def model(ctx: Any) -> List[Flowable]:
         f"small allocation: no risk aversion, no return distribution and "
         f"no horizon appears anywhere in it, so nothing in the "
         f"calibration is available to overturn it. Section "
-        f"{SHORT_ORDER.index('incidence') + 1}.4 is the test — the "
+        f"#incidence.4 is the test — the "
         f"corner holds at half the baseline risk aversion, at twice it, "
         f"and under two consumption floors — and the corollary is why "
         f"it should. One channel is outside the algebra and belongs with "
@@ -1158,7 +1176,7 @@ def model(ctx: Any) -> List[Flowable]:
         f"how large the non-monotonicity is, or whether it is there at "
         f"all, because that depends on the return distribution, the "
         f"horizon and the risk aversion. Section "
-        f"{SHORT_ORDER.index('incidence') + 1}.5 finds it is not there: "
+        f"#incidence.5 finds it is not there: "
         f"under either withdrawal rule wanted equity turns out to be "
         f"monotone in wealth, and the hump this section predicts does not "
         f"appear once the grid is wide enough to show one. Nor does "
@@ -1353,7 +1371,7 @@ def incidence(ctx: Any) -> List[Flowable]:
             f"position, below the free area, inside the band and past the "
             f"cut-off alike \u2014 at least, because that is the top of "
             f"this grid and Section "
-            f"{SHORT_ORDER.index('incidence') + 1}.5 shows the household "
+            f"#incidence.5 shows the household "
             f"would take more if it were offered. The swing between the "
             f"two rules averages "
             f"{100 * abs(float(base_arm['equity'].mean()) - float(rule_arm['equity'].mean())):.0f} "
@@ -1851,7 +1869,7 @@ def ordering(ctx: Any) -> List[Flowable]:
         f"cell is scored twice \u2014 once over the fixed horizon the rest "
         f"of the paper uses, once weighted by the survival curve Section "
         f"{SHORT_ORDER.index('longevity') + 1} argues for. Section "
-        f"{SHORT_ORDER.index('ordering') + 1}.6 reports what the second "
+        f"#ordering.6 reports what the second "
         f"objective does; the tables below are the first, because that is "
         f"the objective Section {SHORT_ORDER.index('baseline') + 1} "
         f"reports and the one a reader comparing them will expect."))
@@ -2364,7 +2382,203 @@ def ordering(ctx: Any) -> List[Flowable]:
         "delete-one-country 95% intervals where they were computed.")
     out.extend(_resampled(ctx, f))
     out.extend(_annuity(ctx, f))
+    out.extend(_solved(ctx, f))
+    out.extend(_anchored(ctx, f))
     return out
+
+
+def _solved(ctx: Any, f: Any) -> List[Flowable]:
+    """The policy, solved rather than picked off the menu.
+
+    Everything above this compares menu items: two funds, eight rules, five
+    regimes. That answers which of these is best and leaves standing what a
+    household under an assets test should actually do -- and whether the
+    interaction this paper reports is a fact about optima or about lists.
+    """
+    out: List[Flowable] = []
+    if not (_has(f, "policy_solved") and _has(f, "policy_menu_gap")):
+        return out
+    from src import policy as pcy
+
+    solved, gaps = f.table("policy_solved"), f.table("policy_menu_gap")
+    head = str(f.cfg.get("policy", {}).get("headline_system",
+                                           "age_pension_matched"))
+    found = pcy.verdict(solved, gaps, head)
+    if not found.get("measured"):
+        return out
+
+    out.append(ctx.h2("#ordering.9 The policy, solved rather than picked"))
+    out.append(ctx.p(
+        f"Every comparison to this point is between things on a list. That "
+        f"is the right way to price a <i>default</i>, which is what the "
+        f"paper is about, and it is not an answer to the question a reader "
+        f"is entitled to ask next: what should a household under an assets "
+        f"test actually do, and is the interaction reported above a fact "
+        f"about optima or about menus? So the allocation and the "
+        f"withdrawal rule are solved together \u2014 the schedule chosen "
+        f"for the rule, the rule re-chosen for the schedule, to a fixed "
+        f"point \u2014 once under each pension, on shared lifetimes."))
+    out.extend(_solved_table(ctx, solved))
+    out.append(ctx.p(
+        f"<b>Solve it and the portfolio answer stops depending on the "
+        f"pension.</b> The schedule holds "
+        f"{found['equity_under_the_test']:.0%} equity under the means test "
+        f"and {found['equity_without_it']:.0%} without it, in every "
+        f"retirement year of both. What the assets test moves is the "
+        f"withdrawal rule: the household under it wants "
+        f"{rule_label(found['rule_under_the_test'])} where the household "
+        f"under an earnings-related pension wants "
+        f"{rule_label(found['rule_without_it'])}. Both read the balance, "
+        f"which is the division Section "
+        f"{SHORT_ORDER.index('model') + 1} turns on and which the search "
+        f"reaches without being pointed at it."))
+    out.append(ctx.p(
+        f"<b>That is the sharpest statement of this paper's result, and it "
+        f"is not the one we set out to make.</b> The reversal is not a "
+        f"claim about what a means-tested retiree should hold. Solved, "
+        f"they should hold what everyone else should hold. It is a claim "
+        f"about what happens when the drawdown rule is fixed at the wrong "
+        f"one and the portfolio takes the blame \u2014 and the cost of "
+        f"that mistake is not the same everywhere. Against the fixed real "
+        f"four per cent the literature assumes, solving is worth "
+        f"{found['default_gap_under_the_test_pct']:+.0f}% of "
+        f"certainty-equivalent consumption under the means test against "
+        f"{found['default_gap_without_it_pct']:+.0f}% without it, a factor "
+        f"of {found['default_gap_ratio']:.1f}."))
+    out.append(ctx.p(
+        f"<b>The menu itself is not the problem, and it is worth saying so "
+        f"against our own case.</b> Scored against the best cell of this "
+        f"paper's own eight-rule grid rather than against the default, "
+        f"solving is worth only "
+        f"{found['menu_gap_under_the_test_pct']:+.2f}% under the test "
+        f"\u2014 the grid already contains "
+        f"{rule_label(found['best_menu_rule_under_the_test'])}, within "
+        f"that of the solution \u2014 against "
+        f"{found['menu_gap_without_it_pct']:+.2f}% without it. So the "
+        f"sections above are not beating a straw man: the menu they sweep "
+        f"is close to optimal under a means test. What is expensive is the "
+        f"one rule on it that the literature, the regulators and the "
+        f"calculators all assume."))
+    out.append(ctx.note(
+        f"A solved policy over a rule family and a deterministic "
+        f"allocation path, not a dynamic program over the assets test. The "
+        f"household commits at retirement and does not re-optimise as its "
+        f"balance crosses the taper, so a state-contingent rule would do "
+        f"at least as well: what is reported is a lower bound on the "
+        f"optimum and therefore on what the default costs. "
+        f"{ct.opens(_spelled(int(found['most_rounds'])))} rounds at most, "
+        f"and every search reached a fixed point."))
+    return out
+
+
+def _solved_table(ctx: Any, solved: Any) -> List[Flowable]:
+    """The solved policy, one row per regime."""
+    rows = [["Pension regime", "Solved withdrawal rule", "Equity held",
+             "Certainty equivalent"]]
+    for _, row in solved.iterrows():
+        rows.append([
+            SYSTEM_LABEL.get(str(row["system"]), str(row["system"])),
+            rule_label(str(row["rule"]))
+            + (f" at {float(row['rate']):.0%}"
+               if row["rate"] == row["rate"] else ""),
+            f"{float(row['mean_equity_in_retirement']):.0%}",
+            f"{float(row['cec']):.4f}"])
+    return list(ctx.table(
+        rows,
+        "The allocation and the withdrawal rule solved together, to a "
+        "fixed point, under each pension regime.",
+        note="The allocation is a free-form schedule over the retirement "
+             "years rather than a single share, and it is flat at the "
+             "figure shown in every year of every regime. Certainty "
+             "equivalents are survival-weighted and are not comparable "
+             "across regimes, which pay different pensions; what is "
+             "comparable is the policy each regime selects."))
+
+
+def _anchored(ctx: Any, f: Any) -> List[Flowable]:
+    """The mechanism's prediction, put to a legislature that chose first."""
+    out: List[Flowable] = []
+    if not (_has(f, "anchor_gaps") and _has(f, "anchor_statute")):
+        return out
+    from src import anchor as anc
+
+    gapped, statute = f.table("anchor_gaps"), f.table("anchor_statute")
+    block = f.cfg.get("anchor", {})
+    head = str(block.get("headline_system", "age_pension_matched"))
+    assumed = str(block.get("assumed_rule", "fixed_real_rule"))
+    found = anc.verdict(gapped, head, "legislated minimum", assumed)
+    if not found.get("measured"):
+        return out
+
+    out.append(ctx.h2("#ordering.10 A prediction put to a legislature"))
+    out.append(ctx.p(
+        "Everything above is the output of a calibrated simulation, and "
+        "nothing in it has yet been given the chance to disagree with "
+        "something outside itself. One confrontation is available without "
+        "microdata, and it is sharp. The mechanism says an asset-tested "
+        "system needs a withdrawal rule whose payment reads the balance. "
+        "The country whose means test this paper calibrates to legislates "
+        "one: every retiree drawing an account-based private pension must "
+        "pay out, each year, at least a statutory percentage of the "
+        "account balance, on a rate that rises with age."))
+    out.extend(_statute_table(ctx, statute))
+    if found["prediction_holds"]:
+        out.append(ctx.p(
+            f"<b>The prediction holds, and none of it was tuned.</b> Under "
+            f"the means test the all-equity portfolio leads by "
+            f"{found['gap_under_the_legislated_rule_pct']:+.2f}% when the "
+            f"retiree draws the legislated minimum and trails by "
+            f"{abs(found['gap_under_the_assumed_rule_pct']):.2f}% when it "
+            f"draws the fixed real amount the literature assumes \u2014 a "
+            f"swing of {found['swing_pp']:.1f} points between a rule a "
+            f"legislature wrote and a rule a literature adopted. The rates "
+            f"are statute. Nothing in this paper chose them, and they were "
+            f"set by people who had not seen this model."))
+    else:
+        out.append(ctx.p(
+            f"<b>The prediction does not hold.</b> Under the means test "
+            f"the all-equity lead is "
+            f"{found['gap_under_the_legislated_rule_pct']:+.2f}% on the "
+            f"legislated rule against "
+            f"{found['gap_under_the_assumed_rule_pct']:+.2f}% on the rule "
+            f"the literature assumes. The mechanism predicted the first "
+            f"positive and the second negative. We report what came out."))
+    out.append(ctx.note(
+        "This is an institutional anchor and not a behavioural one, and "
+        "the difference matters. It establishes that the rule shape a "
+        "means-testing country legislates is the shape the model says such "
+        "a country needs; it establishes nothing about how that country's "
+        "retirees invest, because a design fact is not a holdings fact. "
+        "The behavioural implication is worth stating so that someone can "
+        "refute it: retirement-phase portfolios in a system that both "
+        "means-tests the pension and mandates a percentage-of-balance "
+        "drawdown should sit at the high-equity end relative to a "
+        "target-date glide path at the same age. Settling that needs "
+        "fund-level allocation by member age, which this study does not "
+        "carry and could not obtain — the companion study documents "
+        "the egress policy that blocks every bulk statistical source."))
+    return out
+
+
+def _statute_table(ctx: Any, statute: Any) -> List[Flowable]:
+    """The legislated minimum drawdown, as a reader can check it."""
+    from src import anchor as anc
+
+    rows = [["Age at the start of the year",
+             "Minimum share of the balance"]]
+    for _, row in statute.iterrows():
+        rows.append([str(row["age_band"]),
+                     f"{float(row['minimum_share']):.0%}"])
+    return list(ctx.table(
+        rows,
+        "The statutory minimum annual payment from an account-based "
+        "pension, as a share of the account balance.",
+        note=f"Source: {anc.STATUTE}. Quoted here so a reader can check "
+             f"the simulation against the law rather than against this "
+             f"paper. It is a percentage-of-balance rule with an "
+             f"age-rising rate \u2014 the family Section "
+             f"#model.1 says an asset-tested system needs \u2014 and it "
+             f"was not chosen by us."))
 
 
 def _annuity(ctx: Any, f: Any) -> List[Flowable]:
@@ -3374,7 +3588,7 @@ DROPPED: Dict[str, Tuple[str, ...]] = {
 #: Subsections the trim leaves stranded at their original numbers. Section 7
 #: keeps its fifth and sixth and loses the rest, and a section whose first
 #: heading is 7.5 tells the reader four subsections are missing.
-RENUMBERED: Dict[str, Dict[int, int]] = {"baseline": {4: 3}}
+RENUMBERED: Dict[str, Dict[int, int]] = {}
 
 #: Whole subsections an inherited section carries that this paper does not
 #: need. Matched on a phrase in the subsection heading; everything from that
@@ -3383,16 +3597,30 @@ RENUMBERED: Dict[str, Dict[int, int]] = {"baseline": {4: 3}}
 #: on its audit trail -- but a reader here needs to know what the panel is,
 #: not how each series was reconciled against its source.
 TRIMMED: Dict[str, Tuple[str, ...]] = {
-    "data": ("Auditing the data",),
+    # A reader judging a comparison of two objective functions needs to
+    # know what the panel is and what is wrong with it. How the
+    # international leg was built, what the cross-asset correlations are
+    # and which market closures were handled how are the archive's
+    # business, and they cost this paper four pages.
+    "data": ("Auditing the data", "Constructing the international leg",
+             "Cross-asset structure",
+             "Market disruptions and the survivorship question"),
     # Verification belongs to a replication archive, and the archive is the
     # companion study. A reader here needs to believe the simulator, not to
     # audit it.
-    "methods": ("Implementation and verification",),
+    # Likewise the bootstrap's construction and the comparison discipline:
+    # both are inherited from the replicated study unchanged, and a reader
+    # who wants them has the companion.
+    "methods": ("Implementation and verification",
+                "The cross-country stationary block bootstrap",
+                "The comparison discipline"),
     # Both of these argue the companion's thesis rather than this one.
     # Stochastic dominance and the country-draw diagnostic establish that
     # the all-equity portfolio wins on the panel; this paper takes that as
     # given from Section #baseline.1 and asks what a pension does to it.
-    "baseline": ("Distributional dominance", "How the countries are drawn"),
+    "baseline": ("Distributional dominance", "How the countries are drawn",
+                 "The mechanism is international, not equity",
+                 "Sustainable withdrawal rates"),
     # The inherited section spends five subsections pricing the retirement
     # date before it reaches the floor-versus-taper decomposition this paper
     # needs. That is a good study and a different paper; here it buries the
@@ -3410,6 +3638,10 @@ TRIMMED: Dict[str, Tuple[str, ...]] = {
     "pension": ("Crossing the two features",
                 "What it does to the ranking",
                 "What this changes"),
+    # The rule selection is the finding; how firmly it is selected and what
+    # the ruin convention does to it are the apparatus behind it.
+    "longevity": ("The ruin number everyone quotes",
+                  "How firmly the rule is selected"),
 }
 
 #: The anchors those trims remove, so a cross-reference into one resolves
@@ -3417,8 +3649,11 @@ TRIMMED: Dict[str, Tuple[str, ...]] = {
 #: print. Kept alongside :data:`TRIMMED` and checked against it, because the
 #: two going out of step is the failure the build cannot see.
 TRIMMED_ANCHORS: Tuple[str, ...] = (
-    "data.6", "methods.5", "baseline.3", "baseline.5",
-    "pension.2", "pension.3", "pension.4")
+    "data.3", "data.4", "data.5", "data.6",
+    "methods.1", "methods.4", "methods.5",
+    "baseline.2", "baseline.3", "baseline.4", "baseline.5",
+    "pension.2", "pension.3", "pension.4",
+    "longevity.2", "longevity.3")
 
 
 def _regime_menu(ctx: Any) -> List[Flowable]:
@@ -3484,6 +3719,61 @@ def _regime_menu(ctx: Any) -> List[Flowable]:
              "that withdraws it. Thresholds, taper and rate are calibrated "
              "below; what each setting does to the portfolio ordering is "
              "Section #ordering.")
+
+
+#: Subsections of the sections *this paper writes itself* that move to the
+#: Internet Appendix. They are apparatus rather than argument: each answers
+#: an objection the paper raises against itself, and each costs a page a
+#: referee would rather spend on the result. Unlike :data:`TRIMMED` they
+#: cannot be redirected to the companion study, because the companion does
+#: not contain them -- they were written for this paper. So they are
+#: rendered into `paper/internet_appendix.pdf` by :mod:`paper.appendix`,
+#: from the same writers, and cross-references into them resolve there.
+APPENDIX_TRIMMED: Dict[str, Tuple[str, ...]] = {
+    "incidence": ("What the panel costs this corner",
+                  "And the corner against the objective",
+                  "Whether the other corner is a corner at all"),
+    "ordering": ("The interval on the difference",
+                 "And the same grid on a real lifespan",
+                 "How much of that precision was the assumption"),
+}
+
+#: Where each moved subsection lands in the appendix, so a reference reads
+#: "Section A.2 of the Internet Appendix" rather than dangling. Ordered as
+#: the appendix prints them.
+APPENDIX_ORDER: Tuple[Tuple[str, str], ...] = (
+    ("incidence.3", "What the panel costs the corner"),
+    ("incidence.4", "The corner against the objective"),
+    ("incidence.5", "Whether the other corner is a corner at all"),
+    ("ordering.4", "The interval on the difference"),
+    ("ordering.6", "The same grid on a real lifespan"),
+    ("ordering.7", "How much of that precision was the assumption"),
+)
+
+#: ``anchor -> "A.n"``, built once so the paper and the appendix cannot
+#: disagree about a number.
+APPENDIX_NUMBER: Dict[str, str] = {
+    key: f"A.{i + 1}" for i, (key, _) in enumerate(APPENDIX_ORDER)}
+
+
+def _to_appendix(parts: List[Flowable], key: str) -> List[Flowable]:
+    """Drop this section's appendix-bound subsections from the paper."""
+    out = list(parts)
+    for phrase in APPENDIX_TRIMMED.get(key, ()):
+        out = _without_subsection(out, phrase, key)
+    return out
+
+
+def _appendix_only(parts: List[Flowable], key: str) -> List[Flowable]:
+    """The mirror image: only the subsections the appendix carries.
+
+    Written as the complement of :func:`_to_appendix` rather than as a
+    second list of phrases, so the two cannot go out of step -- which is
+    the failure mode every trim in this module has had at least once.
+    """
+    kept = _to_appendix(parts, key)
+    dropped = [id(x) for x in kept]
+    return [flowable for flowable in parts if id(flowable) not in dropped]
 
 
 def _reopen(parts: List[Flowable], ctx: Any, key: str) -> List[Flowable]:
@@ -4315,6 +4605,8 @@ def _without_subsection(parts: List[Flowable], phrase: str,
 def story(ctx: Any) -> List[Flowable]:
     """The short paper, assembled from the sections that carry its thesis."""
     ct.COMPANION = {"name": "the companion study", "numbers": LONG_NUMBER_ALL}
+    ct.APPENDIX = {"name": "the Internet Appendix",
+                   "numbers": APPENDIX_NUMBER}
     ct.ABSENT = TRIMMED_ANCHORS
     ct.RENUMBERED = RENUMBERED
     with renumbered():
@@ -4332,13 +4624,14 @@ def story(ctx: Any) -> List[Flowable]:
             if key in SHORT_ORDER:
                 parts += _reopen(getattr(ct, f"section_{key}")(ctx),
                                  ctx, key)
-        parts += incidence(ctx)
+        parts += _to_appendix(incidence(ctx), "incidence")
         parts += _reopen(ct.section_longevity(ctx), ctx, "longevity")
-        parts += ordering(ctx)
+        parts += _to_appendix(ordering(ctx), "ordering")
         parts += limitations(ctx)
         parts += conclusion(ctx)
         parts += references(ctx)
     ct.COMPANION = {}
+    ct.APPENDIX = {}
     ct.ABSENT = ()
     ct.RENUMBERED = {}
     return parts

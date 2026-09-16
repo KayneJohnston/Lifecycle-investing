@@ -78,6 +78,10 @@ DEFAULT_RULES: Tuple[Tuple[str, str], ...] = (
 #: lagged balance rather than the current one, so it can overshoot a bad year
 #: and does deplete, which is why ``endowment`` sits on the True side here.
 CAN_DEPLETE: Mapping[str, bool] = {
+    # A statutory percentage of the current balance, like any other share
+    # of a shrinking number: always affordable, so ruin is zero by
+    # construction and the risk arrives as consumption volatility.
+    "legislated_minimum": False,
     "constant_real": True, "vanguard_dynamic": True, "guyton_klinger": True,
     "endowment": True, "constant_percent": False, "life_expectancy": False,
     "gompertz": False, "amortisation": False,
