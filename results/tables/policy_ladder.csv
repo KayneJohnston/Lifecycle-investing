@@ -1,0 +1,21 @@
+system,leverage,rule,label,cec,converged
+us_social_security,1.0,gompertz,"gompertz, retire at 63",1.364064504190162,True
+us_social_security,1.25,gompertz,"gompertz, retire at 63",1.3850501172046665,True
+us_social_security,1.5,gompertz,"gompertz, retire at 63",1.3892249708738988,True
+us_social_security,1.75,gompertz,"gompertz, retire at 63",1.3903461298720434,True
+us_social_security,2.0,gompertz,"gompertz, retire at 63",1.3891265035772702,True
+age_pension_untested,1.0,gompertz,"gompertz, retire at 63",1.2440880706477244,True
+age_pension_untested,1.25,gompertz,"gompertz, retire at 63",1.2633457844081768,True
+age_pension_untested,1.5,gompertz,"gompertz, retire at 63",1.26632016844357,True
+age_pension_untested,1.75,gompertz,"gompertz, retire at 63",1.2660909800407723,True
+age_pension_untested,2.0,gompertz,"gompertz, retire at 63",1.2631903863563199,True
+age_pension_matched,1.0,constant_percent,"constant_percent at 10.0%, retire at 63",1.0546546549007791,True
+age_pension_matched,1.25,constant_percent,"constant_percent at 10.0%, retire at 63",1.08470115395884,True
+age_pension_matched,1.5,constant_percent,"constant_percent at 10.0%, retire at 63",1.094775951500752,True
+age_pension_matched,1.75,constant_percent,"constant_percent at 10.0%, retire at 63",1.099678923079354,True
+age_pension_matched,2.0,constant_percent,"constant_percent at 10.0%, retire at 63",1.1013385136907818,True
+australia_as_legislated,1.0,constant_percent,"constant_percent at 10.0%, retire at 63",1.3608004057018857,True
+australia_as_legislated,1.25,constant_percent,"constant_percent at 10.0%, retire at 63",1.403093165534969,True
+australia_as_legislated,1.5,constant_percent,"constant_percent at 10.0%, retire at 63",1.4139391813789384,True
+australia_as_legislated,1.75,constant_percent,"constant_percent at 10.0%, retire at 63",1.4179779054178956,True
+australia_as_legislated,2.0,constant_percent,"constant_percent at 10.0%, retire at 63",1.4175078758670532,True

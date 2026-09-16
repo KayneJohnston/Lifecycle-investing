@@ -945,6 +945,24 @@ class TestShortPaper:
         missing = sorted(n for n in cited - skip if n not in listed)
         assert not missing, missing
 
+    def test_no_reference_token_is_followed_by_its_own_document_name(self
+                                                                      ) -> None:
+        """#leisure expands to "Section 33 of the companion study" and
+        #incidence.5 to "Section A.3 of the Internet Appendix", so prose
+        that adds the name again prints it twice. That has now shipped
+        twice; this is the guard rather than a third reading of the PDF.
+        """
+        import re
+
+        from paper import short as sh
+
+        source = Path(sh.__file__).read_text()
+        flat = re.sub(r'"\s*\n\s*f?"', " ", source)
+        bad = re.findall(
+            r"#[a-z_]+(?:\.\d+)*\s+(?:of\s+)?the\s+"
+            r"(companion study|Internet Appendix)", flat)
+        assert not bad, bad
+
     def test_the_australian_literature_is_cited(self) -> None:
         """The contribution claim was narrowed because of this work. If the
         references went missing the narrowed claim would read as modesty
@@ -1535,6 +1553,25 @@ class TestTheResultIsStatedAsAResult:
         assert split < pair, "the reversal still precedes the rule split"
 
 
+def _without_page_furniture(path) -> str:
+    """The paper's prose with the running head and folio removed.
+
+    A sentence that straddles a page break has "The Pension and the
+    Drawdown Rule 10" inserted into the middle of it, so an assertion about
+    what the paper says fails for a reason that is about pagination rather
+    than about the paper. Stripping the furniture is what makes these
+    tests about the prose; adding a paragraph upstream should not be able
+    to break one.
+    """
+    from pypdf import PdfReader
+
+    from paper import short as sh
+
+    text = re.sub(r"\s+", " ", "\n".join(
+        (page.extract_text() or "") for page in PdfReader(str(path)).pages))
+    return re.sub(rf"\s*{re.escape(sh.TITLE)}\s+\d+\s*", " ", text)
+
+
 class TestTheMechanismIsStatedAsAProposition:
     """Section 2.1 derived the sign condition and then argued it in prose.
     A referee reading a calibrated simulation wants to know what is a
@@ -1571,9 +1608,7 @@ class TestTheMechanismIsStatedAsAProposition:
         path = PAPER / "floor_beneath_the_portfolio.pdf"
         if not path.exists():
             pytest.skip("the short paper has not been built")
-        text = re.sub(r"\s+", " ", "\n".join(
-            (page.extract_text() or "")
-            for page in PdfReader(str(path)).pages))
+        text = _without_page_furniture(path)
         block = text[text.index("Proposition 1"):]
         block = block[:block.index("What that implies for the portfolio")]
         assert "does not deliver is the optimal risky share" in block

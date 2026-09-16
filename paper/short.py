@@ -1514,7 +1514,8 @@ def incidence(ctx: Any) -> List[Flowable]:
         f"cut-off {cut:.2f}. The pension begins the day work stops in both "
         "columns, so every retirement year is under the test.",
         anchor="band_profile",
-        note=f"{_spelled(len(base_arm))} balances, grouped by where each "
+        note=f"{_spelled(len(base_arm)).capitalize()} balances, grouped by "
+             f"where each "
              f"leaves the household against the test; a range is given "
              f"wherever the balances inside a group disagree. Each "
              f"underlying answer is the best of twenty-one equity shares "
@@ -2612,7 +2613,7 @@ def _solved(ctx: Any, f: Any) -> List[Flowable]:
         f"One thing about the allocation grid before the answer, because "
         f"without it the answer cannot be read. A search over equity "
         f"shares stops at the whole portfolio, and Section "
-        f"#incidence.5 of the Internet Appendix finds that this "
+        f"#incidence.5 finds that this "
         f"household wants more than the whole portfolio wherever the test "
         f"reaches it. Two regimes pinned against that ceiling score the "
         f"same allocation whether or not they want the same thing, so a "
@@ -2710,9 +2711,8 @@ def _solved(ctx: Any, f: Any) -> List[Flowable]:
         f"and every search reached a fixed point. The borrowing ladder is "
         f"priced at a zero spread over the realised bill return, which is "
         f"the cheapest borrowing there is and therefore the hardest test "
-        f"for an unlevered answer; Section #incidence.5 of the Internet "
-        f"Appendix sweeps the spread and reports where the unlevered "
-        f"corner comes back."))
+        f"for an unlevered answer; Section #incidence.5 sweeps the "
+        f"spread and reports where the unlevered corner comes back."))
     return out
 
 

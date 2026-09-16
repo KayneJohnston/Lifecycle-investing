@@ -1,4 +1,5 @@
-system,rule,rate,label,cec,rounds,converged,mean_equity,equity_at_retirement,mean_equity_in_retirement,equity_falls_through_retirement,rule_reads_the_balance
-us_social_security,gompertz,,"gompertz, retire at 63",1.364064504190162,2,True,1.0,1.0,1.0,False,True
-age_pension_matched,constant_percent,0.1,"constant_percent at 10.0%, retire at 63",1.0546546549007791,2,True,1.0,1.0,1.0,False,True
-australia_as_legislated,constant_percent,0.1,"constant_percent at 10.0%, retire at 63",1.0546546549007791,2,True,1.0,1.0,1.0,False,True
+system,rule,rate,label,cec,unlevered_cec,unlevered_rule,leverage_premium_pct,rounds,converged,leverage,mean_equity,mean_holding_in_retirement,holding_at_retirement,equity_at_retirement,mean_equity_in_retirement,equity_falls_through_retirement,holding_is_censored,rule_reads_the_balance
+us_social_security,gompertz,,"gompertz, retire at 63",1.3903461298720434,1.364064504190162,gompertz,1.9267142866887133,2,True,1.75,0.8941176470588237,1.3300000000000005,1.4000000000000001,0.8,0.7599999999999999,True,False,True
+age_pension_untested,gompertz,,"gompertz, retire at 63",1.26632016844357,1.2440880706477244,gompertz,1.787019610618934,2,True,1.5,0.9367647058823527,1.2850000000000006,1.2000000000000002,0.8,0.8566666666666668,False,False,True
+age_pension_matched,constant_percent,0.1,"constant_percent at 10.0%, retire at 63",1.1013385136907818,1.0546546549007791,constant_percent,4.426459274898353,2,True,2.0,0.8661764705882354,1.393333333333333,1.4,0.7,0.6966666666666665,True,False,True
+australia_as_legislated,constant_percent,0.1,"constant_percent at 10.0%, retire at 63",1.4179779054178956,1.3608004057018857,constant_percent,4.201755046252975,2,True,1.75,0.9044117647058824,1.3708333333333333,1.4000000000000001,0.8,0.7833333333333333,True,False,True

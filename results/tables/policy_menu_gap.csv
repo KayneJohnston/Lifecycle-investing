@@ -1,4 +1,5 @@
 system,solved_rule,solved_cec,best_menu_item,best_menu_rule,best_menu_cec,menu_gap_pct,default_menu_cec,default_gap_pct
 us_social_security,gompertz,1.364064504190162,balanced_all_equity,amortisation at 4%,1.2443277788614056,9.622603253165241,1.0407132123416385,31.07016303953445
+age_pension_untested,gompertz,1.2440880706477244,balanced_all_equity,amortisation at 4%,1.1316067688816278,9.939963674595397,0.903846510914505,37.64373216299366
 age_pension_matched,constant_percent,1.0546546549007791,balanced_all_equity,amortisation at 6%,1.0234642488793149,3.0475325401563946,0.48966295633542306,115.38379435391315
-australia_as_legislated,constant_percent,1.0546546549007791,balanced_all_equity,amortisation at 6%,1.0234642488793149,3.0475325401563946,0.48966295633542306,115.38379435391315
+australia_as_legislated,constant_percent,1.3608004057018857,balanced_all_equity,amortisation at 6%,1.3218820155261002,2.94416519164884,0.6692035194715796,103.34627151638544
